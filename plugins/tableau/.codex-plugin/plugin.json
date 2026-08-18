@@ -1,0 +1,36 @@
+{
+  "name": "tableau",
+  "version": "0.1.0",
+  "description": "Tableau plugin for Codex with workbook authoring, visual analysis, and MCP capabilities.",
+  "author": {
+    "name": "Tableau",
+    "url": "https://www.tableau.com"
+  },
+  "homepage": "https://www.tableau.com",
+  "repository": "https://github.com/tableau/plugin-codex",
+  "keywords": [
+    "tableau",
+    "analytics",
+    "data-visualization",
+    "workbooks"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Tableau",
+    "shortDescription": "Analyze data and build or modify Tableau workbooks.",
+    "longDescription": "Teach Codex to analyze data, build and modify Tableau workbooks, validate workbook packages, and use the hosted Tableau MCP server.",
+    "developerName": "Tableau",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://www.tableau.com",
+    "defaultPrompt": [
+      "Analyze this data with Tableau",
+      "Help me build a Tableau visualization",
+      "Validate this Tableau workbook package"
+    ]
+  }
+}
