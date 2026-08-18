@@ -1,0 +1,20 @@
+{
+  "name": "plugin-codex",
+  "interface": {
+    "displayName": "Tableau MCP Skills"
+  },
+  "plugins": [
+    {
+      "name": "tableau",
+      "source": {
+        "source": "local",
+        "path": "./plugins/tableau"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
