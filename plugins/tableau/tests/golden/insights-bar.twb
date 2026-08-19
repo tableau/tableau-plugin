@@ -1,0 +1,90 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook original-version='18.1' source-build='plugin-codex' source-platform='mac' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <document-format-change-manifest>
+    <WindowsPersistSimpleIdentifiers />
+  </document-format-change-manifest>
+  <preferences />
+  <datasources>
+  <datasource caption='Sales Data' name='Sales Data' version='18.1'>
+  <connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' filename='sales-data.xlsx' password='' server='' validate='no'>
+    <relation name='Sales' table='[Sales$]' type='table' />
+  </connection>
+  <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+  <column datatype='date' name='[Transaction Date]' role='dimension' type='ordinal' />
+  <column datatype='string' name='[Offering]' role='dimension' type='nominal' />
+</datasource>
+  </datasources>
+  <worksheets>
+  <worksheet name='ARR by Offering'>
+<table>
+    <view>
+      <datasources>
+        <datasource caption='Sales Data' name='Sales Data' />
+      </datasources>
+      <datasource-dependencies datasource='Sales Data'>
+        <column aggregation='Sum' datatype='real' default-type='quantitative' layered='true' name='[Revenue]' pivot='key' role='measure' type='quantitative' user-datatype='real' visual-totals='Default' />
+        <column aggregation='Count' datatype='string' default-type='nominal' layered='true' name='[Offering]' pivot='key' role='dimension' type='nominal' user-datatype='string' visual-totals='Default' />
+        <column-instance column='[Offering]' derivation='None' name='[none:Offering:nk]' pivot='key' type='nominal' />
+        <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+        <column aggregation='Year' datatype='date' default-type='ordinal' layered='true' name='[Transaction Date]' pivot='key' role='dimension' type='ordinal' user-datatype='date' visual-totals='Default' />
+        <column-instance column='[Transaction Date]' derivation='None' name='[none:Transaction Date:qk]' pivot='key' type='quantitative' />
+      </datasource-dependencies>
+      <filter class='quantitative' column='[Sales Data].[none:Transaction Date:qk]' included-values='in-range'>
+        <min>#2026-01-01#</min>
+        <max>#2026-06-30#</max>
+      </filter>
+      <shelf-sorts>
+        <shelf-sort-v2 dimension-to-sort='[Sales Data].[none:Offering:nk]' direction='DESC' is-on-innermost-dimension='true' measure-to-sort-by='[Sales Data].[sum:Revenue:qk]' shelf='rows' />
+      </shelf-sorts>
+      <aggregation value='true' />
+    </view>
+    <style />
+    <panes>
+      <pane selection-relaxation-option='selection-relaxation-allow'>
+        <view>
+          <breakdown value='auto' />
+        </view>
+        <mark class='Automatic' />
+        <encodings>
+          <color column='[Sales Data].[none:Offering:nk]' />
+        </encodings>
+      </pane>
+    </panes>
+    <rows>[Sales Data].[none:Offering:nk]</rows>
+    <cols>[Sales Data].[sum:Revenue:qk]</cols>
+  </table>
+</worksheet>
+  </worksheets>
+  <windows>
+  <window class='worksheet' name='ARR by Offering'>
+    <cards>
+      <edge name='left'>
+        <strip size='160'>
+          <card type='pages' />
+          <card type='filters' />
+          <card type='marks' />
+        </strip>
+      </edge>
+      <edge name='top'>
+        <strip size='2147483647'>
+          <card type='columns' />
+        </strip>
+        <strip size='2147483647'>
+          <card type='rows' />
+        </strip>
+        <strip size='31'>
+          <card type='title' />
+        </strip>
+      </edge>
+      <edge name='right'>
+        <strip size='160'>
+          <card pane-specification-id='0' param='[Sales Data].[none:Offering:nk]' type='color' />
+        </strip>
+      </edge>
+    </cards>
+    <viewpoint>
+    </viewpoint>
+    <simple-id uuid='{59B2808D-7547-57CC-8F40-B75D60773427}' />
+  </window>
+  </windows>
+</workbook>

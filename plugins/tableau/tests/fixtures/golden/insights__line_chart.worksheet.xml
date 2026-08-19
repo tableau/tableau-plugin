@@ -1,0 +1,33 @@
+<worksheet name='ARR Trend'>
+<table>
+    <view>
+      <datasources>
+        <datasource caption='Sales Data' name='Sales Data' />
+      </datasources>
+      <datasource-dependencies datasource='Sales Data'>
+        <column aggregation='Sum' datatype='integer' default-type='quantitative' layered='true' name='[Revenue]' pivot='key' role='measure' type='quantitative' user-datatype='integer' visual-totals='Default' />
+        <column aggregation='Year' datatype='date' default-type='ordinal' layered='true' name='[Transaction Date]' pivot='key' role='dimension' type='ordinal' user-datatype='date' visual-totals='Default' />
+        <column-instance column='[Transaction Date]' derivation='None' name='[none:Transaction Date:qk]' pivot='key' type='quantitative' />
+        <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+        <column-instance column='[Transaction Date]' derivation='Day-Trunc' name='[tdy:Transaction Date:qk]' pivot='key' type='quantitative' />
+      </datasource-dependencies>
+      <filter class='relative-date' column='[Sales Data].[none:Transaction Date:qk]' first-period='-99' include-future='true' include-null='false' last-period='0' period-type-v2='day' />
+      <slices>
+        <column>[Sales Data].[none:Transaction Date:qk]</column>
+      </slices>
+      <aggregation value='true' />
+    </view>
+    <style />
+    <panes>
+      <pane selection-relaxation-option='selection-relaxation-allow'>
+        <view>
+          <breakdown value='auto' />
+        </view>
+        <mark class='Automatic' />
+        <trendline enable-confidence-bands='true' enable-instant-analytics='true' enabled='true' exclude-color='false' exclude-intercept='false' fit='linear' />
+      </pane>
+    </panes>
+    <rows>[Sales Data].[sum:Revenue:qk]</rows>
+    <cols>[Sales Data].[tdy:Transaction Date:qk]</cols>
+  </table>
+</worksheet>

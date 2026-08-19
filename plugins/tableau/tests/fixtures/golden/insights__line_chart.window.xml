@@ -1,0 +1,25 @@
+<window class='worksheet' name='ARR Trend'>
+    <cards>
+      <edge name='left'>
+        <strip size='160'>
+          <card type='pages' />
+          <card type='filters' />
+          <card type='marks' />
+        </strip>
+      </edge>
+      <edge name='top'>
+        <strip size='2147483647'>
+          <card type='columns' />
+        </strip>
+        <strip size='2147483647'>
+          <card type='rows' />
+        </strip>
+        <strip size='31'>
+          <card type='title' />
+        </strip>
+      </edge>
+    </cards>
+    <viewpoint>
+    </viewpoint>
+    <simple-id uuid='{789D9F96-846F-5004-931D-26B910D9D7A7}' />
+  </window>

@@ -1,0 +1,39 @@
+<worksheet name='ARR by Offering'>
+<table>
+    <view>
+      <datasources>
+        <datasource caption='Sales Data' name='Sales Data' />
+      </datasources>
+      <datasource-dependencies datasource='Sales Data'>
+        <column aggregation='Sum' datatype='integer' default-type='quantitative' layered='true' name='[Revenue]' pivot='key' role='measure' type='quantitative' user-datatype='integer' visual-totals='Default' />
+        <column aggregation='Count' datatype='string' default-type='nominal' layered='true' name='[Offering]' pivot='key' role='dimension' type='nominal' user-datatype='string' visual-totals='Default' />
+        <column-instance column='[Offering]' derivation='None' name='[none:Offering:nk]' pivot='key' type='nominal' />
+        <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+        <column aggregation='Year' datatype='date' default-type='ordinal' layered='true' name='[Transaction Date]' pivot='key' role='dimension' type='ordinal' user-datatype='date' visual-totals='Default' />
+        <column-instance column='[Transaction Date]' derivation='None' name='[none:Transaction Date:qk]' pivot='key' type='quantitative' />
+      </datasource-dependencies>
+      <filter class='quantitative' column='[Sales Data].[none:Transaction Date:qk]' included-values='in-range'>
+        <min>#2026-01-01#</min>
+        <max>#2026-06-30#</max>
+      </filter>
+      <shelf-sorts>
+        <shelf-sort-v2 dimension-to-sort='[Sales Data].[none:Offering:nk]' direction='DESC' is-on-innermost-dimension='true' measure-to-sort-by='[Sales Data].[sum:Revenue:qk]' shelf='rows' />
+      </shelf-sorts>
+      <aggregation value='true' />
+    </view>
+    <style />
+    <panes>
+      <pane selection-relaxation-option='selection-relaxation-allow'>
+        <view>
+          <breakdown value='auto' />
+        </view>
+        <mark class='Automatic' />
+        <encodings>
+          <color column='[Sales Data].[none:Offering:nk]' />
+        </encodings>
+      </pane>
+    </panes>
+    <rows>[Sales Data].[none:Offering:nk]</rows>
+    <cols>[Sales Data].[sum:Revenue:qk]</cols>
+  </table>
+</worksheet>

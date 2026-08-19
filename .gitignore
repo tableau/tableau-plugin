@@ -1,3 +1,7 @@
 # Local reference checkout used to model this plugin.
 sample-plugin/
 .cursor
+
+# OS and interpreter cruft that must never become catalog resources.
+.DS_Store
+__pycache__/

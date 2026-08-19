@@ -1,0 +1,30 @@
+<window class='worksheet' name='ARR by Offering'>
+    <cards>
+      <edge name='left'>
+        <strip size='160'>
+          <card type='pages' />
+          <card type='filters' />
+          <card type='marks' />
+        </strip>
+      </edge>
+      <edge name='top'>
+        <strip size='2147483647'>
+          <card type='columns' />
+        </strip>
+        <strip size='2147483647'>
+          <card type='rows' />
+        </strip>
+        <strip size='31'>
+          <card type='title' />
+        </strip>
+      </edge>
+      <edge name='right'>
+        <strip size='160'>
+          <card pane-specification-id='0' param='[Sales Data].[none:Offering:nk]' type='color' />
+        </strip>
+      </edge>
+    </cards>
+    <viewpoint>
+    </viewpoint>
+    <simple-id uuid='{59B2808D-7547-57CC-8F40-B75D60773427}' />
+  </window>

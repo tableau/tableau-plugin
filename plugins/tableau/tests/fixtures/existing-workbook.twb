@@ -1,0 +1,54 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook original-version='18.1' source-build='plugin-codex' source-platform='mac' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <document-format-change-manifest>
+    <WindowsPersistSimpleIdentifiers />
+  </document-format-change-manifest>
+  <preferences />
+  <datasources>
+    <datasource caption='Sales Data' name='federated.0fixture1sales2data' version='18.1'>
+      <connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' filename='sales-data.xlsx' password='' server='' validate='no'>
+        <relation name='Sales' table='[Sales$]' type='table' />
+      </connection>
+      <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+      <column datatype='date' name='[Transaction Date]' role='dimension' type='ordinal' />
+      <column datatype='string' name='[Offering]' role='dimension' type='nominal' />
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Existing Sheet'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Sales Data' name='federated.0fixture1sales2data' />
+          </datasources>
+          <datasource-dependencies datasource='federated.0fixture1sales2data'>
+            <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+            <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style />
+        <panes>
+          <pane>
+            <mark class='Automatic' />
+          </pane>
+        </panes>
+        <rows>[federated.0fixture1sales2data].[sum:Revenue:qk]</rows>
+        <cols />
+      </table>
+    </worksheet>
+  </worksheets>
+  <!-- preserve-this-byte-for-byte -->
+  <windows source-height='30'>
+    <window class='worksheet' maximized='true' name='Existing Sheet'>
+      <cards>
+        <edge name='left'>
+          <strip size='160'>
+            <card type='pages' />
+          </strip>
+        </edge>
+      </cards>
+      <simple-id uuid='{11111111-1111-1111-1111-111111111111}' />
+    </window>
+  </windows>
+</workbook>

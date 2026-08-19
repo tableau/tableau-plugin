@@ -28,9 +28,9 @@
     ],
     "websiteURL": "https://www.tableau.com",
     "defaultPrompt": [
-      "Analyze this data with Tableau",
-      "Help me build a Tableau visualization",
-      "Validate this Tableau workbook package"
+      "Build a Tableau workbook from a template",
+      "Create a Tableau Pulse Insights visualization",
+      "Validate and publish this Tableau workbook"
     ]
   }
 }
