@@ -204,10 +204,8 @@ rendering.
 
 ### 4. Render the result
 
-Render the published workbook where the user can see it — the right-side
-panel in Codex. Use its LUID (`data`'s `id` from the publish result) with
-`objectType: "workbook"` and its `url` from that same result. See
-[`../shared/rendering.md`](../shared/rendering.md) for the exact tool calls
+If the user mentioned a specific view within the workbook (either created or modified), use that view's URL.  If not, use the default (first) view in the workbook to generate the URL.  
+Render the published workbook using [`../shared/rendering.md`](../shared/rendering.md) for the exact tool calls
 and the fallback path.
 
 ## Handling feedback
