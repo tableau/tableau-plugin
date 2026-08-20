@@ -28,9 +28,12 @@
     ],
     "websiteURL": "https://www.tableau.com",
     "defaultPrompt": [
-      "Analyze this data with Tableau",
-      "Help me build a Tableau visualization",
-      "Validate this Tableau workbook package"
+      "Use Tableau to list the workbooks I have access to.",
+      "Use Tableau to query the Superstore data source for sales by region.",
+      "Use Tableau to summarize the latest Pulse metrics for revenue.",
+      "Use Tableau to create a new workbook with a bar chart of sales by region.",
+      "Use Tableau to make a copy of the Superstore workbook and add a filter for the East region.  Publish it back as new workbook.",
+      "Use Tableau to show me the Regional Sales dashboard."
     ]
   }
 }
