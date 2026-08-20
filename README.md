@@ -44,58 +44,53 @@ just points Codex at the server:
 }
 ```
 
-The first time you use it, Codex will need you to sign in via
-`codex mcp login tableau` (or the in-product "Authenticate" prompt). Once
-signed in, every tool call runs with that user's own Tableau permissions — the
-server doesn't store Tableau data itself.
+The first time you use it, Codex will prompt you to authenticate in the
+Plugins UI (see below) — `codex mcp login <name>` does **not** work for
+MCP servers bundled inside a plugin, only for servers added directly via
+`codex mcp add`. Once signed in, every tool call runs with that user's own
+Tableau permissions — the server doesn't store Tableau data itself.
 
-## Try it locally
+## Install and authenticate in Codex Desktop
 
-From inside this repo:
+1. **Register this repo as a marketplace.** From inside this repo:
 
-```bash
-codex plugin marketplace add .
-```
+   ```bash
+   codex plugin marketplace add .
+   ```
 
-Then in a Codex session, run `/plugins`, open the "Tableau MCP Skills"
-marketplace, and install the **tableau** plugin. Start a new session, and its
-skill and MCP tools will be available.
+   This adds a marketplace source named after the repo directory (e.g.
+   `plugin-codex`) pointing at your local checkout. Run
+   `codex plugin marketplace list` if you want to confirm the name it picked.
+
+2. **Install the plugin from the Plugins tab.** Open Codex Desktop → **Plugins**,
+   find the "Tableau MCP Skills" marketplace, and install the **tableau**
+   plugin.
+
+3. **Authenticate the MCP connector.** Still in the Plugins tab, find the
+   Tableau plugin's entry and click **Authenticate**/**Connect**. This opens
+   your browser to Tableau's OAuth login (Tableau Cloud or Server, whichever
+   your site uses). Approve the request; Codex stores the resulting token and
+   the plugin's entry should flip to a connected state.
+
+4. **Start a new task.** MCP connections and plugin config are only
+   (re)loaded when a task starts, so an already-open task won't pick up a
+   fresh install or a new OAuth connection — start a new one before trying a
+   Tableau request.
 
 If a site admin has restricted tool groups via Tableau's `EXCLUDE_TOOLS` site
 setting (e.g. disabling `admin-insights` or `pulse`), those tools simply won't
 show up — that's expected, not a bug in this plugin.
 
-## Generating/modifying workbooks
+### If you edit plugin files locally
 
-The `tableau-workbook-authoring` skill edits a workbook's `.twb` file (plain
-XML) directly, then publishes it back through Tableau's MCP `authoring` tools
-(`download-workbook`, `request-workbook-upload`,
-`validate-upload-and-publish-workbook`). A few things worth knowing:
-
-- **These tools are feature-gated on Tableau's side** (`authoring-tools` and
-  `mcp-apps`). If they're missing/disabled, that's a site configuration issue,
-  not something this plugin can fix.
-- **Validation is two-stage.** `scripts/validate_workbook.py` checks the
-  edited `.twb`/`.twbx` locally against the real per-version TWB XSD schema
-  bundled under `schemas/` (auto-detecting the workbook's version). That
-  catches structural mistakes fast, but the schemas intentionally leave some
-  regions unchecked (e.g. calculated-field formulas), so it can't catch
-  semantic problems. The authoritative check is still Tableau Server's own
-  validation, run as part of `validate-upload-and-publish-workbook`.
-- **Rendering the result as a live embed is best-effort.** Tableau's MCP
-  server has a `render-interactive-viz` tool built for hosts that support the
-  MCP Apps UI standard, but that iframe-rendering is documented as a ChatGPT
-  capability, not confirmed for every Codex surface. `scripts/render_embed.py`
-  is the guaranteed-to-work fallback: it builds a `:embed=yes` URL and opens a
-  local HTML file with an `<iframe>` in the default browser. These steps are
-  written once in `skills/shared/rendering.md` and reused by
-  `tableau-workbook-authoring` and by `tableau-content-viewer` (which just
-  finds and renders existing content, without touching any `.twb`).
-
-## Publishing
-
-Once pushed to GitHub, others can add this repo as a marketplace source:
+Codex copies plugin files into its own cache at install time
+(`~/.codex/plugins/cache/<marketplace>/<plugin>/`) rather than reading from
+this repo live, so editing `.mcp.json` or a skill here has no effect until you
+reinstall. `reload-plugin.sh` in the repo root automates the
+remove/re-add cycle:
 
 ```bash
-codex plugin marketplace add tableau/plugin-codex
+./reload-plugin.sh
 ```
+
+Then start a new task (chat) in Codex Desktop as in step 4 above.
