@@ -1,27 +1,115 @@
 # Tableau for Codex
 
-The Tableau plugin teaches Codex how to analyze data and build, modify, and
-validate Tableau workbooks. It also connects Codex to the hosted Tableau MCP
-server.
+A Codex plugin that connects Codex to Tableau's [hosted MCP server](https://tableau.github.io/tableau-mcp/docs/hosted-tableau-mcp)
+(`https://mcp.tableau.com`), with skills for exploring existing Tableau
+content, rendering a specific view/workbook so you can see it, and
+**generating or modifying workbooks on the fly** — either from a curated
+chart-template catalog or by editing TWB XML directly.
 
-## Install
+There's no official Tableau plugin for Codex yet (Tableau's docs say one is
+"coming soon"), so this fills that gap in the meantime.
 
-```bash
-codex plugin marketplace add tableau/plugin-codex
-codex plugin add tableau@tableau-plugin-marketplace
+## Layout
+
+```
+.agents/plugins/marketplace.json   # local marketplace catalog (for testing/dev)
+plugins/tableau/
+  .codex-plugin/plugin.json                    # plugin manifest
+  .mcp.json                                    # bundles the hosted Tableau MCP server
+  skills/tableau-analytics/                    # read-oriented: querying/exploring content
+  skills/tableau-content-viewer/               # find a view/workbook and render it, no data querying or editing
+  skills/tableau-workbook-templating/          # build/edit workbooks from the resource catalog + CLI
+  skills/tableau-workbook-authoring/           # generate/modify workbooks by hand-editing TWB XML
+  skills/tableau-pulse-insights/               # Pulse Insights bar/line charts via the templating catalog
+  skills/validate-workbook-package/            # pre-publish validation gate
+  skills/shared/rendering.md                   # shared render-in-side-panel steps, used by the above skills
+  resources/                                   # chart-template catalog, worked examples, reference corpus, starter workbook
+  schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd           # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
+  scripts/validate_workbook.py                 # validates a .twb/.twbx against the matching XSD
+  scripts/requirements.txt                     # lxml, needed by validate_workbook.py
+  scripts/render_embed.py                      # builds an embeddable URL + local iframe fallback
+  scripts/tableau_resources.py                 # CLI: discover/inspect/instantiate/inject/validate against the resource catalog
+  scripts/generate_resource_catalog.py         # builds resources/catalog.json from the bundled resources
+  tests/                                       # unittest suite for the resource catalog + CLI
 ```
 
-## Included
+`scripts/validate_workbook.py` needs `lxml`: `pip install -r plugins/tableau/scripts/requirements.txt`.
+`scripts/tableau_resources.py` has no third-party dependencies (Python 3 standard library only).
 
-- A resource catalog (`plugins/tableau/resources/catalog.json`) of chart
-  templates, worked examples, and reference docs, each tagged `executable`
-  (renderable into a workbook) or `reference` (inspiration only)
-- A CLI, `plugins/tableau/scripts/tableau_resources.py`, to discover,
-  inspect, and safely transform `.twb` workbooks against that catalog
-- Skills covering the authoring flow — download-or-starter → transform
-  (`instantiate`/`inject`) → validate → publish — general workbook
-  authoring, Pulse Insights charts, and workbook package validation
-- Hosted Tableau MCP server at <https://mcp.tableau.com>
+See `plugins/tableau/README.md` for the full CLI reference and authoring flow.
 
-See `plugins/tableau/README.md` for the full CLI reference and authoring
-flow.
+## How it connects to Tableau
+
+The hosted MCP server authenticates each user with their own Tableau Cloud/Server
+OAuth login — there's no API key or token to configure here. `plugins/tableau/.mcp.json`
+just points Codex at the server:
+
+```json
+{
+  "mcpServers": {
+    "tableau": {
+      "type": "http",
+      "url": "https://mcp.tableau.com/tableau-mcp"
+    }
+  }
+}
+```
+
+or if running Tableau-MCP locally:
+
+```json
+{
+  "mcpServers": {
+    "tableau": {
+      "type": "http",
+      "url": "https://127.0.0.1/tableau-mcp"
+    }
+  }
+}
+```
+
+The first time you use it, Codex will prompt you to authenticate in the
+Plugins UI (see below) — `codex mcp login <name>` does **not** work for
+MCP servers bundled inside a plugin, only for servers added directly via
+`codex mcp add`. Once signed in, every tool call runs with that user's own
+Tableau permissions — the server doesn't store Tableau data itself.
+
+## Install and authenticate in Codex Desktop
+
+1. **Register this repo as a marketplace.** From inside this repo:
+  ```bash
+   codex plugin marketplace add .
+  ```
+   This adds a marketplace source named after the repo directory (e.g.
+   `plugin-codex`) pointing at your local checkout. Run
+   `codex plugin marketplace list` if you want to confirm the name it picked.
+2. **Install the plugin from the Plugins tab.** Open Codex Desktop → **Plugins**,
+  find the "Tableau MCP Skills" marketplace, and install the **tableau**
+   plugin.
+3. **Authenticate the MCP connector.** Still in the Plugins tab, find the
+  Tableau plugin's entry and click **Authenticate**/**Connect**. This opens
+   your browser to Tableau's OAuth login (Tableau Cloud or Server, whichever
+   your site uses). Approve the request; Codex stores the resulting token and
+   the plugin's entry should flip to a connected state.
+4. **Start a new task.** MCP connections and plugin config are only
+  (re)loaded when a task starts, so an already-open task won't pick up a
+   fresh install or a new OAuth connection — start a new one before trying a
+   Tableau request.
+
+If a site admin has restricted tool groups via Tableau's `EXCLUDE_TOOLS` site
+setting (e.g. disabling `admin-insights` or `pulse`), those tools simply won't
+show up — that's expected, not a bug in this plugin.
+
+### If you edit plugin files locally
+
+Codex copies plugin files into its own cache at install time
+(`~/.codex/plugins/cache/<marketplace>/<plugin>/`) rather than reading from
+this repo live, so editing `.mcp.json` or a skill here has no effect until you
+reinstall. `reload-plugin.sh` in the repo root automates the
+remove/re-add cycle:
+
+```bash
+./reload-plugin.sh
+```
+
+Then start a new task (chat) in Codex Desktop as in step 4 above.

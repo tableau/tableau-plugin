@@ -6,7 +6,7 @@ syntax, worked examples, and how to recover from each failure mode.
 
 Every command below repeats the same path used in SKILL.md,
 `../../scripts/tableau_resources.py`. That path is relative to **this
-skill's own directory** (`skills/tableau-workbook-authoring/`, where
+skill's own directory** (`skills/tableau-workbook-templating/`, where
 SKILL.md lives) — not to this `references/` file, which sits one level
 deeper. Resolve the script to an absolute path once, from the skill
 directory, before running any command that changes your working

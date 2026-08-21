@@ -2,7 +2,7 @@
   "mcpServers": {
     "tableau": {
       "type": "http",
-      "url": "https://mcp.tableau.com"
+      "url": "https://mcp.tableau.com/tableau-mcp"
     }
   }
 }

@@ -5,7 +5,7 @@ import unittest
 PLUGIN = Path(__file__).resolve().parents[1]
 SCRIPT = PLUGIN / "scripts" / "tableau_resources.py"
 
-SKILL_NAMES = ("tableau-workbook-authoring", "tableau-pulse-insights")
+SKILL_NAMES = ("tableau-workbook-templating", "tableau-pulse-insights")
 
 
 def _skill_path(skill_name: str) -> Path:
@@ -45,7 +45,7 @@ class SkillResourceContractTest(unittest.TestCase):
             self.assertTrue(resolved.is_file())
 
     def test_authoring_skill_documents_every_cli_command_with_real_flags(self) -> None:
-        authoring = _skill_path("tableau-workbook-authoring").read_text()
+        authoring = _skill_path("tableau-workbook-templating").read_text()
         for command in ("list", "inspect", "instantiate", "inject", "validate"):
             self.assertIn(f"tableau_resources.py {command}", authoring)
         for flag in (
@@ -61,7 +61,7 @@ class SkillResourceContractTest(unittest.TestCase):
     def test_authoring_skill_orders_local_validate_before_package_gate_before_publish(
         self,
     ) -> None:
-        authoring = _skill_path("tableau-workbook-authoring").read_text()
+        authoring = _skill_path("tableau-workbook-templating").read_text()
         local_validate = authoring.index("Run `validate`")
         package_gate = authoring.index("validate-workbook-package")
         publish = authoring.index("Publish only")
@@ -72,7 +72,7 @@ class SkillResourceContractTest(unittest.TestCase):
         pulse = _skill_path("tableau-pulse-insights").read_text()
         self.assertIn("--family pulse-insights", pulse)
         self.assertIn("--tier executable", pulse)
-        self.assertIn("tableau-workbook-authoring", pulse)
+        self.assertIn("tableau-workbook-templating", pulse)
 
     def test_plugin_prompts_surface_template_authoring(self) -> None:
         plugin = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
@@ -85,9 +85,9 @@ class ValidationSemanticsDocumentationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.guide = (
-            PLUGIN / "skills/tableau-workbook-authoring/references/resource-guide.md"
+            PLUGIN / "skills/tableau-workbook-templating/references/resource-guide.md"
         ).read_text()
-        self.authoring = _skill_path("tableau-workbook-authoring").read_text()
+        self.authoring = _skill_path("tableau-workbook-templating").read_text()
         self.package_gate = (
             PLUGIN / "skills/validate-workbook-package/SKILL.md"
         ).read_text()

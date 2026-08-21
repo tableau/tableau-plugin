@@ -1,36 +1,30 @@
 {
   "name": "tableau",
   "version": "0.1.0",
-  "description": "Tableau plugin for Codex with workbook authoring, visual analysis, and MCP capabilities.",
+  "description": "Explore Tableau content and generate/modify Tableau workbooks through the hosted Tableau MCP server.",
   "author": {
-    "name": "Tableau",
-    "url": "https://www.tableau.com"
+    "name": "Tableau"
   },
-  "homepage": "https://www.tableau.com",
   "repository": "https://github.com/tableau/plugin-codex",
-  "keywords": [
-    "tableau",
-    "analytics",
-    "data-visualization",
-    "workbooks"
-  ],
+  "license": "MIT",
+  "keywords": ["tableau", "analytics", "bi", "mcp", "data", "workbook", "dashboard", "authoring", "templates"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Tableau",
-    "shortDescription": "Analyze data and build or modify Tableau workbooks.",
-    "longDescription": "Teach Codex to analyze data, build and modify Tableau workbooks, validate workbook packages, and use the hosted Tableau MCP server.",
+    "shortDescription": "Explore Tableau data and generate/edit workbooks via the hosted Tableau MCP server",
+    "longDescription": "Connects Codex to Tableau's hosted MCP server (mcp.tableau.com) so you can search Tableau sites, inspect workbooks and data sources, query data with VizQL, read Pulse metrics, and generate or modify workbooks either from a curated chart-template catalog or by editing their TWB XML directly, then publishing back — all scoped to the OAuth-authenticated user's own Tableau permissions. Workbook authoring requires the 'authoring-tools' and 'mcp-apps' feature gates to be enabled on the Tableau site.",
     "developerName": "Tableau",
     "category": "Productivity",
-    "capabilities": [
-      "Read",
-      "Write"
-    ],
-    "websiteURL": "https://www.tableau.com",
+    "capabilities": ["Read", "Write"],
     "defaultPrompt": [
+      "Use Tableau to list the workbooks I have access to.",
+      "Use Tableau to query the Superstore data source for sales by region.",
+      "Use Tableau to summarize the latest Pulse metrics for revenue.",
       "Build a Tableau workbook from a template",
       "Create a Tableau Pulse Insights visualization",
-      "Validate and publish this Tableau workbook"
+      "Use Tableau to make a copy of the Superstore workbook and add a filter for the East region.  Publish it back as new workbook.",
+      "Use Tableau to show me the Regional Sales dashboard."
     ]
   }
 }
