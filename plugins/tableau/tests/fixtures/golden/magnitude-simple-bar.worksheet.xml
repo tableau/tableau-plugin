@@ -1,0 +1,39 @@
+<worksheet name='Revenue by Offering'>
+<table>
+    <view>
+      <datasources>
+        <datasource caption='Sales Data' name='Sales Data' />
+      </datasources>
+      <datasource-dependencies datasource='Sales Data'>
+        <column datatype='string' name='[Offering]' role='dimension' type='nominal' />
+        <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+        <column-instance column='[Offering]' derivation='None' name='[none:Offering:nk]' pivot='key' type='nominal' />
+        <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+      </datasource-dependencies>
+      <computed-sort column='[Sales Data].[none:Offering:nk]' direction='DESC' using='[Sales Data].[sum:Revenue:qk]' />
+      <aggregation value='true' />
+    </view>
+    <style>
+      <style-rule element='axis'>
+        <format attr='line-visibility' value='off' />
+        <format attr='title' class='0' field='[Sales Data].[sum:Revenue:qk]' scope='cols' value='' />
+      </style-rule>
+      <style-rule element='worksheet'>
+        <format attr='display-field-labels' scope='rows' value='false' />
+      </style-rule>
+      <style-rule element='zeroline'>
+        <format attr='line-visibility' value='off' />
+      </style-rule>
+    </style>
+    <panes>
+      <pane selection-relaxation-option='selection-relaxation-allow'>
+        <view>
+          <breakdown value='auto' />
+        </view>
+        <mark class='Bar' />
+      </pane>
+    </panes>
+    <rows>[Sales Data].[none:Offering:nk]</rows>
+    <cols>[Sales Data].[sum:Revenue:qk]</cols>
+  </table>
+</worksheet>

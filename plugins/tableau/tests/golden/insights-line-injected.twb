@@ -1,0 +1,112 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook original-version='18.1' source-build='plugin-codex' source-platform='mac' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <document-format-change-manifest>
+    <WindowsPersistSimpleIdentifiers />
+  </document-format-change-manifest>
+  <preferences />
+  <datasources>
+    <datasource caption='Sales Data' name='federated.0fixture1sales2data' version='18.1'>
+      <connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' filename='sales-data.xlsx' password='' server='' validate='no'>
+        <relation name='Sales' table='[Sales$]' type='table' />
+      </connection>
+      <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+      <column datatype='date' name='[Transaction Date]' role='dimension' type='ordinal' />
+      <column datatype='string' name='[Offering]' role='dimension' type='nominal' />
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Existing Sheet'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Sales Data' name='federated.0fixture1sales2data' />
+          </datasources>
+          <datasource-dependencies datasource='federated.0fixture1sales2data'>
+            <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+            <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style />
+        <panes>
+          <pane>
+            <mark class='Automatic' />
+          </pane>
+        </panes>
+        <rows>[federated.0fixture1sales2data].[sum:Revenue:qk]</rows>
+        <cols />
+      </table>
+    </worksheet>
+  <worksheet name='ARR Trend'>
+<table>
+    <view>
+      <datasources>
+        <datasource caption='Sales Data' name='federated.0fixture1sales2data' />
+      </datasources>
+      <datasource-dependencies datasource='federated.0fixture1sales2data'>
+        <column aggregation='Sum' datatype='real' default-type='quantitative' layered='true' name='[Revenue]' pivot='key' role='measure' type='quantitative' user-datatype='real' visual-totals='Default' />
+        <column aggregation='Year' datatype='date' default-type='ordinal' layered='true' name='[Transaction Date]' pivot='key' role='dimension' type='ordinal' user-datatype='date' visual-totals='Default' />
+        <column-instance column='[Transaction Date]' derivation='None' name='[none:Transaction Date:qk]' pivot='key' type='quantitative' />
+        <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+        <column-instance column='[Transaction Date]' derivation='Day-Trunc' name='[tdy:Transaction Date:qk]' pivot='key' type='quantitative' />
+      </datasource-dependencies>
+      <filter class='relative-date' column='[federated.0fixture1sales2data].[none:Transaction Date:qk]' first-period='-99' include-future='true' include-null='false' last-period='0' period-type-v2='day' />
+      <slices>
+        <column>[federated.0fixture1sales2data].[none:Transaction Date:qk]</column>
+      </slices>
+      <aggregation value='true' />
+    </view>
+    <style />
+    <panes>
+      <pane selection-relaxation-option='selection-relaxation-allow'>
+        <view>
+          <breakdown value='auto' />
+        </view>
+        <mark class='Automatic' />
+        <trendline enable-confidence-bands='true' enable-instant-analytics='true' enabled='true' exclude-color='false' exclude-intercept='false' fit='linear' />
+      </pane>
+    </panes>
+    <rows>[federated.0fixture1sales2data].[sum:Revenue:qk]</rows>
+    <cols>[federated.0fixture1sales2data].[tdy:Transaction Date:qk]</cols>
+  </table>
+</worksheet>
+  </worksheets>
+  <!-- preserve-this-byte-for-byte -->
+  <windows source-height='30'>
+    <window class='worksheet' maximized='true' name='Existing Sheet'>
+      <cards>
+        <edge name='left'>
+          <strip size='160'>
+            <card type='pages' />
+          </strip>
+        </edge>
+      </cards>
+      <simple-id uuid='{11111111-1111-1111-1111-111111111111}' />
+    </window>
+  <window class='worksheet' name='ARR Trend'>
+    <cards>
+      <edge name='left'>
+        <strip size='160'>
+          <card type='pages' />
+          <card type='filters' />
+          <card type='marks' />
+        </strip>
+      </edge>
+      <edge name='top'>
+        <strip size='2147483647'>
+          <card type='columns' />
+        </strip>
+        <strip size='2147483647'>
+          <card type='rows' />
+        </strip>
+        <strip size='31'>
+          <card type='title' />
+        </strip>
+      </edge>
+    </cards>
+    <viewpoint>
+    </viewpoint>
+    <simple-id uuid='{789D9F96-846F-5004-931D-26B910D9D7A7}' />
+  </window>
+  </windows>
+</workbook>

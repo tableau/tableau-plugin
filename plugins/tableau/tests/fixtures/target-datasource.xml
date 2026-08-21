@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<datasource caption='Sales Data' name='Sales Data' version='18.1'>
+  <connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' filename='sales-data.xlsx' password='' server='' validate='no'>
+    <relation name='Sales' table='[Sales$]' type='table' />
+  </connection>
+  <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+  <column datatype='date' name='[Transaction Date]' role='dimension' type='ordinal' />
+  <column datatype='string' name='[Offering]' role='dimension' type='nominal' />
+</datasource>

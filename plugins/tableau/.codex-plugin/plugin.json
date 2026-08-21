@@ -7,13 +7,13 @@
   },
   "repository": "https://github.com/tableau/plugin-codex",
   "license": "MIT",
-  "keywords": ["tableau", "analytics", "bi", "mcp", "data", "workbook", "dashboard", "authoring"],
+  "keywords": ["tableau", "analytics", "bi", "mcp", "data", "workbook", "dashboard", "authoring", "templates"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Tableau",
     "shortDescription": "Explore Tableau data and generate/edit workbooks via the hosted Tableau MCP server",
-    "longDescription": "Connects Codex to Tableau's hosted MCP server (mcp.tableau.com) so you can search Tableau sites, inspect workbooks and data sources, query data with VizQL, read Pulse metrics, and generate or modify workbooks by editing their TWB XML and publishing it back — all scoped to the OAuth-authenticated user's own Tableau permissions. Workbook authoring requires the 'authoring-tools' and 'mcp-apps' feature gates to be enabled on the Tableau site.",
+    "longDescription": "Connects Codex to Tableau's hosted MCP server (mcp.tableau.com) so you can search Tableau sites, inspect workbooks and data sources, query data with VizQL, read Pulse metrics, and generate or modify workbooks either from a curated chart-template catalog or by editing their TWB XML directly, then publishing back — all scoped to the OAuth-authenticated user's own Tableau permissions. Workbook authoring requires the 'authoring-tools' and 'mcp-apps' feature gates to be enabled on the Tableau site.",
     "developerName": "Tableau",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
@@ -21,7 +21,8 @@
       "Use Tableau to list the workbooks I have access to.",
       "Use Tableau to query the Superstore data source for sales by region.",
       "Use Tableau to summarize the latest Pulse metrics for revenue.",
-      "Use Tableau to create a new workbook with a bar chart of sales by region.",
+      "Build a Tableau workbook from a template",
+      "Create a Tableau Pulse Insights visualization",
       "Use Tableau to make a copy of the Superstore workbook and add a filter for the East region.  Publish it back as new workbook.",
       "Use Tableau to show me the Regional Sales dashboard."
     ]

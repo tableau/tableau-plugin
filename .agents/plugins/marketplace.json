@@ -1,7 +1,7 @@
 {
-  "name": "plugin-codex",
+  "name": "tableau-plugin-marketplace",
   "interface": {
-    "displayName": "Tableau MCP Skills"
+    "displayName": "Tableau Plugins"
   },
   "plugins": [
     {

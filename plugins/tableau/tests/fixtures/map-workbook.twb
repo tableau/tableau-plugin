@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook original-version='18.1' source-build='plugin-codex' source-platform='mac' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <document-format-change-manifest>
+    <WindowsPersistSimpleIdentifiers />
+  </document-format-change-manifest>
+  <preferences />
+  <datasources>
+    <datasource caption='Sales Data' name='federated.0fixture1sales2data' version='18.1'>
+      <connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' filename='sales-data.xlsx' password='' server='' validate='no'>
+        <relation name='Sales' table='[Sales$]' type='table' />
+      </connection>
+      <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+      <column datatype='date' name='[Transaction Date]' role='dimension' type='ordinal' />
+      <column datatype='string' name='[Offering]' role='dimension' type='nominal' />
+      <column datatype='string' name='[State/Province]' role='dimension' semantic-role='[State].[Name]' type='nominal' />
+      <semantic-values>
+        <semantic-value key='[Country].[Name]' value='&quot;United States&quot;' />
+      </semantic-values>
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Sales Map'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Sales Data' name='federated.0fixture1sales2data' />
+          </datasources>
+          <datasource-dependencies datasource='federated.0fixture1sales2data'>
+            <column datatype='string' name='[State/Province]' role='dimension' semantic-role='[State].[Name]' type='nominal' />
+            <column-instance column='[State/Province]' derivation='None' name='[none:State/Province:nk]' pivot='key' type='nominal' />
+            <column datatype='real' name='[Revenue]' role='measure' type='quantitative' />
+            <column-instance column='[Revenue]' derivation='Sum' name='[sum:Revenue:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style />
+        <panes>
+          <pane>
+            <mark class='Automatic' />
+            <encodings>
+              <color column='[federated.0fixture1sales2data].[sum:Revenue:qk]' />
+            </encodings>
+          </pane>
+        </panes>
+        <semantic-values>
+          <semantic-value key='[Country].[Name]' value='&quot;United States&quot;' />
+        </semantic-values>
+        <rows>[federated.0fixture1sales2data].[Latitude (generated)]</rows>
+        <cols>[federated.0fixture1sales2data].[Longitude (generated)]</cols>
+      </table>
+    </worksheet>
+  </worksheets>
+  <windows source-height='30'>
+    <window class='worksheet' maximized='true' name='Sales Map'>
+      <cards>
+        <edge name='left'>
+          <strip size='160'>
+            <card type='pages' />
+          </strip>
+        </edge>
+      </cards>
+      <simple-id uuid='{22222222-2222-2222-2222-222222222222}' />
+    </window>
+  </windows>
+</workbook>

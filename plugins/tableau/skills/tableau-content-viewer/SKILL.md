@@ -1,6 +1,6 @@
 ---
 name: tableau-content-viewer
-description: Find a specific view (or workbook) on the Tableau site by name or keyword and render it live in the Codex right-side panel so the user can see it — for "show me/open/pull up this dashboard/view" requests. Not for querying or analyzing the data behind it (use tableau-analytics for that) and not for creating or editing a workbook (use tableau-workbook-authoring for that).
+description: Find a specific view (or workbook) on the Tableau site by name or keyword and render it live in the Codex right-side panel so the user can see it — for "show me/open/pull up this dashboard/view" requests. Not for querying or analyzing the data behind it (use tableau-analytics for that) and not for creating or editing a workbook (use tableau-workbook-templating or tableau-workbook-authoring for that).
 ---
 
 Use this when the user just wants to **see** a piece of Tableau content, not

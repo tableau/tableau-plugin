@@ -1,6 +1,6 @@
 ---
 name: tableau-analytics
-description: Explore, query, and analyze existing Tableau content (workbooks, data sources, views, Pulse metrics) through the hosted Tableau MCP server. Use for read-oriented questions about Tableau dashboards, data sources, published data, Pulse metrics, or site content. For creating or modifying a workbook/dashboard, use the tableau-workbook-authoring skill instead.
+description: Explore, query, and analyze existing Tableau content (workbooks, data sources, views, Pulse metrics) through the hosted Tableau MCP server. Use for read-oriented questions about Tableau dashboards, data sources, published data, Pulse metrics, or site content. For creating or modifying a workbook/dashboard, use the tableau-workbook-templating or tableau-workbook-authoring skill instead.
 ---
 
 Use the `tableau` MCP server's tools to answer the request. The server proxies

@@ -1,6 +1,6 @@
 ---
 name: tableau-workbook-authoring
-description: Generate a brand-new Tableau workbook from scratch, or download and modify an existing one, by editing the underlying TWB XML directly and publishing it back to Tableau. Use whenever the user asks to create, build, generate, edit, or modify a Tableau workbook, dashboard, or view — as opposed to just querying/reading existing content (see the tableau-analytics skill for that).
+description: Generate a brand-new Tableau workbook from scratch, or download and modify an existing one, by editing the underlying TWB XML directly and publishing it back to Tableau. Use whenever the user asks to create, build, generate, edit, or modify a Tableau workbook, dashboard, or view — as opposed to just querying/reading existing content (see the tableau-analytics skill for that). Before hand-editing XML, check the `tableau-workbook-templating` skill's resource catalog (`list --tier executable`) for a matching chart template — use this skill for anything the catalog doesn't cover, or for freeform edits to structure the catalog templates don't address.
 ---
 
 This plugin edits Tableau workbooks as raw XML (a `.twb` file is XML) and
@@ -204,7 +204,7 @@ rendering.
 
 ### 4. Render the result
 
-If the user mentioned a specific view within the workbook (either created or modified), use that view's URL.  If not, use the default (first) view in the workbook to generate the URL.  
+If the user mentioned a specific view within the workbook (either created or modified), use that view's URL.  If not, use the default (first) view in the workbook to generate the URL.
 Render the published workbook using [`../shared/rendering.md`](../shared/rendering.md) for the exact tool calls
 and the fallback path.
 

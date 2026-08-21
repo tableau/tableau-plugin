@@ -3,7 +3,8 @@
 A Codex plugin that connects Codex to Tableau's [hosted MCP server](https://tableau.github.io/tableau-mcp/docs/hosted-tableau-mcp)
 (`https://mcp.tableau.com`), with skills for exploring existing Tableau
 content, rendering a specific view/workbook so you can see it, and
-**generating or modifying workbooks on the fly**.
+**generating or modifying workbooks on the fly** — either from a curated
+chart-template catalog or by editing TWB XML directly.
 
 There's no official Tableau plugin for Codex yet (Tableau's docs say one is
 "coming soon"), so this fills that gap in the meantime.
@@ -17,15 +18,25 @@ plugins/tableau/
   .mcp.json                                    # bundles the hosted Tableau MCP server
   skills/tableau-analytics/                    # read-oriented: querying/exploring content
   skills/tableau-content-viewer/               # find a view/workbook and render it, no data querying or editing
-  skills/tableau-workbook-authoring/           # generate/modify workbooks by editing TWB XML
-  skills/shared/rendering.md                   # shared render-in-side-panel steps, used by both of the above
+  skills/tableau-workbook-templating/          # build/edit workbooks from the resource catalog + CLI
+  skills/tableau-workbook-authoring/           # generate/modify workbooks by hand-editing TWB XML
+  skills/tableau-pulse-insights/               # Pulse Insights bar/line charts via the templating catalog
+  skills/validate-workbook-package/            # pre-publish validation gate
+  skills/shared/rendering.md                   # shared render-in-side-panel steps, used by the above skills
+  resources/                                   # chart-template catalog, worked examples, reference corpus, starter workbook
   schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd           # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
   scripts/validate_workbook.py                 # validates a .twb/.twbx against the matching XSD
   scripts/requirements.txt                     # lxml, needed by validate_workbook.py
   scripts/render_embed.py                      # builds an embeddable URL + local iframe fallback
+  scripts/tableau_resources.py                 # CLI: discover/inspect/instantiate/inject/validate against the resource catalog
+  scripts/generate_resource_catalog.py         # builds resources/catalog.json from the bundled resources
+  tests/                                       # unittest suite for the resource catalog + CLI
 ```
 
 `scripts/validate_workbook.py` needs `lxml`: `pip install -r plugins/tableau/scripts/requirements.txt`.
+`scripts/tableau_resources.py` has no third-party dependencies (Python 3 standard library only).
+
+See `plugins/tableau/README.md` for the full CLI reference and authoring flow.
 
 ## How it connects to Tableau
 

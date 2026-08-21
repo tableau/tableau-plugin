@@ -1,9 +1,9 @@
 # Rendering published Tableau content in the Codex side panel
 
-Shared by `tableau-workbook-authoring` and `tableau-content-viewer` — both
-end with "show the user this piece of content," and this is that step.
-Update this file rather than duplicating it if the rendering approach
-changes.
+Shared by `tableau-workbook-authoring`, `tableau-workbook-templating`, and
+`tableau-content-viewer` — all three end with "show the user this piece of
+content," and this is that step. Update this file rather than duplicating it
+if the rendering approach changes.
 
 You need 1 thing going in: the content's **URL** to fall back to
 (the same call usually also returns a `url`).
