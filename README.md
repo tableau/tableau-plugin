@@ -25,8 +25,7 @@ plugins/tableau/
   scripts/render_embed.py                      # builds an embeddable URL + local iframe fallback
 ```
 
-`scripts/validate_workbook.py` needs `lxml`: `pip install -r
-plugins/tableau/scripts/requirements.txt`.
+`scripts/validate_workbook.py` needs `lxml`: `pip install -r plugins/tableau/scripts/requirements.txt`.
 
 ## How it connects to Tableau
 
@@ -39,7 +38,20 @@ just points Codex at the server:
   "mcpServers": {
     "tableau": {
       "type": "http",
-      "url": "https://mcp.tableau.com"
+      "url": "https://mcp.tableau.com/tableau-mcp"
+    }
+  }
+}
+```
+
+or if running Tableau-MCP locally:
+
+```json
+{
+  "mcpServers": {
+    "tableau": {
+      "type": "http",
+      "url": "https://127.0.0.1/tableau-mcp"
     }
   }
 }
@@ -54,27 +66,22 @@ Tableau permissions — the server doesn't store Tableau data itself.
 ## Install and authenticate in Codex Desktop
 
 1. **Register this repo as a marketplace.** From inside this repo:
-
-   ```bash
+  ```bash
    codex plugin marketplace add .
-   ```
-
+  ```
    This adds a marketplace source named after the repo directory (e.g.
    `plugin-codex`) pointing at your local checkout. Run
    `codex plugin marketplace list` if you want to confirm the name it picked.
-
 2. **Install the plugin from the Plugins tab.** Open Codex Desktop → **Plugins**,
-   find the "Tableau MCP Skills" marketplace, and install the **tableau**
+  find the "Tableau MCP Skills" marketplace, and install the **tableau**
    plugin.
-
 3. **Authenticate the MCP connector.** Still in the Plugins tab, find the
-   Tableau plugin's entry and click **Authenticate**/**Connect**. This opens
+  Tableau plugin's entry and click **Authenticate**/**Connect**. This opens
    your browser to Tableau's OAuth login (Tableau Cloud or Server, whichever
    your site uses). Approve the request; Codex stores the resulting token and
    the plugin's entry should flip to a connected state.
-
 4. **Start a new task.** MCP connections and plugin config are only
-   (re)loaded when a task starts, so an already-open task won't pick up a
+  (re)loaded when a task starts, so an already-open task won't pick up a
    fresh install or a new OAuth connection — start a new one before trying a
    Tableau request.
 
