@@ -1,221 +1,98 @@
 ---
 name: tableau-workbook-authoring
-description: Generate a brand-new Tableau workbook from scratch, or download and modify an existing one, by editing the underlying TWB XML directly and publishing it back to Tableau. Use whenever the user asks to create, build, generate, edit, or modify a Tableau workbook, dashboard, or view — as opposed to just querying/reading existing content (see the tableau-analytics skill for that).
+description: Create, edit, copy, or republish a Tableau workbook by editing TWB XML and publishing it through Tableau MCP. Use for create, build, edit, modify, copy, republish, or add-chart requests. Do not use for read-only analysis or for just opening/showing an existing view (tableau-content-viewer).
 ---
 
-This plugin edits Tableau workbooks as raw XML (a `.twb` file is XML) and
-publishes the result back to the site through the `tableau` MCP server. There
-are two entry points — **new workbook** and **modify existing workbook** — that
-converge on the same validate → publish → render loop. Follow whichever one
-matches the user's ask; both are described below.
+# Purpose
 
-Two of Tableau's MCP tool groups gate this whole workflow: `authoring`
-(`download-workbook`, `request-workbook-upload`,
-`validate-upload-and-publish-workbook`) and `mcp-apps`
-(`render-interactive-viz`, `get-embed-token`). Both are feature-gated on
-Tableau's side. If a tool call comes back as unknown/disabled, tell the user
-their site likely doesn't have that feature enabled yet — this isn't
-something the plugin can work around.
+Build or edit a Tableau workbook — from the bundled chart catalog when the request matches it, otherwise by hand-editing TWB XML — validate, publish through Tableau MCP, and render the result.
 
-## Flow 1 — New workbook from scratch
+## Canonical Tableau MCP tools
 
-Use this when the user wants a new workbook and has no existing one they want
-as a starting point.
+Call these tool IDs directly when they are available. Do not scan or print the
+full tool catalog merely to rediscover their names or schemas.
 
-### 1. Gather the three required inputs
+- Workbook search:
+  `mcp__tableau__search_content`
+  with `{ terms, filter: { contentTypes: ["workbook"] }, limit }`
+- Exact project lookup:
+  `mcp__tableau__list_projects`
+  with `{ filter: "name:eq:<project-name>", limit }`
+- Workbook download:
+  `mcp__tableau__download_workbook`
+  with `{ workbookId, includeExtract: true }`
+- Workbook publish:
+  `mcp__tableau__publish_workbook`
+  with `{ name, projectId, workbookFilePath, overwrite }`
+- Staged-upload fallback:
+  `mcp__tableau__request_workbook_upload`
+- Workbook metadata:
+  `mcp__tableau__get_workbook`
+- View metadata:
+  `mcp__tableau__get_view`
+- Static view render:
+  `mcp__tableau__get_view_image`
+  with `{ viewId, format: "PNG", width, height }`
 
-Don't guess any of these — get them from the user and from the site itself:
+If a directly named tool is not callable, perform one focused availability
+lookup for that tool only. Do not enumerate the entire Tableau or global tool
+catalog.
 
-- **Published data source.** Use `list-datasources` (or `search-content`) to
-  fetch/search the site's published data sources and confirm which one the
-  user means. Don't invent field names — inspect the chosen data source's
-  metadata before referencing its fields in the XML.
-- **What to build.** Ask the user to describe the charts/dashboards they
-  want (chart types, fields involved, filters, layout, how many
-  worksheets/dashboards). Get enough detail to build real `<worksheet>` and
-  `<dashboard>` elements — don't fill gaps with arbitrary chart choices if the
-  ask was ambiguous, confirm with the user instead.
-- **Destination project.** Use `list-projects` (or `search-content`) to find
-  the project the user names. This is required before you can publish in
-  step 4 — `validate-upload-and-publish-workbook` needs a `projectId`.
+# Routing
 
-### 2. Author the `.twb` XML
+- Follow-up edit on a workbook already resolved this task → the fast path below.
+- Building or adding a chart:
+  1. First run:
+     `python3 scripts/tableau_resources.py list --tier executable --query "<intent>"`
+  2. If the result is empty, immediately follow the hand-edit path below. Do not read `references/catalog-templates.md`.
+  3. If a match is returned, read [`references/catalog-templates.md`](references/catalog-templates.md), inspect the match, and use `instantiate` for a new workbook or `inject` for an existing one.
+- No catalog match, or a genuinely custom construct the catalog can't cover → hand-edit the TWB XML per the steps below.
+- First edit/republish of an existing workbook this task → resolve it with `search-content` (`filter: { contentTypes: ["workbook"] }`; see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches), then `download-workbook`.
+- Brand-new workbook with no starting point and no catalog match → read [`references/new-workbook.md`](references/new-workbook.md) first.
+`request-workbook-upload`, `publish-workbook`, `download-workbook`, and interactive rendering may be feature-gated — report a missing tool rather than retrying it.
 
-Use the **newest** schema directory under `schemas/` (currently `2026_2`,
-`schemas/2026_2/twb_2026.2.0.xsd`) as your structural reference — check
-`ls schemas/` if you need to confirm the newest one hasn't changed. Build:
+## Fast path for follow-up edits
 
-- A `<datasource>` block that references the published data source chosen in
-  step 1 (matching its real field names/captions/roles from its metadata).
-- One `<worksheet>` per chart the user described, each with a
-  `<datasource-dependencies datasource="...">` pointing at a real datasource
-  name.
-- One or more `<dashboard>` elements with `<zone name="...">` entries that
-  match real worksheet names, laid out per what the user asked for.
+Reuse the extracted TWB/TWBX, published workbook ID, project ID, name, and view URL from this task. Make the smallest targeted XML edit, validate once, and republish with whichever transport already worked (`overwrite: true` for the same workbook, `false` for a new copy). Don't re-search, re-download, or re-inspect the whole workbook unless the current artifact is missing or stale.
 
-Keep names unique and references consistent throughout: worksheet names are
-unique, dashboard names are unique, every `datasource-dependencies` reference
-resolves to a real `<datasource name="...">`, and every dashboard `<zone>`
-resolves to a real worksheet.
+## Existing workbook, first pass this task
 
-Then continue to **Validate, publish, and render** below.
+1. Resolve the workbook (and destination project, if named) — reuse LUIDs already known this task; otherwise `search-content` (see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches). Resolve independent lookups in parallel when supported.
+2. `download-workbook` with `includeExtract: true` unless this is pure inspection that won't be republished. Unzip a TWBX and edit the root TWB.
+3. Add or change content: prefer `inject` against a catalog match (see Routing and [`references/catalog-templates.md`](references/catalog-templates.md)); otherwise hand-edit only the affected worksheet/dashboard and its `<datasource-dependencies>`, matching adjacent XML conventions. **Skip this step** for a plain copy/republish/move with no requested content change.
+4. Validate and publish (below).
+5. Render the result — see [`../../references/rendering.md`](../../references/rendering.md).
 
-## Flow 2 — Modify an existing workbook
+If the downloaded package looks incomplete or a dependency is missing, read [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md). For a new XML construct or a validation failure, read [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md).
 
-Use this when the user already has (or names) a workbook to start from.
+## Validate and publish
 
-### 1. Download it
-
-- Use `search-content` or `list-workbooks` to find it, then
-  `download-workbook` with its `workbookId`. Choose `includeExtract` based on the intended outcome:
-  - For copy, move, republish, backup, or Tableau Desktop workflows, call
-    `download-workbook` with `includeExtract: true`. The downloaded artifact
-    must be self-contained.
-  - Use `includeExtract: false` only for XML inspection when the downloaded
-    artifact will not itself be opened or published.
-  - Do not rely solely on workbook metadata such as `hasExtracts`; inspect the
-    TWB connections and package contents.
-- `download-workbook` returns either `{ "path", "filename", "mimeType" }` (a
-  local path on the MCP server's filesystem) or an MCP `resource_link` with a
-  presigned S3 `uri` — download that yourself (e.g.
-  `curl -o workbook.twbx <uri>`) before continuing.
-
-### 2. Get to the `.twb`
-
-- **If it's `.twbx`** (a zip, even if you asked to exclude the extract — some
-  sites always bundle one): unzip it and look for the `.twb` at the
-  **root** of the archive — that's the file you edit.
-  ```bash
-  unzip -o workbook.twbx -d workbook_extracted
-  ls workbook_extracted/*.twb
-  ```
-- **If it's already `.twb`** (`application/xml`), edit it directly.
-
-### 2a. Verify package completeness
-
-Before publishing a TWBX:
-
-1. Run `unzip -t workbook.twbx` and require a clean result.
-2. List the archive members and inspect the root TWB for local dependencies,
-   including `dbname` and `filename` attributes.
-3. For every local Hyper or file connection, confirm that the referenced
-   relative path exists as an archive member.
-4. Treat a bare opaque identifier, such as a UUID used as a Hyper `dbname`,
-   or any missing referenced path as an incomplete package.
-5. If the package is incomplete, re-download it with `includeExtract: true`.
-   Do not invent or manually rewrite the missing path.
-6. When packaged dependencies exist, publish the verified TWBX rather than
-   the extracted TWB alone.
-
-A successful XSD validation proves only that the TWB XML is structurally
-valid; it does not prove that referenced extracts or files are packaged.
-
-### 3. Edit the XML
-
-Make the change the user asked for with normal text edits — add/adjust
-`<worksheet>`, `<datasource>`, `<dashboard>`/`<zone>` elements, calculated
-fields, filters, formatting, etc. It's just XML; read enough of the
-surrounding structure first to match the existing style (attribute names,
-quoting, nesting) instead of guessing a different convention.
-
-Keep names unique and references consistent, same as in Flow 1: worksheet
-names are unique, dashboard names are unique, a dashboard's `<zone
-name="...">` entries must match real worksheet names, and a worksheet's
-`<datasource-dependencies datasource="...">` must match a real `<datasource
-name="...">`.
-
-If the workbook was a .twbx, make sure to re-zip it including all original files (not just the .twb).  All files in the original .twbx should also be present in the new package.
-
-Then continue to **Validate, publish, and render** below.
-
-## Validate, publish, and render
-
-Both flows converge here. This whole block — validate → fix → re-validate →
-publish → render — is the loop you repeat both while first landing the
-workbook and later for each round of user feedback (see the last section).
-
-### 3a. Local validation loop (structural)
-
-Run the bundled validator against your `.twb` (needs `lxml` — install once
-with `pip install -r scripts/requirements.txt`):
+Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. A workbook produced by `instantiate`/`inject` is already validated by that command itself — re-running the standalone validator on it is redundant but harmless. For a hand-edited TWB, after the edit:
 
 ```bash
-python3 scripts/validate_workbook.py path/to/workbook.twb
+sh "$PLUGIN_ROOT/scripts/run_validator.sh" path/to/workbook.twb
 ```
 
-(Resolve `scripts/` relative to this plugin's root — use `$PLUGIN_ROOT` if
-your environment exposes it.)
+(`scripts/` is relative to the plugin root; install `scripts/requirements.txt` only if the validator reports a missing dependency.)
 
-This validates the workbook's XML against the real Tableau TWB XSD schema for
-its version, auto-detected from the file and matched against the per-version
-schemas bundled under `schemas/`. It prints the detected `version`, the
-`schema` file used, and either `RESULT: VALID` or a list of `ERROR`/`FATAL`
-issues with line numbers. Exit code `0` means valid; `1` means structurally
-invalid (fix and retry); `2` means a setup problem (missing file, or a
-workbook version older than the oldest bundled schema). Add `--json` for
-machine-readable output if you need to parse the issues programmatically.
+For TWBX, run `unzip -t` after rebuilding it. Publish with `publish-workbook`, using `workbookFilePath` when the runtime can pass a local path, otherwise `request-workbook-upload` first and pass its `workbookUploadId`. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
 
-This is real structural validation, but it's still **not** the full story:
-the schemas deliberately leave some regions unchecked (`processContents`
-`"skip"` for things like calculated-field formulas), so it cannot catch
-semantic mistakes — dangling `datasource`/`worksheet` references, malformed
-formulas, bad connection attributes. Do not skip to publishing while this is
-failing; do treat a clean pass here as necessary, not sufficient.
+If validation fails, fix the reported lines/elements and retry once; stop after 10 cycles and report the remaining errors.
 
-### 3b. Remote validation (authoritative) and publish
+Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up can use the fast path.
 
-Once the local check passes, hand it to Tableau Server, which does the real
-authoritative validation:
+# Requirements
 
-1. `request-workbook-upload` with `fileName` ending in `.twb`. Returns
-   `{ workbookUploadId, uploadUrl, requiredHeaders, expiresAt }`.
-2. Upload the file's bytes with an HTTP PUT to `uploadUrl`, sending
-   `requiredHeaders` (e.g. `Content-Type: application/xml`):
-   ```bash
-   curl -X PUT -H "Content-Type: application/xml" --data-binary @path/to/workbook.twb "<uploadUrl>"
-   ```
-3. Call `validate-upload-and-publish-workbook` with the `workbookUploadId`, a
-   `name`, and the `projectId` (from Flow 1 step 1, or the existing
-   workbook's project in Flow 2). Set `overwrite` only if intentionally
-   replacing an existing workbook of that name.
+- Keep worksheet, dashboard, datasource, and zone names unique and consistent.
+- Prefer fields already declared in the TWB's `<column>` metadata over inspecting the extract or datasource metadata.
+- Don't invent field names, roles, or numbers not backed by inspected metadata.
+- Don't force-fit a catalog template onto a chart it doesn't match — fall back to hand-editing instead of stretching the closest template.
 
-This tool validates on Tableau's server and **only publishes if validation
-passes** — one atomic call, not two.
+# References
 
-### 3c. The fix-and-retry loop — capped at 10 attempts
-
-If either stage fails, fix the `.twb` and retry from 3a:
-
-- Local failure: fix the reported line/element against the XSD, re-run 3a.
-- Remote failure (`{ "status": "invalid", "errors": [...] }`): each error
-  includes `line`, `column`, `elementName`, `message` — fix those exact
-  spots, re-run 3a, then repeat 3b from `request-workbook-upload` again
-  (staged uploads are short-lived and single-use — always request a fresh one
-  on retry, never reuse an old `workbookUploadId`).
-
-**Count attempts. Stop after 10 full validate-fix cycles** for a given round
-of edits. If still failing at that point, stop, tell the user what's still
-failing (with the specific errors) and ask how they'd like to proceed —
-don't loop indefinitely.
-
-A successful publish returns `{ "status": "published", "data": ..., "url": ... }`
-— note the workbook's `id`/LUID from `data` and the `url`, then move on to
-rendering.
-
-### 4. Render the result
-
-If the user mentioned a specific view within the workbook (either created or modified), use that view's URL.  If not, use the default (first) view in the workbook to generate the URL.  
-Render the published workbook using [`../shared/rendering.md`](../shared/rendering.md) for the exact tool calls
-and the fallback path.
-
-## Handling feedback
-
-Expect the user to ask for more changes after seeing the result — in both
-flows. When they do:
-
-1. Edit the same local `.twb` file to make the requested change (same rules
-   on unique names and consistent references as above).
-2. Repeat **Validate, publish, and render** from 3a — a fresh local
-   validation pass, a fresh `request-workbook-upload`/publish cycle (capped
-   at 10 fix-and-retry attempts again for this round), and re-render.
-3. Keep repeating this cycle for as many rounds of feedback as the user gives.
+- [`../../references/search.md`](../../references/search.md) — resolving a name/keyword to a workbook and disambiguating multiple matches.
+- [`references/catalog-templates.md`](references/catalog-templates.md) — chart catalog: discover, inspect, and render bundled templates via `scripts/tableau_resources.py`.
+- [`references/new-workbook.md`](references/new-workbook.md) — brand-new workbook, no starting point, no catalog match.
+- [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package or staged-upload fallback.
+- [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md) — new XML construct or validation failure.
+- [`../../references/rendering.md`](../../references/rendering.md) — render the published/target view.

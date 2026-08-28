@@ -3,7 +3,7 @@
 validate_workbook.py — Standalone structural validator for Tableau workbooks.
 
 Validates a Tableau workbook's XML against the public Tableau workbook (TWB)
-XSD schemas bundled in this repository under `schemas/<YYYY_R>/`.
+XSD schemas bundled in this repository under `resources/schemas/<YYYY_R>/`.
 
 Pipeline, per workbook:
 
@@ -19,7 +19,7 @@ Pipeline, per workbook:
          b. the `<!-- build YYYYR.YY.MMDD.HHMM -->` comment near the top of
             the file, decoded the same way;
          c. the root `<workbook version='...'>` attribute, taken verbatim.
-    3. Select the matching XSD from `schemas/`: an exact version match if one
+    3. Select the matching XSD from `resources/schemas/`: an exact version match if one
        is bundled; if the workbook's version is newer than anything bundled,
        fall back to the newest schema and warn; if it's older than the oldest
        bundled schema, reject it (no schema exists to validate against).
@@ -56,8 +56,8 @@ except ImportError:  # pragma: no cover
     sys.exit(2)
 
 
-# Bundled schemas live at <repo_root>/schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd.
-SCHEMAS_DIRNAME = "schemas"
+# Bundled schemas live at <repo_root>/resources/schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd.
+SCHEMAS_DIRNAME = "resources/schemas"
 
 # The public TWB schemas declare `<xs:import namespace=".../user"/>` with NO
 # schemaLocation: the `user` namespace is a deliberate extension point that
@@ -159,11 +159,11 @@ _BUILD_COMMENT_RE = re.compile(rb"<!--\s*build\s+(\d{5})\.(\d{2})\.")
 #     unconditionally inside `Workbook-ExplainData-G` (no `minOccurs="0"`
 #     anywhere in the chain), but real workbooks that never touched Explain
 #     Data omit the element entirely. Confirmed as a schema bug, not a
-#     workbook defect (see schemas/2025_2/twb_2025.2.0.xsd:7511).
+#     workbook defect (see resources/schemas/2025_2/twb_2025.2.0.xsd:7511).
 #   - `accelerator-details` "not expected" errors: a cascade of the same
 #     `explain-data` defect above, not an independent bug.
 #     `Workbook-AcceleratorDetails-G` IS already `minOccurs="0"` at its
-#     reference point (schemas/2025_2/twb_2025.2.0.xsd:7513), so this isn't a
+#     reference point (resources/schemas/2025_2/twb_2025.2.0.xsd:7513), so this isn't a
 #     missing-optionality problem. But libxml2's sequence walker is a single
 #     forward cursor: it stalls on the mandatory-but-absent `explain-data`
 #     slot and never advances past it, so the next real element it sees
@@ -314,7 +314,7 @@ def _read_twb_from_archive(path: str) -> tuple[bytes, Optional[str]]:
 # --------------------------------------------------------------------------- #
 def _year_release_to_version_str(year: int, release: int) -> str:
     """Convert a product (year, release) pair to the "YY.R" form used by both
-    the workbook's `version` attribute and this repo's `schemas/YYYY_R/`
+    the workbook's `version` attribute and this repo's `resources/schemas/YYYY_R/`
     naming (e.g. year=2025, release=1 -> "25.1")."""
     return f"{year % 100}.{release}"
 
@@ -416,7 +416,7 @@ def discover_schemas(schemas_dir: str) -> list[Schema]:
     Scan the bundled schemas directory for `YYYY_R/twb_YYYY.R.0.xsd` files and
     return them keyed by their TWB version string. The product version 2026.N
     corresponds to TWB version string "26.N" (per the repo README), so
-    schemas/2026_2/... registers as version (26, 2).
+    resources/schemas/2026_2/... registers as version (26, 2).
     """
     schemas: list[Schema] = []
     if not os.path.isdir(schemas_dir):
@@ -676,7 +676,7 @@ def validate_workbook(
 # CLI
 # --------------------------------------------------------------------------- #
 def _default_schemas_dir() -> str:
-    # schemas/ lives at the repo root; this script lives in workbook_validation/.
+    # resources/schemas/ lives at the plugin root; this script lives in scripts/.
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(repo_root, SCHEMAS_DIRNAME)
 
@@ -717,7 +717,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--schemas-dir", default=_default_schemas_dir(),
         help="directory containing the XSD schemas, organized as "
              "<schemas-dir>/<YYYY_R>/twb_<YYYY.R.0>.xsd "
-             "(default: the repo's top-level schemas/ directory)",
+             "(default: the repo's top-level resources/schemas/ directory)",
     )
     parser.add_argument(
         "--json", action="store_true",
