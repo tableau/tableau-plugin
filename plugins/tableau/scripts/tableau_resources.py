@@ -51,6 +51,12 @@ TEMPLATE_TOKEN_RE = re.compile(r"\{\{[^}]+\}\}")
 FEDERATED_RE = re.compile(r"federated\.[\w.\-]*")
 SIMPLE_ID_RE = re.compile(r"(<simple-id\b[^>]*?\buuid=)(['\"])[^'\"]*\2")
 ATTRIBUTE_RE = re.compile(r"([\w:.\-]+)\s*=\s*(['\"])(.*?)\2", re.DOTALL)
+# A quantitative filter's <min>/<max> literal for a plain number, a date, or
+# a datetime (Tableau delimits a date/datetime literal with '#', e.g.
+# #2025-12-22# or #2025-12-22 13:45:00#).
+NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
+DATE_LITERAL_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DATETIME_LITERAL_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 NAMESPACE_DECLARATION_RE = re.compile(
     r"xmlns(?::[\w.\-]+)?\s*=\s*(['\"]).*?\1", re.DOTALL
 )
@@ -93,6 +99,21 @@ DATATYPE_FAMILIES = {
     "spatial": "spatial",
 }
 NUMERIC_FAMILY = "numeric"
+TEMPORAL_FAMILY = "temporal"
+
+# Channels add-encoding can splice into a pane's <encodings>, and filter
+# shapes add-filter can splice into a worksheet's <view>. Each is scoped to
+# the field-family/XML shape this module has verified against bundled donor
+# XML — see add_encoding_resource and add_filter_resource. add-encoding's
+# CLI-facing "label" maps to Tableau's own <text> element.
+ENCODING_CHANNEL_TAGS = {"color": "color", "tooltip": "tooltip", "label": "text"}
+SUPPORTED_ENCODING_CHANNELS = tuple(ENCODING_CHANNEL_TAGS)
+# A mark has exactly one color, so a pane that already has one refuses a
+# second. tooltip and label legitimately list several fields at once
+# (verified against bundled donor XML — e.g. a candlestick chart's 5 stacked
+# <tooltip> elements), so those two are additive instead.
+EXCLUSIVE_ENCODING_CHANNELS = frozenset({"color"})
+SUPPORTED_FILTER_TYPES = ("categorical", "quantitative")
 
 # Declared metadata of a mapped target field, rewritten onto the rendered
 # dependency declaration so it describes the field it now names.
@@ -2160,6 +2181,617 @@ def instantiate_resource(
     return output
 
 
+def _single_element_span(
+    data: bytes,
+    elements: list[tuple[str, int, int, int]],
+    tag: str,
+    *,
+    name: str | None = None,
+    within: tuple[int, int] | None = None,
+    label: str | None = None,
+) -> tuple[int, int]:
+    """Return the one ``(start, end)`` span matching ``tag`` (and filters).
+
+    ``within`` scopes the search to another element's byte span; ``name``
+    matches a plain (non-bracketed) ``name`` attribute. Raises unless exactly
+    one element matches, so a caller never silently picks among several.
+    """
+    label = label or f"<{tag}>"
+    matches = []
+    for element_tag, _depth, start, end in elements:
+        if element_tag != tag:
+            continue
+        if within is not None and not (within[0] <= start and end <= within[1]):
+            continue
+        if name is not None:
+            raw_name = _tag_attributes(data, start).get("name")
+            if raw_name is None or _unescape(raw_name) != name:
+                continue
+        matches.append((start, end))
+    detail = f" named {name!r}" if name else ""
+    if not matches:
+        raise ResourceError(f"Workbook has no {label}{detail}")
+    if len(matches) > 1:
+        raise ResourceError(
+            f"Workbook has {len(matches)} {label}s{detail}; expected exactly one"
+        )
+    return matches[0]
+
+
+def _element_close_offset(data: bytes, end: int, tag: str) -> int:
+    """Return the byte offset just before a known element's ``</tag>``.
+
+    ``end`` is the element's own end offset from :func:`_scan_elements`.
+    Refuses a self-closing element, since add-encoding and add-filter only
+    ever extend an already-open container rather than restructure one.
+    """
+    closing = f"</{tag}>".encode("utf-8")
+    if data[end - len(closing) : end] != closing:
+        raise ResourceError(
+            f"Worksheet's <{tag}> is self-closing; add the missing structure "
+            "by hand-editing the workbook — see xml-troubleshooting.md"
+        )
+    return end - len(closing)
+
+
+def _resolve_column_instance(
+    data: bytes,
+    elements: list[tuple[str, int, int, int]],
+    deps_span: tuple[int, int],
+    *,
+    field_logical: str,
+    field_meta: FieldMetadata,
+    visual_type: str,
+    type_code: str,
+) -> tuple[str, str | None]:
+    """Return a ``derivation='None'`` column-instance name for ``field_logical``.
+
+    Reuses one already declared in the worksheet's ``<datasource-dependencies>``
+    when present. Otherwise returns ``(new instance name, declaration text)``
+    for a ``<column>``/``<column-instance>`` pair the caller must splice in
+    before that block's closing tag; the ``<column>`` is included only when
+    the block does not already declare one for this field.
+
+    The synthesized name follows the ``[none:<field>:<code>k]`` shape Tableau
+    itself writes for an unaggregated field (verified against bundled donor
+    XML, e.g. ``[none:Product:nk]``), so this never invents an unfamiliar
+    naming convention.
+    """
+    start, end = deps_span
+    has_column = False
+    existing_instance: str | None = None
+    for tag, _depth, e_start, _e_end in elements:
+        if not (start <= e_start < end):
+            continue
+        if tag == "column":
+            raw = _tag_attributes(data, e_start).get("name") or ""
+            if (
+                raw.startswith("[")
+                and raw.endswith("]")
+                and _logical_field_name(raw[1:-1]) == field_logical
+            ):
+                has_column = True
+        elif tag == "column-instance":
+            attrs = _tag_attributes(data, e_start)
+            base_raw = attrs.get("column") or ""
+            if (
+                base_raw.startswith("[")
+                and base_raw.endswith("]")
+                and _logical_field_name(base_raw[1:-1]) == field_logical
+                and (attrs.get("derivation") or "") == "None"
+            ):
+                name_raw = attrs.get("name") or ""
+                if name_raw.startswith("[") and name_raw.endswith("]"):
+                    existing_instance = _logical_field_name(name_raw[1:-1])
+    if existing_instance is not None:
+        return existing_instance, None
+
+    instance_logical = f"none:{field_logical}:{type_code}k"
+    for tag, _depth, e_start, _e_end in elements:
+        if tag != "column-instance" or not (start <= e_start < end):
+            continue
+        name_raw = _tag_attributes(data, e_start).get("name") or ""
+        if (
+            name_raw.startswith("[")
+            and name_raw.endswith("]")
+            and _logical_field_name(name_raw[1:-1]) == instance_logical
+        ):
+            raise ResourceError(
+                f"Workbook already declares a column-instance named "
+                f"[{instance_logical}] for a different field; cannot safely "
+                "reuse it"
+            )
+
+    lines = []
+    if not has_column:
+        lines.append(
+            f"<column datatype='{escape_attribute(field_meta.datatype or '')}' "
+            f"name='[{_bracket_reference(field_logical)}]' "
+            f"role='{escape_attribute(field_meta.role or 'dimension')}' "
+            f"type='{visual_type}' />"
+        )
+    lines.append(
+        f"<column-instance column='[{_bracket_reference(field_logical)}]' "
+        f"derivation='None' name='[{_bracket_reference(instance_logical)}]' "
+        f"pivot='key' type='{visual_type}' />"
+    )
+    return instance_logical, "\n".join(lines)
+
+
+def _resolve_worksheet_field(
+    data: bytes,
+    elements: list[tuple[str, int, int, int]],
+    twb_text: str,
+    worksheet_name: str,
+    field_logical: str,
+) -> tuple[tuple[int, int], str, FieldMetadata]:
+    """Return the worksheet's dependencies span, datasource name, and field metadata.
+
+    Requires the worksheet to declare exactly one ``<datasource-dependencies>``
+    block, so a blended (multi-datasource) worksheet fails closed rather than
+    guessing which datasource ``field_logical`` belongs to.
+    """
+    worksheet_span = _single_element_span(
+        data, elements, "worksheet", name=worksheet_name, label="<worksheet>"
+    )
+    deps_span = _single_element_span(
+        data,
+        elements,
+        "datasource-dependencies",
+        within=worksheet_span,
+        label="<datasource-dependencies> block",
+    )
+    datasource_name = _unescape(
+        _tag_attributes(data, deps_span[0]).get("datasource") or ""
+    )
+    if not datasource_name:
+        raise ResourceError(
+            f"Worksheet {worksheet_name!r}'s <datasource-dependencies> is "
+            "missing its datasource attribute"
+        )
+    datasources = inspect_datasource_metadata(twb_text)
+    if datasource_name not in datasources:
+        raise ResourceError(
+            f"Worksheet {worksheet_name!r} references unknown datasource "
+            f"{datasource_name!r}"
+        )
+    field_meta = datasources[datasource_name].fields.get(field_logical)
+    if field_meta is None:
+        raise ResourceError(
+            f"Datasource {datasource_name!r} has no field named "
+            f"{field_logical!r}; run inspect-workbook to list available fields"
+        )
+    if field_meta.datatype is None:
+        raise ResourceError(
+            f"Field {field_logical!r}'s datatype could not be determined from "
+            "the workbook's <datasources> metadata"
+        )
+    return deps_span, datasource_name, field_meta
+
+
+def add_encoding_resource(
+    *,
+    input_path: Path,
+    output_path: Path,
+    worksheet_name: str,
+    field: str,
+    channel: str = "color",
+    overwrite: bool = False,
+) -> str:
+    """Add a color, tooltip, or label encoding to one worksheet's single pane.
+
+    Splices a ``<color>``/``<tooltip>``/``<text>`` element (per ``channel``,
+    where ``label`` maps to Tableau's own ``<text>`` tag) into
+    ``<table><panes><pane><encodings>``, declaring the field's
+    ``<column>``/``<column-instance>`` dependency first if the worksheet does
+    not already carry one. ``color`` is scoped to a string dimension field,
+    the shape (``[none:<field>:nk]``) verified against bundled donor XML
+    (``insights__bar_chart.tbm``); ``tooltip``/``label`` additionally accept a
+    numeric or date/datetime field, since both channels are verified to carry
+    measures and dates in bundled donor XML. Any other field type, or a pane
+    that already has a ``color`` encoding, must be hand-edited instead —
+    ``tooltip``/``label`` allow more than one field, matching Tableau's own
+    additive behavior for those two channels.
+
+    Only ``<encodings>`` is touched — a worksheet's ``<window><cards>`` shelf
+    layout is left as-is. That layout is authoring-UI state Tableau
+    resynthesizes from the pane's encodings when the workbook is next opened,
+    not something the rendered view depends on.
+
+    Returns the complete transformed workbook text, which is also written to
+    ``output_path``.
+    """
+    if channel not in SUPPORTED_ENCODING_CHANNELS:
+        raise ResourceError(
+            f"Unsupported --channel {channel!r}; supported channels: "
+            f"{', '.join(SUPPORTED_ENCODING_CHANNELS)}"
+        )
+    channel_tag = ENCODING_CHANNEL_TAGS[channel]
+    input_path = Path(input_path)
+    output_path = Path(output_path)
+    _check_output_path(input_path, output_path, overwrite, "input workbook")
+    twb_text = _read_text(input_path, "workbook")
+
+    field_logical = field.strip()
+    if not field_logical:
+        raise ResourceError("--field must not be blank")
+
+    root = _parse_workbook(twb_text)
+    if root.find("worksheets") is None:
+        raise ResourceError("Workbook has no <worksheets> container")
+
+    data = twb_text.encode("utf-8")
+    elements = _scan_elements(data)
+
+    deps_span, _datasource_name, field_meta = _resolve_worksheet_field(
+        data, elements, twb_text, worksheet_name, field_logical
+    )
+    family = _datatype_family(field_meta.datatype)
+    if channel == "color":
+        if family != "string" or (field_meta.role or "dimension") != "dimension":
+            raise ResourceError(
+                f"add-encoding's color channel only supports a string "
+                f"dimension field; {field_logical!r} is {field_meta.datatype!r}/"
+                f"{field_meta.role or 'unknown role'} — add this encoding by "
+                "hand-editing instead"
+            )
+        visual_type, type_code = "nominal", "n"
+    elif family == "string":
+        visual_type, type_code = "nominal", "n"
+    elif family in (NUMERIC_FAMILY, TEMPORAL_FAMILY):
+        visual_type, type_code = "quantitative", "q"
+    else:
+        raise ResourceError(
+            f"add-encoding's {channel} channel only supports a string, "
+            f"numeric, or date/datetime field; {field_logical!r} is "
+            f"{field_meta.datatype!r} — add this encoding by hand-editing "
+            "instead"
+        )
+
+    worksheet_span = _single_element_span(
+        data, elements, "worksheet", name=worksheet_name, label="<worksheet>"
+    )
+    pane_span = _single_element_span(
+        data, elements, "pane", within=worksheet_span, label="<pane>"
+    )
+    encodings_matches = [
+        (start, end)
+        for tag, _depth, start, end in elements
+        if tag == "encodings" and pane_span[0] <= start and end <= pane_span[1]
+    ]
+    if len(encodings_matches) > 1:
+        raise ResourceError(
+            "Pane has more than one <encodings> element; expected at most one"
+        )
+    if encodings_matches:
+        encodings_span = encodings_matches[0]
+        if channel in EXCLUSIVE_ENCODING_CHANNELS:
+            for tag, _depth, e_start, _e_end in elements:
+                if tag == channel_tag and encodings_span[0] <= e_start < encodings_span[1]:
+                    raise ResourceError(
+                        f"Pane already has a {channel} encoding; remove it by "
+                        "hand before adding a new one"
+                    )
+
+    instance_logical, dependency_fragment = _resolve_column_instance(
+        data,
+        elements,
+        deps_span,
+        field_logical=field_logical,
+        field_meta=field_meta,
+        visual_type=visual_type,
+        type_code=type_code,
+    )
+    qualified_column = (
+        f"[{_bracket_reference(_datasource_name)}]."
+        f"[{_bracket_reference(instance_logical)}]"
+    )
+    channel_element = f"<{channel_tag} column='{qualified_column}' />"
+
+    # A pane the catalog's own templates never gave a breakdown (e.g.
+    # insights__line_chart) has no <encodings> element to splice into, so
+    # that case is created rather than treated as a hand-editing gap: this is
+    # exactly the situation add-encoding exists to fill in.
+    replacements: list[tuple[int, int, str]] = []
+    insertions: list[tuple[int, str]] = []
+    if not encodings_matches:
+        insertions.append(
+            (
+                _element_close_offset(data, pane_span[1], "pane"),
+                f"<encodings>\n  {channel_element}\n</encodings>",
+            )
+        )
+    else:
+        encodings_start, encodings_end = encodings_span
+        if data[encodings_end - 2 : encodings_end] == b"/>":
+            replacements.append(
+                (
+                    encodings_start,
+                    encodings_end,
+                    f"<encodings>\n  {channel_element}\n</encodings>",
+                )
+            )
+        else:
+            insertions.append(
+                (
+                    _element_close_offset(data, encodings_end, "encodings"),
+                    channel_element,
+                )
+            )
+    if dependency_fragment is not None:
+        insertions.append(
+            (
+                _element_close_offset(data, deps_span[1], "datasource-dependencies"),
+                dependency_fragment,
+            )
+        )
+
+    for start, end, fragment in sorted(replacements, reverse=True):
+        data = data[:start] + fragment.encode("utf-8") + data[end:]
+    for offset, fragment in sorted(insertions, key=lambda item: item[0], reverse=True):
+        data = _insert_before(data, offset, fragment)
+
+    output = data.decode("utf-8")
+    _parse_workbook(output)
+    _reject_introduced_errors(twb_text, output)
+    atomic_write(output_path, output, overwrite=overwrite)
+    return output
+
+
+def _categorical_filter_fragment(
+    qualified_column: str, level_ref: str, values: list[str]
+) -> str:
+    """Build a ``<filter class='categorical'>`` including ``values``.
+
+    A single value is a bare ``<groupfilter function='member'>``; more than
+    one wraps each value's ``member`` groupfilter in a ``function='union'``
+    groupfilter. Both shapes are verified against bundled reference ``.tbm``
+    donor XML.
+    """
+
+    def member_element(value: str, *, with_ui_attrs: bool) -> str:
+        quoted_value = escape_attribute(f'"{value}"')
+        ui_attrs = (
+            " user:ui-domain='cascading' user:ui-enumeration='inclusive' "
+            "user:ui-marker='enumerate'"
+            if with_ui_attrs
+            else ""
+        )
+        return (
+            f"<groupfilter function='member' level='{level_ref}'"
+            f"{ui_attrs} member='{quoted_value}' />"
+        )
+
+    if len(values) == 1:
+        body = member_element(values[0], with_ui_attrs=True)
+    else:
+        members = "\n    ".join(
+            member_element(value, with_ui_attrs=False) for value in values
+        )
+        body = (
+            "<groupfilter function='union' user:ui-domain='relevant' "
+            "user:ui-enumeration='inclusive' user:ui-marker='enumerate'>\n    "
+            f"{members}\n  </groupfilter>"
+        )
+    return f"<filter class='categorical' column='{qualified_column}'>\n  {body}\n</filter>"
+
+
+def _quantitative_filter_fragment(
+    qualified_column: str, minimum: str, maximum: str, *, is_temporal: bool
+) -> str:
+    """Build an ``in-range`` ``<filter class='quantitative'>``.
+
+    A date literal is delimited with ``#...#`` (verified against bundled
+    donor XML); a plain number is written as-is.
+    """
+
+    def literal(value: str) -> str:
+        return xml_escape(f"#{value}#" if is_temporal else value)
+
+    return (
+        f"<filter class='quantitative' column='{qualified_column}' "
+        "included-values='in-range'>\n"
+        f"  <min>{literal(minimum)}</min>\n"
+        f"  <max>{literal(maximum)}</max>\n"
+        "</filter>"
+    )
+
+
+def add_filter_resource(
+    *,
+    input_path: Path,
+    output_path: Path,
+    worksheet_name: str,
+    field: str,
+    filter_type: str,
+    include: list[str] | None = None,
+    minimum: str | None = None,
+    maximum: str | None = None,
+    overwrite: bool = False,
+) -> str:
+    """Add one categorical or quantitative-range filter to a worksheet's view.
+
+    Splices a ``<filter>`` immediately after ``<datasource-dependencies>`` in
+    ``<table><view>`` (declaring the field's dependency first if needed),
+    matching where bundled donor ``.tbm`` files place it.
+
+    ``categorical`` is scoped to a string dimension field with one or more
+    ``include`` values (Tableau's ``<groupfilter member='"..."'>`` shape is
+    only verified for string values); ``quantitative`` is scoped to a numeric
+    or date field with both ``minimum`` and ``maximum``. Any other
+    combination — a boolean/date categorical filter, an exclude filter, a
+    relative-date filter — must be hand-edited instead.
+
+    Returns the complete transformed workbook text, which is also written to
+    ``output_path``.
+    """
+    if filter_type not in SUPPORTED_FILTER_TYPES:
+        raise ResourceError(
+            f"Unsupported --filter-type {filter_type!r}; supported: "
+            f"{', '.join(SUPPORTED_FILTER_TYPES)}"
+        )
+    input_path = Path(input_path)
+    output_path = Path(output_path)
+    _check_output_path(input_path, output_path, overwrite, "input workbook")
+    twb_text = _read_text(input_path, "workbook")
+
+    field_logical = field.strip()
+    if not field_logical:
+        raise ResourceError("--field must not be blank")
+
+    root = _parse_workbook(twb_text)
+    if root.find("worksheets") is None:
+        raise ResourceError("Workbook has no <worksheets> container")
+
+    data = twb_text.encode("utf-8")
+    elements = _scan_elements(data)
+
+    deps_span, datasource_name, field_meta = _resolve_worksheet_field(
+        data, elements, twb_text, worksheet_name, field_logical
+    )
+    family = _datatype_family(field_meta.datatype)
+
+    is_temporal = False
+    if filter_type == "categorical":
+        values = list(include or [])
+        if not values:
+            raise ResourceError(
+                "--filter-type categorical requires at least one --include value"
+            )
+        if family != "string" or (field_meta.role or "dimension") != "dimension":
+            raise ResourceError(
+                f"add-filter's categorical filter only supports a string "
+                f"dimension field; {field_logical!r} is {field_meta.datatype!r}/"
+                f"{field_meta.role or 'unknown role'} — add this filter by "
+                "hand-editing instead"
+            )
+        visual_type, type_code = "nominal", "n"
+    else:
+        if minimum is None or maximum is None:
+            raise ResourceError(
+                "--filter-type quantitative requires both --min and --max"
+            )
+        if family == NUMERIC_FAMILY:
+            if not (NUMERIC_LITERAL_RE.match(minimum) and NUMERIC_LITERAL_RE.match(maximum)):
+                raise ResourceError(
+                    "--min/--max must be plain numbers for a numeric field"
+                )
+        elif family == TEMPORAL_FAMILY:
+            # A datetime field's bound may carry a time component (verified
+            # against #1750-01-01 00:00:00# in a bundled donor .tbm); a plain
+            # date field's may not, since no donor example has one.
+            is_datetime_field = field_meta.datatype == "datetime"
+            for value in (minimum, maximum):
+                if DATE_LITERAL_RE.match(value):
+                    try:
+                        datetime.date.fromisoformat(value)
+                    except ValueError as error:
+                        raise ResourceError(f"Invalid date {value!r}: {error}") from error
+                elif is_datetime_field and DATETIME_LITERAL_RE.match(value):
+                    try:
+                        datetime.datetime.fromisoformat(value)
+                    except ValueError as error:
+                        raise ResourceError(
+                            f"Invalid datetime {value!r}: {error}"
+                        ) from error
+                elif is_datetime_field:
+                    raise ResourceError(
+                        "--min/--max must be YYYY-MM-DD or "
+                        "YYYY-MM-DD HH:MM:SS for a datetime field"
+                    )
+                else:
+                    raise ResourceError(
+                        "--min/--max must be YYYY-MM-DD for a date field"
+                    )
+            is_temporal = True
+        else:
+            raise ResourceError(
+                f"add-filter's quantitative filter only supports a numeric or "
+                f"date field; {field_logical!r} is {field_meta.datatype!r} — "
+                "add this filter by hand-editing instead"
+            )
+        visual_type, type_code = "quantitative", "q"
+
+    instance_logical, dependency_fragment = _resolve_column_instance(
+        data,
+        elements,
+        deps_span,
+        field_logical=field_logical,
+        field_meta=field_meta,
+        visual_type=visual_type,
+        type_code=type_code,
+    )
+    qualified_column = (
+        f"[{_bracket_reference(datasource_name)}]."
+        f"[{_bracket_reference(instance_logical)}]"
+    )
+
+    if filter_type == "categorical":
+        level_ref = f"[{_bracket_reference(instance_logical)}]"
+        filter_fragment = _categorical_filter_fragment(qualified_column, level_ref, values)
+    else:
+        filter_fragment = _quantitative_filter_fragment(
+            qualified_column, minimum, maximum, is_temporal=is_temporal
+        )
+
+    insertions = [(deps_span[1], filter_fragment)]
+    if dependency_fragment is not None:
+        insertions.append(
+            (
+                _element_close_offset(data, deps_span[1], "datasource-dependencies"),
+                dependency_fragment,
+            )
+        )
+    for offset, fragment in sorted(insertions, key=lambda item: item[0], reverse=True):
+        data = _insert_before(data, offset, fragment)
+
+    output = data.decode("utf-8")
+    _parse_workbook(output)
+    _reject_introduced_errors(twb_text, output)
+    atomic_write(output_path, output, overwrite=overwrite)
+    return output
+
+
+def _datasource_metadata_to_json(
+    datasources: dict[str, DatasourceMetadata]
+) -> dict[str, object]:
+    return {
+        name: {
+            "caption": metadata.caption,
+            "fields": {
+                field_name: {
+                    "datatype": info.datatype,
+                    "userDatatype": info.user_datatype,
+                    "role": info.role,
+                }
+                for field_name, info in metadata.fields.items()
+            },
+        }
+        for name, metadata in datasources.items()
+    }
+
+
+def _format_inspect_workbook_text(datasources: dict[str, DatasourceMetadata]) -> str:
+    if not datasources:
+        return "No datasources found."
+    lines = []
+    for name, metadata in sorted(datasources.items()):
+        caption_suffix = (
+            f" (caption: {metadata.caption})" if metadata.caption != name else ""
+        )
+        lines.append(f"datasource: {name}{caption_suffix}")
+        if not metadata.fields:
+            lines.append("  fields: -")
+            continue
+        lines.append("  fields:")
+        for field_name, info in sorted(metadata.fields.items()):
+            lines.append(
+                f"    - {field_name} (datatype={info.datatype or '?'}, "
+                f"role={info.role or '?'})"
+            )
+    return "\n".join(lines)
+
+
 def _print_json(data: object) -> None:
     print(json.dumps(data, indent=2))
 
@@ -2281,6 +2913,97 @@ def build_parser() -> argparse.ArgumentParser:
         "--input", required=True, help="Path to the .twb workbook to check."
     )
 
+    inspect_workbook_parser = subparsers.add_parser(
+        "inspect-workbook",
+        help="Show each datasource's fields declared in an existing workbook.",
+    )
+    inspect_workbook_parser.add_argument(
+        "--input", required=True, help="Path to the .twb workbook to inspect."
+    )
+    inspect_workbook_parser.add_argument(
+        "--format", choices=("json", "text"), default="json", help="Output format."
+    )
+
+    add_encoding_parser = subparsers.add_parser(
+        "add-encoding",
+        help="Add a color, tooltip, or label encoding to one worksheet's pane.",
+    )
+    add_encoding_parser.add_argument(
+        "--input", required=True, help="Path to the existing .twb workbook."
+    )
+    add_encoding_parser.add_argument(
+        "--output", required=True, help="Path to the output .twb."
+    )
+    add_encoding_parser.add_argument(
+        "--worksheet", required=True, help="Name of the worksheet to modify."
+    )
+    add_encoding_parser.add_argument(
+        "--field",
+        required=True,
+        help="Field to add. color requires a string dimension; tooltip/label "
+        "also accept a numeric or date/datetime field.",
+    )
+    add_encoding_parser.add_argument(
+        "--channel",
+        default="color",
+        choices=SUPPORTED_ENCODING_CHANNELS,
+        help="Encoding channel to add. color refuses if the pane already has "
+        "one; tooltip/label allow more than one field.",
+    )
+    add_encoding_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow replacing an existing output file.",
+    )
+
+    add_filter_parser = subparsers.add_parser(
+        "add-filter",
+        help="Add a categorical or quantitative-range filter to one worksheet.",
+    )
+    add_filter_parser.add_argument(
+        "--input", required=True, help="Path to the existing .twb workbook."
+    )
+    add_filter_parser.add_argument(
+        "--output", required=True, help="Path to the output .twb."
+    )
+    add_filter_parser.add_argument(
+        "--worksheet", required=True, help="Name of the worksheet to modify."
+    )
+    add_filter_parser.add_argument("--field", required=True, help="Field to filter on.")
+    add_filter_parser.add_argument(
+        "--filter-type",
+        dest="filter_type",
+        required=True,
+        choices=SUPPORTED_FILTER_TYPES,
+        help="categorical (string, one or more --include) or quantitative "
+        "(numeric/date range, --min and --max).",
+    )
+    add_filter_parser.add_argument(
+        "--include",
+        dest="include",
+        action="append",
+        default=[],
+        metavar="VALUE",
+        help="Categorical value to include (repeatable).",
+    )
+    add_filter_parser.add_argument(
+        "--min",
+        dest="minimum",
+        help="Quantitative range minimum. YYYY-MM-DD for a date field; "
+        "YYYY-MM-DD or YYYY-MM-DD HH:MM:SS for a datetime field.",
+    )
+    add_filter_parser.add_argument(
+        "--max",
+        dest="maximum",
+        help="Quantitative range maximum. YYYY-MM-DD for a date field; "
+        "YYYY-MM-DD or YYYY-MM-DD HH:MM:SS for a datetime field.",
+    )
+    add_filter_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow replacing an existing output file.",
+    )
+
     return parser
 
 
@@ -2354,6 +3077,54 @@ def main(argv: list[str] | None = None) -> int:
         # shape whether or not the workbook passed.
         _print_json(errors)
         return 1 if errors else 0
+
+    if args.command == "inspect-workbook":
+        try:
+            twb_text = _read_text(Path(args.input), "workbook")
+            datasources = inspect_datasource_metadata(twb_text)
+        except ResourceError as error:
+            print(str(error), file=sys.stderr)
+            return 2
+        if args.format == "text":
+            print(_format_inspect_workbook_text(datasources))
+        else:
+            _print_json(_datasource_metadata_to_json(datasources))
+        return 0
+
+    if args.command == "add-encoding":
+        try:
+            add_encoding_resource(
+                input_path=Path(args.input),
+                output_path=Path(args.output),
+                worksheet_name=args.worksheet,
+                field=args.field,
+                channel=args.channel,
+                overwrite=args.overwrite,
+            )
+        except ResourceError as error:
+            print(str(error), file=sys.stderr)
+            return 2
+        print(f"Wrote {args.output}")
+        return 0
+
+    if args.command == "add-filter":
+        try:
+            add_filter_resource(
+                input_path=Path(args.input),
+                output_path=Path(args.output),
+                worksheet_name=args.worksheet,
+                field=args.field,
+                filter_type=args.filter_type,
+                include=args.include,
+                minimum=args.minimum,
+                maximum=args.maximum,
+                overwrite=args.overwrite,
+            )
+        except ResourceError as error:
+            print(str(error), file=sys.stderr)
+            return 2
+        print(f"Wrote {args.output}")
+        return 0
 
     if args.command in ("instantiate", "inject"):
         try:

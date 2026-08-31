@@ -46,7 +46,8 @@ catalog.
      `python3 scripts/tableau_resources.py list --tier executable --query "<intent>"`
   2. If the result is empty, immediately follow the hand-edit path below. Do not read `references/catalog-templates.md`.
   3. If a match is returned, read [`references/catalog-templates.md`](references/catalog-templates.md), inspect the match, and use `instantiate` for a new workbook or `inject` for an existing one.
-- No catalog match, or a genuinely custom construct the catalog can't cover → hand-edit the TWB XML per the steps below.
+- Adding a breakdown/color split, or a filter, to an existing worksheet (not a whole new chart) → read [`references/field-edits.md`](references/field-edits.md) and use `add-encoding`/`add-filter`. Run `inspect-workbook` first if the field names the user gave aren't confirmed against the workbook yet.
+- No catalog match, and no field-level match above, or a genuinely custom construct neither covers → hand-edit the TWB XML per the steps below.
 - First edit/republish of an existing workbook this task → resolve it with `search-content` (`filter: { contentTypes: ["workbook"] }`; see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches), then `download-workbook`.
 - Brand-new workbook with no starting point and no catalog match → read [`references/new-workbook.md`](references/new-workbook.md) first.
 `request-workbook-upload`, `publish-workbook`, `download-workbook`, and interactive rendering may be feature-gated — report a missing tool rather than retrying it.
@@ -84,7 +85,7 @@ Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up 
 # Requirements
 
 - Keep worksheet, dashboard, datasource, and zone names unique and consistent.
-- Prefer fields already declared in the TWB's `<column>` metadata over inspecting the extract or datasource metadata.
+- Prefer fields already declared in the TWB's `<column>` metadata over inspecting the extract or datasource metadata; `inspect-workbook` (see `references/field-edits.md`) reads exactly that metadata.
 - Don't invent field names, roles, or numbers not backed by inspected metadata.
 - Don't force-fit a catalog template onto a chart it doesn't match — fall back to hand-editing instead of stretching the closest template.
 
@@ -92,6 +93,7 @@ Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up 
 
 - [`../../references/search.md`](../../references/search.md) — resolving a name/keyword to a workbook and disambiguating multiple matches.
 - [`references/catalog-templates.md`](references/catalog-templates.md) — chart catalog: discover, inspect, and render bundled templates via `scripts/tableau_resources.py`.
+- [`references/field-edits.md`](references/field-edits.md) — add a breakdown/color split or a filter to an existing worksheet via `inspect-workbook`/`add-encoding`/`add-filter`.
 - [`references/new-workbook.md`](references/new-workbook.md) — brand-new workbook, no starting point, no catalog match.
 - [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package or staged-upload fallback.
 - [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md) — new XML construct or validation failure.
