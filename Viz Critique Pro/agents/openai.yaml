@@ -1,0 +1,6 @@
+interface:
+  display_name: "Viz Critique Pro"
+  short_description: "Review and score Tableau visualizations"
+  default_prompt: "Use $viz-critique-pro to review and score this Tableau dashboard."
+policy:
+  allow_implicit_invocation: true
