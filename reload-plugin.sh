@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Remove the existing tableau plugin
-codex plugin remove tableau
+codex plugin remove tableau@plugin-codex
 
 # Remove the plugin-codex marketplace
 codex plugin marketplace remove plugin-codex

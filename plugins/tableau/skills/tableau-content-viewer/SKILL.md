@@ -1,51 +1,25 @@
 ---
 name: tableau-content-viewer
-description: Find a specific view (or workbook) on the Tableau site by name or keyword and render it live in the Codex right-side panel so the user can see it — for "show me/open/pull up this dashboard/view" requests. Not for querying or analyzing the data behind it (use tableau-analytics for that) and not for creating or editing a workbook (use tableau-workbook-authoring for that).
+description: Show, open, or render an existing Tableau view, dashboard, or workbook live via open_in_codex, by name or keyword — for "show me/open/pull up this dashboard/view" requests. Do not use to query or analyze the data behind it or to create/edit/publish a workbook (tableau-workbook-authoring).
 ---
 
-Use this when the user just wants to **see** a piece of Tableau content, not
-query its data or change it. This skill never touches a `.twb` file — it only
-finds content and renders it.
+# Purpose
 
-## 1. Find the content
+Find a specific Tableau view (or workbook) and render it live via `open_in_codex`. Never touches a `.twb` file.
 
-Use `search-content` (or `list-views`/`list-workbooks` if you already know
-which kind of content it is) to locate what the user means, by name or
-keyword. The user said they want a **view**, not a workbook, so prefer a
-result that's typed as a view — if the search surfaces a workbook instead,
-that's fine as a way to navigate (a workbook is made of views), but confirm
-with the user which specific view inside it they want rendered, since
-`render-interactive-viz` renders one piece of content at a time.
+# Routing
 
-If more than one result plausibly matches what the user asked for, don't
-guess — list the candidates and ask which one before rendering.
+- Find the content → `search-content` — see [`../../references/search.md`](../../references/search.md) for the call shape and how to disambiguate multiple matches. Reuse an already-resolved LUID/URL instead of searching again for the same content.
+- Get a render-ready URL → `get-view` (resolved `luid` as `viewId`) or `get-workbook` (as `workbookId`, only when no specific view matched). `search-content` never returns a URL — this call is required.
+- Render → `render-interactive-viz` with the resolved `luid` and matching `objectType`. If unavailable, call `open_in_codex` with the direct URL — see [`../../references/rendering.md`](../../references/rendering.md).
 
-## 2. Get the view's LUID and URL
+# Requirements
 
-Once you've confirmed the right view, note its `id` (LUID) and `contentUrl`/
-`url` from that same search/list result — that's everything the render step
-needs. No download step here; you never need the underlying `.twb`/`.hyper`
-to render a view, only its identifiers.
+- Prefer a view result when the user asked for a view; a workbook-only match is fine only when the user asked for the workbook as a whole.
+- Don't fabricate a view/workbook name or URL the search tools didn't surface.
+- A missing `render-interactive-viz`/search/content tool usually means a site admin disabled its group (`mcp-apps`/`EXCLUDE_TOOLS`) — that's site config, not a bug.
 
-## 3. Render it
+# References
 
-See [`../shared/rendering.md`](../shared/rendering.md) for the exact tool
-calls. Use the view's LUID with `objectType: "view"`, and its URL for the
-fallback path.
-
-## 4. Repeat for follow-ups
-
-If the user then asks to see a different view or workbook, go back to step 1
-with the new request — each render is independent, there's nothing to carry
-over between them.
-
-## Notes
-
-- `render-interactive-viz`/`get-embed-token` are gated by Tableau's
-  `mcp-apps` tool group — see [`../shared/rendering.md`](../shared/rendering.md)
-  for what to tell the user if it's unavailable.
-- A site admin can disable search/content tool groups via Tableau's
-  `EXCLUDE_TOOLS` site setting. If an expected tool isn't available, treat
-  that as a site configuration matter, not a bug to work around.
-- Don't fabricate a view/workbook name or URL if the search tools don't
-  surface it — say so instead of guessing.
+- [`../../references/search.md`](../../references/search.md) — resolving a name/keyword to content and disambiguating multiple matches.
+- [`../../references/rendering.md`](../../references/rendering.md) — exact render call sequence and URL construction.
