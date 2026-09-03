@@ -1,0 +1,13 @@
+interface:
+  display_name: "TableauQuest"
+  short_description: "Learn Tableau judgment through consequences"
+  default_prompt: "Use $tableau-quest to start a choice-driven Tableau judgment adventure."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "tableau"
+      description: "Optional Tableau MCP connection for consented Field Quest grounding"
+
+policy:
+  allow_implicit_invocation: true
