@@ -1,0 +1,13 @@
+interface:
+  display_name: "Tableau Governance Scanner"
+  short_description: "Audit Tableau governance with traceable evidence"
+  default_prompt: "Use $tableau-governance-scanner to run a read-only governance audit of this Tableau scope."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "tableau"
+      description: "A connected Tableau MCP server with read access to the intended scope"
+
+policy:
+  allow_implicit_invocation: true
