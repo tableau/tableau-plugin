@@ -1,0 +1,6 @@
+interface:
+  display_name: "Synthetic Forge"
+  short_description: "Generate deterministic privacy-safe test data"
+  default_prompt: "Use $codex-synth-forge to generate a validated synthetic dataset from my schema."
+policy:
+  allow_implicit_invocation: true
