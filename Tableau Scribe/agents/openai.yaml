@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tableau Scribe"
+  short_description: "Document Tableau views and datasource fields"
+  default_prompt: "Use $tableau-scribe to document this Tableau dashboard or datasource."
