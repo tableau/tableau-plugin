@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tableau Pulse Blueprint"
+  short_description: "Design and audit Tableau Pulse metrics"
+  default_prompt: "Use $pulse-blueprint to design or audit Tableau Pulse metric definitions."
