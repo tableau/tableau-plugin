@@ -32,7 +32,7 @@ of search.
   same.
 - **Exactly one plausible result:** proceed with its `luid`.
 - **More than one plausible result:** don't guess. Call `request-user-input`
-  and let the user pick.
+  and let the user pick.  If there are more than 3 options, `request-user-input` won't accept them. Instead give a numbered list of the possible results, for the user to pick from.
 
 ## Troubleshooting
 search → if 429, retry immediately → return final result to model
