@@ -1,0 +1,6 @@
+interface:
+  display_name: "Tableau Workbook Forge"
+  short_description: "Inspect, edit, and validate Tableau workbooks"
+  default_prompt: "Use $tableau-workbook-forge to inspect this Tableau workbook, apply a safe declarative edit plan to a copy, validate and package it, and use read-only Tableau context when available."
+policy:
+  allow_implicit_invocation: true
