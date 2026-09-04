@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tableau Data Quality Sentinel"
+  short_description: "Profile Tableau datasource metadata quality"
+  default_prompt: "Use $tableau-data-quality-sentinel to profile my Tableau datasources and prioritize metadata quality fixes."
