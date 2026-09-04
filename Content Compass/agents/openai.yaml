@@ -1,0 +1,6 @@
+interface:
+  display_name: "Tableau Content Compass"
+  short_description: "Find relevant Tableau content by topic"
+  default_prompt: "Use $tableau-content-compass to find existing Tableau content for my business question."
+policy:
+  allow_implicit_invocation: true
