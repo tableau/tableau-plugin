@@ -1,0 +1,6 @@
+interface:
+  display_name: "Testing Matrix"
+  short_description: "Build and guide behavioral prompt tests"
+  default_prompt: "Use $testing-matrix to build a guided behavioral test matrix for this skill."
+policy:
+  allow_implicit_invocation: true
