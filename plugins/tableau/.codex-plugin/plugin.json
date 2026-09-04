@@ -7,16 +7,28 @@
   },
   "repository": "https://github.com/tableau/plugin-codex",
   "license": "MIT",
-  "keywords": ["tableau", "analytics", "bi", "mcp", "data", "workbook", "dashboard", "authoring"],
+  "keywords": [
+    "tableau",
+    "analytics",
+    "bi",
+    "mcp",
+    "data",
+    "workbook",
+    "dashboard",
+    "authoring"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Tableau",
+    "displayName": "Tableau-test1",
     "shortDescription": "Explore Tableau data and generate/edit workbooks via the hosted Tableau MCP server",
     "longDescription": "Connects Codex to Tableau's hosted MCP server (mcp.tableau.com) so you can search Tableau sites, inspect workbooks and data sources, query data with VizQL, read Pulse metrics, and generate or modify workbooks by editing their TWB XML and publishing it back — all scoped to the OAuth-authenticated user's own Tableau permissions. Workbook authoring requires the 'authoring-tools' and 'mcp-apps' feature gates to be enabled on the Tableau site.",
     "developerName": "Tableau",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Use Tableau to list the workbooks I have access to.",
       "Use Tableau to query the Superstore data source for sales by region.",
