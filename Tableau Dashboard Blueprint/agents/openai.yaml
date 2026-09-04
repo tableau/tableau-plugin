@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tableau Dashboard Blueprint"
+  short_description: "Design evidence-based Tableau dashboard blueprints"
+  default_prompt: "Use $tableau-dashboard-blueprint to design a Tableau dashboard for my audience, questions, and data."
