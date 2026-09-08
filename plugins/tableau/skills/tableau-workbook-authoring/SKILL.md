@@ -5,7 +5,19 @@ description: Create, edit, copy, or republish a Tableau workbook by editing TWB 
 
 # Purpose
 
-Build or edit a Tableau workbook — from the bundled chart catalog when the request matches it, otherwise by hand-editing TWB XML — validate, publish through Tableau MCP, and render the result.
+Build or edit a Tableau workbook — from the bundled chart catalog when the request matches it, otherwise by hand-editing TWB XML — validate, publish through Tableau MCP, and render the result.  
+
+## Resolve the requested Tableau object
+
+Resolve the object the user named before resolving its containing workbook.
+
+- “Dashboard” always means a Tableau `view`. Search with
+  `filter: { contentTypes: ["view"] }`.
+- After resolving the dashboard view, use its metadata to identify the parent
+  workbook, then download that workbook for editing.
+- Search with `contentTypes: ["workbook"]` only when the user explicitly names
+  a workbook or when no dashboard/view was specified.
+- Never substitute a workbook search for a dashboard search.
 
 ## Canonical Tableau MCP tools
 
@@ -15,6 +27,9 @@ full tool catalog merely to rediscover their names or schemas.
 - Workbook search:
   `mcp__tableau__search_content`
   with `{ terms, filter: { contentTypes: ["workbook"] }, limit }`
+- View / Dashboard search:
+  `mcp__tableau__search_content`
+  with `{ terms, filter: { contentTypes: ["view"] }, limit }`
 - Exact project lookup:
   `mcp__tableau__list_projects`
   with `{ filter: "name:eq:<project-name>", limit }`
@@ -88,6 +103,7 @@ Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up 
 - Prefer fields already declared in the TWB's `<column>` metadata over inspecting the extract or datasource metadata; `inspect-workbook` (see `references/field-edits.md`) reads exactly that metadata.
 - Don't invent field names, roles, or numbers not backed by inspected metadata.
 - Don't force-fit a catalog template onto a chart it doesn't match — fall back to hand-editing instead of stretching the closest template.
+- If the `download-workbook` tool returns a temporary URL, download the file locally
 
 # References
 
