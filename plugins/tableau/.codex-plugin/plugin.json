@@ -1,11 +1,11 @@
 {
-  "name": "tableau",
+  "name": "Tableau",
   "version": "1.1.0",
   "description": "Explore Tableau content and generate/modify Tableau workbooks through the hosted Tableau MCP server.",
   "author": {
     "name": "Salesforce, Inc."
   },
-  "repository": "https://github.com/tableau/plugin-codex",
+  "repository": "https://github.com/tableau/tableau-plugin",
   "license": "MIT",
   "keywords": ["tableau", "analytics", "bi", "mcp", "data", "workbook", "dashboard", "authoring"],
   "skills": "./skills/",
@@ -18,7 +18,7 @@
     "logoDark": "./assets/logoDark.png",
     "shortDescription": "Explore Tableau data and generate/edit workbooks via the hosted Tableau MCP server",
     "longDescription": "Connects Codex to Tableau's hosted MCP server (mcp.tableau.com) so you can search Tableau sites, inspect workbooks and data sources, query data with VizQL, read Pulse metrics, and generate or modify workbooks by editing their TWB XML and publishing it back — all scoped to the OAuth-authenticated user's own Tableau permissions. Workbook authoring requires the 'authoring-tools' and 'mcp-apps' feature gates to be enabled on the Tableau site.",
-    "developerName": "Tableau",
+    "developerName": "Salesforce, Inc.",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [

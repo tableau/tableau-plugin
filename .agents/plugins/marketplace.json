@@ -1,11 +1,11 @@
 {
-  "name": "plugin-codex",
+  "name": "tableau-plugin",
   "interface": {
-    "displayName": "Tableau MCP Skills"
+    "displayName": "Tableau Plugin for Codex"
   },
   "plugins": [
     {
-      "name": "tableau",
+      "name": "Tableau",
       "source": {
         "source": "local",
         "path": "./plugins/tableau"

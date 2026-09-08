@@ -36,7 +36,7 @@ just points Codex at the server:
 ```json
 {
   "mcpServers": {
-    "tableau": {
+    "Tableau": {
       "type": "http",
       "url": "https://mcp.tableau.com/tableau-mcp"
     }
@@ -49,7 +49,7 @@ or if running Tableau-MCP locally:
 ```json
 {
   "mcpServers": {
-    "tableau": {
+    "Tableau": {
       "type": "http",
       "url": "https://127.0.0.1/tableau-mcp"
     }
