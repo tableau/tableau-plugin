@@ -1,0 +1,167 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook original-version='2024.1' source-build='plugin-codex' source-platform='mac' version='2024.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <document-format-change-manifest><WindowsPersistSimpleIdentifiers /></document-format-change-manifest>
+  <preferences />
+  <datasources>
+    <datasource caption='Decade Trends' inline='true' name='federated.trend01' version='2024.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Decade Trends' name='textscan.rend01'>
+            <connection class='textscan' directory='Data' filename='decade_trends.csv' password='' server='' />
+          </named-connection>
+        </named-connections>
+        <relation connection='textscan.rend01' name='decade_trends.csv' table='[decade_trends#csv]' type='table'>
+          <columns character-set='UTF-8' header='yes' locale='en_US' separator=','>
+              <column datatype='string' name='Decade' ordinal='0' />
+              <column datatype='real' name='Avg Length Seconds' ordinal='1' />
+              <column datatype='real' name='Avg BPM' ordinal='2' />
+              <column datatype='integer' name='Songs' ordinal='3' />
+          </columns>
+        </relation>
+      </connection>
+      <column datatype='string' name='[Decade]' role='dimension' type='nominal' />
+      <column datatype='real' name='[Avg Length Seconds]' role='measure' type='quantitative' />
+      <column datatype='real' name='[Avg BPM]' role='measure' type='quantitative' />
+      <column datatype='integer' name='[Songs]' role='measure' type='quantitative' />
+    </datasource>
+    <datasource caption='Genre Share' inline='true' name='federated.genre01' version='2024.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Genre Share' name='textscan.enre01'>
+            <connection class='textscan' directory='Data' filename='genre_share.csv' password='' server='' />
+          </named-connection>
+        </named-connections>
+        <relation connection='textscan.enre01' name='genre_share.csv' table='[genre_share#csv]' type='table'>
+          <columns character-set='UTF-8' header='yes' locale='en_US' separator=','>
+              <column datatype='string' name='Decade' ordinal='0' />
+              <column datatype='string' name='Genre' ordinal='1' />
+              <column datatype='real' name='Share Percent' ordinal='2' />
+              <column datatype='integer' name='Songs' ordinal='3' />
+          </columns>
+        </relation>
+      </connection>
+      <column datatype='string' name='[Decade]' role='dimension' type='nominal' />
+      <column datatype='string' name='[Genre]' role='dimension' type='nominal' />
+      <column datatype='real' name='[Share Percent]' role='measure' type='quantitative' />
+      <column datatype='integer' name='[Songs]' role='measure' type='quantitative' />
+    </datasource>
+    <datasource caption='Artist Weeks' inline='true' name='federated.artist1' version='2024.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Artist Weeks' name='textscan.rtist1'>
+            <connection class='textscan' directory='Data' filename='artist_weeks.csv' password='' server='' />
+          </named-connection>
+        </named-connections>
+        <relation connection='textscan.rtist1' name='artist_weeks.csv' table='[artist_weeks#csv]' type='table'>
+          <columns character-set='UTF-8' header='yes' locale='en_US' separator=','>
+              <column datatype='string' name='Artist' ordinal='0' />
+              <column datatype='integer' name='Cumulative Weeks at #1' ordinal='1' />
+          </columns>
+        </relation>
+      </connection>
+      <column datatype='string' name='[Artist]' role='dimension' type='nominal' />
+      <column datatype='integer' name='[Cumulative Weeks at #1]' role='measure' type='quantitative' />
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Song Length by Decade'>
+      <table>
+        <view>
+          <datasources><datasource name='federated.trend01' /></datasources>
+          <datasource-dependencies datasource='federated.trend01'>
+            <column-instance column='[Decade]' derivation='None' name='[none:Decade:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Avg Length Seconds]' derivation='Avg' name='[avg:Avg Length Seconds:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style></style>
+        <panes><pane selection-relaxation-option='selection-relaxation-allow'>
+          <view><breakdown value='auto' /></view>
+          <mark class='Line' />
+          <encodings><color column='[federated.trend01].[avg:Avg Length Seconds:qk]' /></encodings>
+        </pane></panes>
+        <rows>[federated.trend01].[avg:Avg Length Seconds:qk]</rows>
+        <cols>[federated.trend01].[none:Decade:nk]</cols>
+      </table>
+    </worksheet>
+    <worksheet name='BPM by Decade'>
+      <table>
+        <view>
+          <datasources><datasource name='federated.trend01' /></datasources>
+          <datasource-dependencies datasource='federated.trend01'>
+            <column-instance column='[Decade]' derivation='None' name='[none:Decade:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Avg BPM]' derivation='Avg' name='[avg:Avg BPM:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style></style>
+        <panes><pane selection-relaxation-option='selection-relaxation-allow'>
+          <view><breakdown value='auto' /></view>
+          <mark class='Line' />
+          <encodings><color column='[federated.trend01].[avg:Avg BPM:qk]' /></encodings>
+        </pane></panes>
+        <rows>[federated.trend01].[avg:Avg BPM:qk]</rows>
+        <cols>[federated.trend01].[none:Decade:nk]</cols>
+      </table>
+    </worksheet>
+    <worksheet name='Genre Share Over Time'>
+      <table>
+        <view>
+          <datasources><datasource name='federated.genre01' /></datasources>
+          <datasource-dependencies datasource='federated.genre01'>
+            <column-instance column='[Decade]' derivation='None' name='[none:Decade:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Genre]' derivation='None' name='[none:Genre:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Share Percent]' derivation='Avg' name='[avg:Share Percent:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style></style>
+        <panes><pane selection-relaxation-option='selection-relaxation-allow'>
+          <view><breakdown value='auto' /></view>
+          <mark class='Square' />
+          <encodings><color column='[federated.genre01].[avg:Share Percent:qk]' /><text column='[federated.genre01].[avg:Share Percent:qk]' /></encodings>
+        </pane></panes>
+        <rows>[federated.genre01].[none:Genre:nk]</rows>
+        <cols>[federated.genre01].[none:Decade:nk]</cols>
+      </table>
+    </worksheet>
+    <worksheet name='Artists with Most Weeks at #1'>
+      <table>
+        <view>
+          <datasources><datasource name='federated.artist1' /></datasources>
+          <datasource-dependencies datasource='federated.artist1'>
+            <column-instance column='[Artist]' derivation='None' name='[none:Artist:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Cumulative Weeks at #1]' derivation='Sum' name='[sum:Cumulative Weeks at #1:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style></style>
+        <panes><pane selection-relaxation-option='selection-relaxation-allow'>
+          <view><breakdown value='auto' /></view>
+          <mark class='Bar' />
+          <encodings><color column='[federated.artist1].[sum:Cumulative Weeks at #1:qk]' /><text column='[federated.artist1].[sum:Cumulative Weeks at #1:qk]' /></encodings>
+        </pane></panes>
+        <rows>[federated.artist1].[none:Artist:nk]</rows>
+        <cols>[federated.artist1].[sum:Cumulative Weeks at #1:qk]</cols>
+      </table>
+    </worksheet>
+  </worksheets>
+  <dashboards>
+    <dashboard name='Billboard #1s — Tempo, Length, Genre &amp; Staying Power'>
+      <size sizing-mode='fixed' minwidth='1400' maxwidth='1400' minheight='900' maxheight='900' />
+      <zones>
+        <zone id='1' x='0' y='0' w='1400' h='55' type-v2='title'><layout-cache type-w='fixed' type-h='fixed' /><zone-style /></zone>
+        <zone id='2' x='0' y='55' w='700' h='280' name='Song Length by Decade' type-v2='visual'><layout-cache type-w='fixed' type-h='fixed' /><zone-style /></zone>
+        <zone id='3' x='700' y='55' w='700' h='280' name='BPM by Decade' type-v2='visual'><layout-cache type-w='fixed' type-h='fixed' /><zone-style /></zone>
+        <zone id='4' x='0' y='335' w='850' h='565' name='Genre Share Over Time' type-v2='visual'><layout-cache type-w='fixed' type-h='fixed' /><zone-style /></zone>
+        <zone id='5' x='850' y='335' w='550' h='565' name='Artists with Most Weeks at #1' type-v2='visual'><layout-cache type-w='fixed' type-h='fixed' /><zone-style /></zone>
+      </zones>
+    </dashboard>
+  </dashboards>
+  <windows>
+    <window class='dashboard' maximized='true' name='Billboard #1s — Tempo, Length, Genre &amp; Staying Power'>
+      <viewpoints><viewpoint name='Song Length by Decade' /><viewpoint name='BPM by Decade' /><viewpoint name='Genre Share Over Time' /><viewpoint name='Artists with Most Weeks at #1' /></viewpoints>
+      <active id='-1' />
+    </window>
+  </windows>
+</workbook>

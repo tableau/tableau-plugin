@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "visual_match": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "1 = produced view does not address the analytical intent at all, 5 = fully satisfies it (exact design match not required)"
+    },
+    "visual_rationale": {
+      "type": "string"
+    },
+    "data_match": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "1 = underlying data doesn't reflect the expected analysis, 5 = fully reflects it"
+    },
+    "data_rationale": {
+      "type": "string"
+    }
+  },
+  "required": ["visual_match", "visual_rationale", "data_match", "data_rationale"],
+  "additionalProperties": false
+}
