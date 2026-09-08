@@ -7,7 +7,7 @@
           "hooks": [
             {
               "type": "command",
-              "command": "sh \"$PLUGIN_ROOT/scripts/bootstrap_python.sh\"",
+              "command": "sh \"$PLUGIN_ROOT/skills/tableau-workbook-authoring/scripts/bootstrap_python.sh\"",
               "timeout": 180,
               "statusMessage": "Preparing Tableau workbook validator"
             }

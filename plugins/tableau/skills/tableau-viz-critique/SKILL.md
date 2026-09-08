@@ -1,9 +1,9 @@
 ---
-name: viz-critique-pro
+name: tableau-viz-critique
 description: Review and score Tableau dashboards or views from a render plus available Tableau metadata, using an evidence-based seven-domain rubric and prioritized recommendations. Use for critique or scoring; do not use to edit workbooks, validate underlying data accuracy, or assess business performance.
 ---
 
-# Viz Critique Pro
+# Tableau Viz Critique
 
 Evaluate the visualization first and advise second. Ground every score in visible evidence, distinguish observation from inference, and keep review work read-only.
 

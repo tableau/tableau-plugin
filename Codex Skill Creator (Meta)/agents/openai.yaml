@@ -1,6 +1,0 @@
-interface:
-  display_name: "Codex Skill Creator"
-  short_description: "Create and maintain focused Codex skills"
-  default_prompt: "Use $codex-skill-creator to create a focused, validated Codex skill for my workflow."
-policy:
-  allow_implicit_invocation: true

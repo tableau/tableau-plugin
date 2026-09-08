@@ -1,6 +1,6 @@
-# Viz Critique Pro
+# Tableau Viz Critique
 
-Viz Critique Pro is a Codex skill for reviewing and scoring Tableau dashboards and views. It combines rendered-image evidence, optional Tableau MCP metadata, a seven-domain weighted rubric, deterministic score calculation, and prioritized design recommendations.
+Tableau Viz Critique is a Codex skill for reviewing and scoring Tableau dashboards and views. It combines rendered-image evidence, optional Tableau MCP metadata, a seven-domain weighted rubric, deterministic score calculation, and prioritized design recommendations.
 
 ## What changed in the Codex edition
 
