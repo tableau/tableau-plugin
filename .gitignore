@@ -224,3 +224,4 @@ __marimo__/
 # macOS
 .DS_Store
 bench/results/*
+plugins/tableau/*.mcp.json
