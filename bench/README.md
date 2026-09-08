@@ -8,7 +8,24 @@ way to clean them up.
 
 ## Setup
 
-No dependencies beyond Python 3 stdlib and the `codex` CLI already being
+The benchmark scripts and assets live on the dedicated `benchmarking` branch,
+not on `main` or a feature branch. To run them against plugin code you want to
+measure:
+
+1. Check out `benchmarking`.
+2. Rebase it onto the branch under test, so the plugin in this checkout is
+   the version you're measuring.
+3. Reinstall the plugin (`./reload-plugin.sh` from the repo root, then start a
+   new Codex task). Codex copies plugin files into its cache at install time,
+   so a checkout/rebase has no effect until you reinstall.
+
+```bash
+git checkout benchmarking
+git rebase <branch-under-test>
+./reload-plugin.sh
+```
+
+No other dependencies beyond Python 3 stdlib and the `codex` CLI already being
 authenticated with the Tableau plugin installed. From the repo root:
 
 ```bash
