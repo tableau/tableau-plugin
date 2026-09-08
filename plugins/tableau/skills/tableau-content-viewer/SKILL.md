@@ -18,6 +18,7 @@ Find a specific Tableau view (or workbook) and render it live via `open_in_codex
 - Prefer a view result when the user asked for a view; a workbook-only match is fine only when the user asked for the workbook as a whole.
 - Don't fabricate a view/workbook name or URL the search tools didn't surface.
 - A missing `render-interactive-viz`/search/content tool usually means a site admin disabled its group (`mcp-apps`/`EXCLUDE_TOOLS`) — that's site config, not a bug.
+- If the `download-workbook` tool returns a temporary URL, download the file locally
 
 # References
 
