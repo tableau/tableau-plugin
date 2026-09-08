@@ -1,0 +1,73 @@
+analysis,decade,series,category,value,rank
+Length,1950s,Average song length,,2.58,
+BPM,1950s,Average BPM,,111.5,
+Genre,1950s,Genre share,Pop,60.87,
+Genre,1950s,Genre share,Rock,26.09,
+Genre,1950s,Genre share,Folk/Country,8.7,
+Genre,1950s,Genre share,Other,4.35,
+Length,1960s,Average song length,,2.78,
+BPM,1960s,Average BPM,,115.9,
+Genre,1960s,Genre share,Folk/Country,6.9,
+Genre,1960s,Genre share,Rock,39.9,
+Genre,1960s,Genre share,Pop,41.38,
+Genre,1960s,Genre share,Funk/Soul,9.36,
+Genre,1960s,Genre share,Other,2.46,
+Length,1970s,Average song length,,3.68,
+BPM,1970s,Average BPM,,115.5,
+Genre,1970s,Genre share,Pop,30.04,
+Genre,1970s,Genre share,Rock,28.46,
+Genre,1970s,Genre share,Funk/Soul,36.76,
+Genre,1970s,Genre share,Folk/Country,3.16,
+Genre,1970s,Genre share,Other,0.79,
+Genre,1970s,Genre share,Electronic/Dance,0.79,
+Length,1980s,Average song length,,4.15,
+BPM,1980s,Average BPM,,115.7,
+Genre,1980s,Genre share,Funk/Soul,11.69,
+Genre,1980s,Genre share,Rock,39.39,
+Genre,1980s,Genre share,Pop,34.2,
+Genre,1980s,Genre share,Other,1.3,
+Genre,1980s,Genre share,Electronic/Dance,13.42,
+Length,1990s,Average song length,,4.24,
+BPM,1990s,Average BPM,,111.5,
+Genre,1990s,Genre share,Pop,32.14,
+Genre,1990s,Genre share,Funk/Soul,32.86,
+Genre,1990s,Genre share,Other,0.71,
+Genre,1990s,Genre share,Electronic/Dance,6.43,
+Genre,1990s,Genre share,Rock,13.57,
+Genre,1990s,Genre share,Hip Hop,14.29,
+Length,2000s,Average song length,,4.0,
+BPM,2000s,Average BPM,,116.0,
+Genre,2000s,Genre share,Pop,17.05,
+Genre,2000s,Genre share,Folk/Country,0.78,
+Genre,2000s,Genre share,Funk/Soul,25.58,
+Genre,2000s,Genre share,Hip Hop,33.33,
+Genre,2000s,Genre share,Electronic/Dance,12.4,
+Genre,2000s,Genre share,Rock,7.75,
+Genre,2000s,Genre share,Other,3.1,
+Length,2010s,Average song length,,3.75,
+BPM,2010s,Average BPM,,118.0,
+Genre,2010s,Genre share,Electronic/Dance,28.45,
+Genre,2010s,Genre share,Funk/Soul,8.62,
+Genre,2010s,Genre share,Hip Hop,21.55,
+Genre,2010s,Genre share,Pop,30.17,
+Genre,2010s,Genre share,Rock,1.72,
+Genre,2010s,Genre share,Other,4.31,
+Genre,2010s,Genre share,NA,5.17,
+Length,2020s,Average song length,,3.47,
+BPM,2020s,Average BPM,,123.0,
+Genre,2020s,Genre share,NA,100.0,
+Artist,,Cumulative weeks at #1,Mariah Carey,68,1
+Artist,,Cumulative weeks at #1,The Beatles,58,2
+Artist,,Cumulative weeks at #1,Boyz II Men,34,3
+Artist,,Cumulative weeks at #1,Adele,34,4
+Artist,,Cumulative weeks at #1,Janet Jackson,33,5
+Artist,,Cumulative weeks at #1,Taylor Swift,33,6
+Artist,,Cumulative weeks at #1,Madonna,32,7
+Artist,,Cumulative weeks at #1,Whitney Houston,31,8
+Artist,,Cumulative weeks at #1,Drake,31,9
+Artist,,Cumulative weeks at #1,Michael Jackson,30,10
+Artist,,Cumulative weeks at #1,Bee Gees,28,11
+Artist,,Cumulative weeks at #1,The Black Eyed Peas,28,12
+Artist,,Cumulative weeks at #1,Elton John,25,13
+Artist,,Cumulative weeks at #1,Elvis Presley,22,14
+Artist,,Cumulative weeks at #1,Usher,22,15

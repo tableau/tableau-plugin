@@ -1,0 +1,85 @@
+{
+  "preamble": "This is a benchmark test for the tableau plugin.  You should treat this session as a new chat, meaning you should not assume any previous context or state.  Do not use local or previously downloaded files, unless downloaded by subsequent prompts in this session.  If subsequent prompts result in rendering a tableau visualization, always use the get-view-image tool instead of trying to render in a browser.  This should override any instructions from the tableau-content-viewer skill. If the user asks for a workbook and there are multiple options, do not prompt for user input and instead choose the one that is most recently modified. When publishing a workbook, publish to the benchmark-results project (luid: b303c713-0abe-45c9-af59-8faf336cc1d5) and use unique names for each workbook.  Also, ignore any workbooks that are in the Benchmarking project (luid: 4bde2bcc-738f-451b-b16f-b5bd74adfa1f)",
+  "defaults": {
+    "repeats": 10,
+    "sandbox": "workspace-write",
+    "approve_for_me": true,
+    "model": ["gpt-5.6-sol","gpt-5.6-terra","gpt-5.5","gpt-5.4"],
+    "cd": null
+  },
+  "tests": [
+    {
+      "id": "AC01_cold",
+      "description": "Cold prompt: Create new sheet in existing workbook",
+      "steps": [
+        { "prompt": "In the Superstore workbook, add a view ranking Sub-Categories by profit ratio (profit / sales), flag money-losing sub-categories in red, and add a reference line at the overall profit ratio." }
+      ]
+    },
+    {
+      "id": "AC02_cold",
+      "description": "Cold prompt: Create new sheet in existing workbook",
+      "steps": [
+        { "prompt": "Using the World Indicators workbook, add a scatter of GDP per capita vs life expectancy, color by region, size by population, add a trend line, and split into small multiples by region." }
+      ]
+    },
+    {
+      "id": "AC03_cold",
+      "description": "Cold prompt: create a new dashboard in existing workbook",
+      "steps": [
+        { "prompt": "From the Superstore Overview Dashboard, build an executive-summary dashboard with KPI tiles for Sales, Profit, and Profit Ratio plus a monthly sales trend, alongside the existing regional breakdown." }
+      ]
+    },
+    {
+      "id": "AC04_cold",
+      "description": "Cold prompt: modify existing sheet in existing workbook",
+      "steps": [
+        { "prompt": "In the Bolt Bikes workbook, turn the revenue view into a dual-axis chart showing revenue as bars and order count as a line, and add a Top-N products parameter." }
+      ]
+    },
+    {
+      "id": "AC05_cold",
+      "description": "Cold prompt: Create new sheet in existing workbook",
+      "steps": [
+        { "prompt": "In the Top Player Performance workbook, add a 'goals per 90 minutes' metric and show the top 15 players by it, filtered to a meaningful minimum of minutes played." }
+      ]
+    },
+    {
+      "id": "AC06_cold",
+      "description": "Cold prompt: create a new workbook with a single sheet",
+      "steps": [
+        { "prompt": "Create a new workbook showing monthly Sales vs Profit as a dual-axis line, with a reference line for 3-month moving average of saless"}
+      ]
+    },
+    {
+      "id": "AC07_cold",
+      "description": "Cold prompt: create a new dashboard, without specifying a workbook",
+      "steps": [
+        { "prompt": "Build a new HR dashboard: attrition rate by department, a headcount trend over time, and a tenure distribution." }
+      ]
+    },
+    {
+      "id": "AC08_cold",
+      "description": "Cold prompt: Create new workbook with a single sheet",
+      "steps": [
+        { "prompt": "Create a new workbook from superstore that visualizes the distribution of profit % across product categories (box plot or histogram)." }
+      ]
+    },
+    {
+      "id": "AC09_cold",
+      "description": "Cold prompt: create a new workbook with a single sheet & parameter",
+      "steps": [
+        { "prompt": "Create a new workbook from the World Indicators datasource, with a filled map showing GCP by country, controlled by a Year parameter."}
+      ]
+    },
+    {
+      "id": "AC10_cold",
+      "description": "Cold prompt: create a new workbook with a local file as the data source",
+      "steps": [
+        {
+          "prompt": "Using the attached Billboard Hot 100 #1s file, analyze how song length and BPM changed by decade, genre share over time, and the artists with the most cumulative weeks at #1; compose it into a dashboard.",
+          "files": ["bench/fixtures/AC10/billboard_top_100.csv"]
+        }
+      ]
+    }
+  ]
+}
