@@ -22,9 +22,9 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Use Tableau to create a new workbook with a bar chart of sales by region.",
-      "Use Tableau to make a copy of the Superstore workbook and add a filter for the East region.  Publish it back as new workbook.",
-      "Use Tableau to show me the Regional Sales dashboard."
+      "Use the superstore workbook as a starting point, and add a new sheet showing profit ratio (profit / sales) by category.",
+      "Find the shipping dashboard and add a new chart showing the top 3 products that are shipping late ",
+      "Show me the Commission Model dashboard."
     ]
   }
 }
