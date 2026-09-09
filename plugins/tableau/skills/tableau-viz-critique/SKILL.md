@@ -22,6 +22,17 @@ For a workbook with several relevant views, use the view the user named. If none
 
 Fetch the largest practical render without distorting its intended aspect ratio. Metadata may establish owner, project, device layout, view names, or intended audience, but it is not evidence for a visual quality that is absent from the render.
 
+Tableau image tools may return the render as an inline image block or as a `resource_link` containing a short-lived presigned URL.
+
+- If an inline image is returned, inspect it directly.
+- If a `resource_link` is returned, immediately download it with a direct HTTP client to a temporary or workspace file before the URL expires, then inspect the local file with the available image-viewing tool.
+- Treat this read-only download as the normal completion of the Tableau image request. Do not open the presigned URL in a browser unless the user explicitly asked to view it there.
+- Verify that the downloaded file is non-empty and is actually an image before scoring.
+- If the URL expires, request a fresh render and retry the download once.
+- Only ask the user for a screenshot after both inline inspection and direct download are unavailable or fail.
+
+Do not conclude that a render is inaccessible merely because a browser blocks the image-host domain. Browser access and direct retrieval of an MCP-returned resource are separate paths; exhaust the connector's supported resource-delivery path first.
+
 If the render is too small, clipped, blank, or stale enough to make scoring unreliable, request a better image instead of guessing. A screenshot supplied directly by the user does not require Tableau access.
 
 ## Establish context
