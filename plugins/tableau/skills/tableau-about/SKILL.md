@@ -1,7 +1,7 @@
 ---
-
-## name: tableau-about
+name: tableau-about
 description: Explain what the Tableau plugin is for and how it helps users work with existing or new Tableau content. Use when someone asks about the plugin, its purpose, suitable use cases, or why they should use it.
+---
 
 # Tableau Plugin Overview
 
@@ -29,9 +29,9 @@ The model constructs the workbook definition programmatically. Users do not need
 
 
 
-### Design dashboard blueprints
+### Advise on dashboard design
 
-Turn business questions, audience needs, and available datasource metadata into an implementation-ready Tableau dashboard plan.
+Provide advice that turns business questions, audience needs, and available datasource metadata into an implementation-ready Tableau dashboard plan.
 
 A blueprint can specify:
 
@@ -44,7 +44,7 @@ A blueprint can specify:
 - Tableau implementation guidance
 - A deterministic HTML wireframe when useful
 
-This is a planning workflow. It does not build or publish the workbook unless the user separately requests that work.
+This is an advisory workflow. It does not create, edit, or publish a Tableau dashboard or workbook. A wireframe is a nonfunctional planning mockup, not a working dashboard. Use the separate workbook-authoring workflow when the user requests implementation.
 
 ### Review datasource metadata quality
 
@@ -82,7 +82,7 @@ Recommendations should be prioritized and tied to visible or explicitly supplied
 Use the focused Tableau skill that best matches the requested outcome:
 
 - Use `tableau-content-viewer` to find, open, or show existing Tableau content.
-- Use `tableau-dashboard-blueprint` to plan a dashboard or create a wireframe.
+- Use `tableau-dashboard-advisor` for advice on how to design and build a dashboard, including a nonfunctional planning wireframe. It does not create the Tableau dashboard.
 - Use `tableau-data-quality-sentinel` to review published datasource metadata.
 - Use `tableau-viz-critique` to evaluate an existing dashboard or view.
 - Use `tableau-workbook-authoring` to create, edit, copy, or publish a workbook.
@@ -94,10 +94,9 @@ For requests spanning multiple workflows, sequence them explicitly. For example,
 - `Find and open the regional sales dashboard.`
 - `Explain the largest trends in this view.`
 - `Which products shown here meet this condition?`
-- `Design an executive dashboard for regional sales performance.`
-- `Create a desktop and tablet wireframe for this dashboard plan.`
+- `Advise me on how to design an executive dashboard for regional sales performance.`
+- `Show me a nonfunctional desktop and tablet wireframe for this dashboard plan.`
 - `Run a metadata quality scan on the Sales datasource.`
 - `Compare metadata quality for Orders and Orders v2.`
 - `Review this dashboard and prioritize its three highest-impact improvements.`
 - `Add a monthly trend chart to this workbook and publish the update.`
-
