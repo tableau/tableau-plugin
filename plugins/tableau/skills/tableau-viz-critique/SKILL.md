@@ -53,10 +53,12 @@ Assess visible interactivity cues—filters, controls, navigation, selection sta
 
 Record the seven base scores, documented adjustments, and applicable caps in a JSON assessment. Read [assessment-schema.md](references/assessment-schema.md) for the required shape and adjustment identifiers.
 
+The assessment JSON and the scoring helper's raw JSON output are internal scratch data, not user deliverables. Store scratch files only in an OS-managed temporary directory, never in the workspace or current directory. Do not create them with an artifact-producing file-edit tool. Do not attach, open, link, render, mention, or otherwise surface them to the user. Remove temporary files after scoring. Return only the formatted review unless the user explicitly requests JSON.
+
 Resolve `skill_dir` as the absolute directory containing this `SKILL.md`; do not assume the skill is the current working directory. Then use the bundled helper for deterministic weighting, validation, half-even rounding, safety status, and tier assignment:
 
 ```bash
-python3 "$skill_dir/scripts/score_viz.py" "/absolute/path/to/assessment.json"
+python3 "$skill_dir/scripts/score_viz.py" "/absolute/os-temp/path/assessment.json"
 ```
 
 The helper is the arithmetic authority, not the visual evaluator. Never manufacture an adjustment merely to reach a tier. When it returns `safety_status: blocked`, display `Safety remediation required` instead of a quality tier and lead with the blocking issue.
