@@ -54,7 +54,9 @@ Represent findings using the JSON contract in [Scoring contract](references/scor
 python <resolved-skill-dir>/scripts/score_findings.py findings.json --pretty
 ```
 
-Use absolute input paths when the working directory may differ. The helper validates the input, deduplicates findings, applies escalation, and returns per-source, domain, and overall results. It never contacts Tableau or writes external state.
+The scoring JSON is internal scratch data, not a user artifact. Write it only to an OS-managed temporary location, never to the workspace or current directory, and remove it after scoring. Do not attach, open, link, render, or otherwise surface the raw input or output JSON to the user. Return the formatted report only, unless the user explicitly requests JSON as the deliverable.
+
+Use an absolute temporary input path when the working directory may differ. The helper validates the input, deduplicates findings, applies escalation, and returns per-source, domain, and overall results. It never contacts Tableau or writes external state.
 
 If local execution is unavailable, apply the same formula manually and label the result `manually calculated`:
 
@@ -74,6 +76,8 @@ Default to a concise Markdown report:
 6. metadata-only limitation and unassessed checks.
 
 For alert-only, omit scores and positives and show only new/high-priority problems. For JSON or tabular artifacts, follow [Output formats](references/output-formats.md). Create files only when requested or when the format requires one.
+
+Never expose helper files created during scoring as generated artifacts. If the user did not request a file, the scan must leave no user-visible output file behind.
 
 ## State and scheduling
 
