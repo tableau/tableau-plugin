@@ -1,11 +1,13 @@
 ---
-name: tableau-dashboard-blueprint
-description: Design implementation-ready Tableau dashboard blueprints from business questions, audience needs, and an available or described schema. Use for chart selection, KPI hierarchy, layout, filters, interactions, responsive behavior, accessibility, or dashboard wireframes before building. Do not use to critique an already-built dashboard or to claim facts the datasource metadata does not expose.
+name: tableau-dashboard-advisor
+description: Advise users on how to design and build effective Tableau dashboards from business questions, audience needs, and an available or described schema. Use for recommendations about chart selection, KPI hierarchy, layout, filters, interactions, responsive behavior, accessibility, implementation planning, or nonfunctional dashboard wireframes. This skill provides design advice and specifications only; it does not create, edit, or publish Tableau dashboards or workbooks. Do not use to critique an already-built dashboard or to claim facts the datasource metadata does not expose.
 ---
 
-# Tableau Dashboard Blueprint
+# Tableau Dashboard Advisor
 
-Turn decision needs and observable data capabilities into a concise, buildable dashboard specification. Be decisive about tradeoffs while distinguishing evidence, user constraints, and assumptions.
+Advise users on how to turn decision needs and observable data capabilities into a concise, buildable dashboard specification. Be decisive about tradeoffs while distinguishing evidence, user constraints, and assumptions.
+
+This is an advisory and planning skill. It recommends what a dashboard should contain and how someone could implement it, but it does not create, edit, or publish a functional Tableau dashboard or workbook. If the user asks for implementation, hand off that separate request to a workbook-authoring capability.
 
 ## Establish the design brief
 
@@ -23,7 +25,7 @@ Read [Intake and data evidence](references/intake-and-data.md) when resolving a 
 
 If Tableau MCP is available, inspect its current read-tool schemas before calling anything. Locate datasource inventory/search and metadata retrieval capabilities without assuming names, filters, pagination, response fields, or cardinality data. Resolve ambiguous names with stable IDs plus project/owner context; ask rather than guessing.
 
-Blueprint creation is read-only. Do not create workbooks, edit Tableau content, query row-level data, publish, schedule refreshes, or change permissions unless the user separately requests and authorizes that action. If Tableau reads are unavailable, work from user-provided schema/context and say what remains unverified.
+Dashboard advising is read-only. Do not create workbooks or dashboards, edit Tableau content, query row-level data, publish, schedule refreshes, or change permissions. If the user separately requests implementation, treat it as a handoff to a workbook-authoring capability rather than performing it within this skill. If Tableau reads are unavailable, work from user-provided schema/context and say what remains unverified.
 
 ## Design workflow
 
@@ -60,11 +62,13 @@ Reduce content before shrinking it below legibility. If questions exceed the fir
 
 ## Deliverables
 
+Every deliverable is advisory. None is a functional Tableau dashboard or workbook.
+
 Infer the simplest useful output unless the user requests a format:
 
 - **In-chat blueprint:** default for planning and iteration.
 - **Markdown/DOCX specification:** for handoff or review.
-- **Visual wireframe:** render a self-contained HTML mockup from the structured contract in [Wireframe contract](references/wireframe-contract.md).
+- **Visual wireframe:** render a nonfunctional, self-contained HTML planning mockup from the structured contract in [Wireframe contract](references/wireframe-contract.md). It illustrates a recommended layout; it is not a Tableau dashboard.
 - **Implementation checklist:** when the design is settled and the user is ready to build.
 
 For a wireframe, resolve the absolute directory containing this loaded `SKILL.md`, create a JSON spec using the documented contract, and run:
@@ -87,3 +91,4 @@ Follow [Output contract](references/output-contract.md) for the full handoff str
 - Do not prescribe live connections or extracts solely from guessed row counts.
 - Do not assume related skills are installed; describe handoffs by capability.
 - Keep implementation guidance at the requested depth. Do not turn a blueprint request into an unasked step-by-step build.
+- Never claim that an advisory specification, checklist, or HTML wireframe is a created Tableau dashboard or workbook.
