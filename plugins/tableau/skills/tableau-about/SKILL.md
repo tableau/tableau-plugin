@@ -5,43 +5,98 @@ description: Explain what the Tableau plugin is for and how it helps users work 
 
 # Tableau Plugin Overview
 
-Explain the Tableau plugin in terms of the outcomes it enables. Do not present an inventory of tools, APIs, or low-level functionality.
+The Tableau plugin connects Codex to Tableau so users can explore existing analytics content, understand dashboard data, plan new dashboards, evaluate datasource metadata, review visualization design, and create or modify workbooks.
 
-Focus on two primary uses.
+## Core capabilities
 
-## Surface and understand existing content
+### Explore existing Tableau content
 
-The plugin helps users find dashboards and workbooks that already exist on their Tableau site and understand what that content is showing.
+Find and open Tableau views, dashboards, workbooks, datasources, and metrics by name or keyword. Use the appropriate focused Tableau skill when the user wants to inspect or work with a specific item.
 
-Users can ask the plugin to:
+### Analyze dashboard data
 
-- Find relevant dashboards or workbooks.
-- Explain charts, dashboards, trends, and notable results.
-- Investigate a subset of items in a dense visualization.
-- Identify items that meet particular criteria.
-- Compare selected items or categories.
-- Summarize important patterns and findings.
+Answer questions using the summary data exposed by a Tableau view. This can include identifying trends, comparing categories, applying supported filters, and finding marks that meet a condition.
 
-For example, if a dashboard contains a chart with more than 100 items, the user can ask which items satisfy a condition or request more detail about a particular subset.
+Do not imply unrestricted access to underlying row-level data. Analysis is limited to the data and metadata Tableau makes available through the connected capabilities and the user’s permissions.
 
-Note: the plugin does not have direct access to the underlying data from a visual, only the summary data.  So any summaries/explanations are based on what is visible in the dashboards
+### Create or modify workbooks
 
-## Author new content
+Build a new Tableau workbook or update an existing one from a natural-language request. This can include creating sheets, calculations, charts, dashboards, filters, and layouts, then publishing the result when requested and authorized.
 
-The plugin helps users create new Tableau content either from a blank workbook or by using an existing workbook as a starting point.
+The model constructs the workbook definition programmatically. Users do not need to understand or edit workbook XML themselves.
 
-The model generates the requested workbook on the fly and publishes the new or updated result to Tableau Cloud. Users can describe the analysis, visualization, dashboard, filters, or changes they want without needing to understand Tableau workbook internals.
+## Planning and review capabilities
 
-## Response guidance
 
-When describing the plugin:
 
-- Lead with the two primary uses above.
-- Emphasize discovery, explanation, investigation, creation, iteration, and publishing.
-- Describe benefits and user outcomes rather than underlying tools.
-- Do not mention XML unless the user explicitly asks how workbook generation works internally.
-- If implementation details are requested, explain that the model constructs the workbook definition programmatically.
-- Do not imply that customers need to understand workbook XML or edit it themselves.
-- Include a few representative example requests when helpful.
+### Advise on dashboard design
 
-For a general question such as “What can the Tableau plugin do?”, provide a concise explanation of both primary uses and finish with examples of what the user could ask.
+Provide advice that turns business questions, audience needs, and available datasource metadata into an implementation-ready Tableau dashboard plan.
+
+A blueprint can specify:
+
+- KPIs and analytical questions
+- Recommended charts
+- Dashboard hierarchy and layout
+- Filters, actions, and tooltips
+- Desktop and tablet behavior
+- Accessible colors and typography
+- Tableau implementation guidance
+- A deterministic HTML wireframe when useful
+
+This is an advisory workflow. It does not create, edit, or publish a Tableau dashboard or workbook. A wireframe is a nonfunctional planning mockup, not a working dashboard. Use the separate workbook-authoring workflow when the user requests implementation.
+
+### Review datasource metadata quality
+
+Evaluate published Tableau datasource metadata for:
+
+- Schema hygiene
+- Field naming
+- Likely type or role mismatches
+- Calculation complexity
+- Documentation gaps
+- Available freshness signals
+
+The review can produce full scans, priority-only reports, datasource comparisons, changed-only results, or comparisons with a prior baseline.
+
+This is a metadata-only assessment. It does not claim to detect row-level nulls, duplicates, distributions, PII, or underlying-data freshness when those facts are not exposed by the available metadata.
+
+### Critique visualization design
+
+Review and score Tableau dashboards or views using rendered-image evidence, available Tableau metadata, and a seven-domain design rubric.
+
+The critique can assess:
+
+- Audience adaptation
+- Message alignment
+- Chart selection
+- Layout and storytelling
+- Color
+- Textual elements
+- Typography and readability
+
+Recommendations should be prioritized and tied to visible or explicitly supplied evidence. The critique is read-only: it does not modify workbooks, validate source-data accuracy, assess business performance, or infer interactions and accessibility behavior that cannot be observed.
+
+## Routing guidance
+
+Use the focused Tableau skill that best matches the requested outcome:
+
+- Use `tableau-content-viewer` to find, open, or show existing Tableau content.
+- Use `tableau-dashboard-advisor` for advice on how to design and build a dashboard, including a nonfunctional planning wireframe. It does not create the Tableau dashboard.
+- Use `tableau-data-quality-sentinel` to review published datasource metadata.
+- Use `tableau-viz-critique` to evaluate an existing dashboard or view.
+- Use `tableau-workbook-authoring` to create, edit, copy, or publish a workbook.
+
+For requests spanning multiple workflows, sequence them explicitly. For example, critique an existing dashboard before handing approved recommendations to workbook authoring.
+
+## Representative requests
+
+- `Find and open the regional sales dashboard.`
+- `Explain the largest trends in this view.`
+- `Which products shown here meet this condition?`
+- `Advise me on how to design an executive dashboard for regional sales performance.`
+- `Show me a nonfunctional desktop and tablet wireframe for this dashboard plan.`
+- `Run a metadata quality scan on the Sales datasource.`
+- `Compare metadata quality for Orders and Orders v2.`
+- `Review this dashboard and prioritize its three highest-impact improvements.`
+- `Add a monthly trend chart to this workbook and publish the update.`

@@ -1,5 +1,5 @@
 {
-    "description": "Prepare Tableau workbook validation dependencies.",
+    "description": "Prepare Tableau workbook authoring dependencies.",
     "hooks": {
       "SessionStart": [
         {
@@ -7,9 +7,9 @@
           "hooks": [
             {
               "type": "command",
-              "command": "sh \"$PLUGIN_ROOT/scripts/bootstrap_python.sh\"",
+              "command": "sh \"$PLUGIN_ROOT/skills/tableau-workbook-authoring/scripts/bootstrap_python.sh\"",
               "timeout": 180,
-              "statusMessage": "Preparing Tableau workbook validator"
+              "statusMessage": "Preparing Tableau workbook authoring skill"
             }
           ]
         }

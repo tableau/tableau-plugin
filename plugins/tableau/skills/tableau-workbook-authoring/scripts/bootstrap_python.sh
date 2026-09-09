@@ -2,6 +2,7 @@
 set -eu
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PYTHON_TAG="$(
   "$PYTHON_BIN" -c \
     'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
@@ -18,4 +19,4 @@ fi
 "$VENV_PATH/bin/python" -m pip install \
   --disable-pip-version-check \
   --no-input \
-  -r "$PLUGIN_ROOT/scripts/requirements.txt"
+  -r "$SCRIPT_DIR/requirements.txt"

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "tableau": {
+    "Tableau": {
       "type": "http",
       "url": "https://mcp.tableau.com"
     }
