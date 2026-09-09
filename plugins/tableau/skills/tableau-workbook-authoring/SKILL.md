@@ -86,10 +86,10 @@ If the downloaded package looks incomplete or a dependency is missing, read [`re
 Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. A workbook produced by `instantiate`/`inject` is already validated by that command itself — re-running the standalone validator on it is redundant but harmless. For a hand-edited TWB, after the edit:
 
 ```bash
-sh "$PLUGIN_ROOT/scripts/run_validator.sh" path/to/workbook.twb
+sh "$PLUGIN_ROOT/skills/tableau-workbook-authoring/scripts/run_validator.sh" path/to/workbook.twb
 ```
 
-(`scripts/` is relative to the plugin root; install `scripts/requirements.txt` only if the validator reports a missing dependency.)
+The session-start hook prepares the validator environment and installs `lxml` from `skills/tableau-workbook-authoring/scripts/requirements.txt`. If the environment is missing, run `bootstrap_python.sh` from that same directory before running the validator.
 
 For TWBX, run `unzip -t` after rebuilding it. Publish with `publish-workbook`, using `workbookFilePath` when the runtime can pass a local path, otherwise `request-workbook-upload` first and pass its `workbookUploadId`. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
 

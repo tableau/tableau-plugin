@@ -20,12 +20,12 @@ plugins/tableau/
   skills/tableau-workbook-authoring/           # generate/modify workbooks by editing TWB XML
   skills/shared/rendering.md                   # shared render-in-side-panel steps, used by both of the above
   schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd           # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
-  scripts/validate_workbook.py                 # validates a .twb/.twbx against the matching XSD
-  scripts/requirements.txt                     # lxml, needed by validate_workbook.py
+  skills/tableau-workbook-authoring/scripts/validate_workbook.py   # validates a .twb/.twbx against the matching XSD
+  skills/tableau-workbook-authoring/scripts/requirements.txt       # lxml, needed by validate_workbook.py
   scripts/render_embed.py                      # builds an embeddable URL + local iframe fallback
 ```
 
-`scripts/validate_workbook.py` needs `lxml`: `pip install -r plugins/tableau/scripts/requirements.txt`.
+The workbook validator needs `lxml`. The plugin's session-start hook installs it from `plugins/tableau/skills/tableau-workbook-authoring/scripts/requirements.txt` into the plugin's writable data directory.
 
 ## How it connects to Tableau
 
