@@ -18,6 +18,7 @@ plugins/tableau/
   skills/tableau-analytics/                    # read-oriented: querying/exploring content
   skills/tableau-content-viewer/               # find a view/workbook and render it, no data querying or editing
   skills/tableau-workbook-authoring/           # generate/modify workbooks by editing TWB XML
+  skills/author-data-app/                      # scaffold, wire, author, package, and publish a Tableau data app (viz extension)
   skills/shared/rendering.md                   # shared render-in-side-panel steps, used by both of the above
   schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd           # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
   skills/tableau-workbook-authoring/scripts/validate_workbook.py   # validates a .twb/.twbx against the matching XSD
