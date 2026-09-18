@@ -23,11 +23,17 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_PROMPTS_FILE = ROOT / "prompts.json"
 DEFAULT_RESULTS_DIR = ROOT / "results"
+# Flat, accumulating archive that the Tableau .hyper extract is built from. Each
+# rep writes one uniquely-named file here (in addition to its nested
+# results/.../summary.json), so repeated runs combine without duplication.
+DEFAULT_STAGING_DIR = ROOT / "tableau"
+DEFAULT_HYPER_OUTPUT = ROOT / "bench_results.hyper"
 CODEX_CONFIG_TOML = Path.home() / ".codex" / "config.toml"
 
 # Guards created_assets.jsonl appends when reps run concurrently (--parallel).
@@ -171,10 +177,19 @@ def _extract_published_asset(item):
     }
 
 
-def analyze_step_events(t_launch, events, step_index, prompt):
-    """Turn a raw event stream into tool_calls + non_tool_segments with durations."""
-    tool_calls = []
-    non_tool_segments = []
+def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
+    """Turn a raw event stream into a single ordered timeline of tool calls and
+    non-tool ("thinking") segments.
+
+    Events already arrive in chronological order, so each is appended to one
+    ``timeline`` list (rather than split into separate arrays) tagged with a
+    ``segment_type`` discriminator, an ``operation`` category, and absolute
+    ``start_offset_s`` / ``end_offset_s`` measured from the rep's ``wall_start``.
+    That preserves the interleaving -- e.g. which reasoning segment follows a
+    given tool call. Rep-global ``seq`` and ``preceding_tool`` are stamped later
+    (in run_test_once) once every step's timeline is concatenated.
+    """
+    timeline = []
     warnings = []
     errors = []
     created_assets = []
@@ -210,9 +225,14 @@ def analyze_step_events(t_launch, events, step_index, prompt):
                 gap = ts - prev_ts
                 if started_processing and gap > 0:
                     name = _tool_name(item)
-                    non_tool_segments.append({
-                        "step": step_index, "kind": "pre_tool_call",
-                        "label": f"deciding to call {name}", "duration": gap,
+                    timeline.append({
+                        "step": step_index, "segment_type": "non_tool_segment",
+                        "kind": "pre_tool_call", "operation": "pre_tool_call",
+                        "name": None, "label": f"deciding to call {name}",
+                        "duration": gap,
+                        "start_offset_s": prev_ts - wall_start,
+                        "end_offset_s": ts - wall_start,
+                        "status": None, "error": None,
                     })
                 open_items[item["id"]] = (ts, item)
                 prev_ts = ts
@@ -224,14 +244,14 @@ def analyze_step_events(t_launch, events, step_index, prompt):
 
             if itype in ("command_execution", "mcp_tool_call"):
                 start_ts, _ = open_items.pop(item["id"], (prev_ts, item))
-                duration = ts - start_ts
-                tool_calls.append({
-                    "step": step_index,
-                    "kind": itype,
-                    "name": _tool_name(item),
-                    "duration": duration,
-                    "status": item.get("status"),
-                    "error": item.get("error"),
+                timeline.append({
+                    "step": step_index, "segment_type": "tool_call",
+                    "kind": itype, "operation": classify_operation(itype, item),
+                    "name": _tool_name(item), "label": None,
+                    "duration": ts - start_ts,
+                    "start_offset_s": start_ts - wall_start,
+                    "end_offset_s": ts - wall_start,
+                    "status": item.get("status"), "error": item.get("error"),
                 })
                 if itype == "mcp_tool_call":
                     asset = _extract_published_asset(item)
@@ -240,18 +260,26 @@ def analyze_step_events(t_launch, events, step_index, prompt):
                 prev_ts = ts
 
             elif itype == "reasoning":
-                gap = ts - prev_ts
-                non_tool_segments.append({
-                    "step": step_index, "kind": "reasoning",
-                    "label": item.get("text", "")[:80], "duration": gap,
+                timeline.append({
+                    "step": step_index, "segment_type": "non_tool_segment",
+                    "kind": "reasoning", "operation": "reasoning",
+                    "name": None, "label": item.get("text", "")[:80],
+                    "duration": ts - prev_ts,
+                    "start_offset_s": prev_ts - wall_start,
+                    "end_offset_s": ts - wall_start,
+                    "status": None, "error": None,
                 })
                 prev_ts = ts
 
             elif itype == "agent_message":
-                gap = ts - prev_ts
-                non_tool_segments.append({
-                    "step": step_index, "kind": "agent_message",
-                    "label": item.get("text", "")[:80], "duration": gap,
+                timeline.append({
+                    "step": step_index, "segment_type": "non_tool_segment",
+                    "kind": "agent_message", "operation": "message",
+                    "name": None, "label": item.get("text", "")[:80],
+                    "duration": ts - prev_ts,
+                    "start_offset_s": prev_ts - wall_start,
+                    "end_offset_s": ts - wall_start,
+                    "status": None, "error": None,
                 })
                 final_message = item.get("text")
                 prev_ts = ts
@@ -266,7 +294,7 @@ def analyze_step_events(t_launch, events, step_index, prompt):
             continue
 
     # Mark the last agent_message of the step as the "final" one for reporting.
-    for seg in reversed(non_tool_segments):
+    for seg in reversed(timeline):
         if seg["kind"] == "agent_message":
             seg["kind"] = "final_message"
             break
@@ -275,14 +303,33 @@ def analyze_step_events(t_launch, events, step_index, prompt):
         "step": step_index,
         "prompt": prompt,
         "thread_id": thread_id,
-        "tool_calls": tool_calls,
-        "non_tool_segments": non_tool_segments,
+        "timeline": timeline,
         "final_message": final_message,
         "usage": usage,
         "warnings": warnings,
         "errors": errors,
         "created_assets": created_assets,
     }
+
+
+def classify_operation(itype, item):
+    """Normalize a tool call into a coarse operation category, so analysis can
+    ask 'which operations are slow / fail most' with a single GROUP BY."""
+    if itype == "mcp_tool_call":
+        # e.g. Tableau::publish-workbook -> "publish-workbook"
+        return item.get("tool") or "mcp"
+    cmd = (item.get("command") or "").lower()
+    if "curl" in cmd or "wget" in cmd:
+        return "download"
+    if "validate" in cmd:
+        return "validate"
+    if any(ext in cmd for ext in (".twb", ".twbx", ".xml")) and (
+        ">" in cmd or " tee " in cmd or "python" in cmd or " sd " in cmd or "sed " in cmd
+    ):
+        return "xml-write"
+    if any(tok in cmd for tok in ("sed -n", "cat ", "bat ", " rg ", "grep", " ls ", "find ", " fd ", "head", "tail")):
+        return "inspect"
+    return "shell"
 
 
 def _tool_name(item):
@@ -308,7 +355,7 @@ def record_created_assets(test_id, model_label, rep, step_results, ledger_path):
                 print(f"    published: {asset['name']!r} (id {asset['workbook_id']}) -> logged to {ledger_path}")
 
 
-def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, preamble=None):
+def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, preamble=None, staging_dir=None):
     # Logged here, inside the worker, rather than at submission time -- executor.submit()
     # returns immediately even when the pool is already saturated, so a print in the
     # submission loop would fire for every queued rep at once regardless of --parallel.
@@ -353,7 +400,7 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
             raw_log_path = rep_dir / "step_preamble.jsonl"
             with raw_log_path.open("w") as fh:
                 t_launch, events, returncode = run_codex_step(preamble, resume_id, step_args, fh, cwd=run_cfg["cd"])
-            preamble_result = analyze_step_events(t_launch, events, -1, preamble)
+            preamble_result = analyze_step_events(t_launch, events, -1, preamble, wall_start)
             if preamble_result["thread_id"]:
                 resume_id = preamble_result["thread_id"]
             if returncode != 0:
@@ -374,7 +421,7 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
             raw_log_path = rep_dir / f"step_{i}.jsonl"
             with raw_log_path.open("w") as fh:
                 t_launch, events, returncode = run_codex_step(prompt_text, resume_id, step_args, fh, cwd=run_cfg["cd"])
-            result = analyze_step_events(t_launch, events, i, step["prompt"])
+            result = analyze_step_events(t_launch, events, i, step["prompt"], wall_start)
             result["files"] = [str(p) for p in resolved_files]
             result["returncode"] = returncode
             step_results.append(result)
@@ -382,6 +429,20 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
                 resume_id = result["thread_id"]
 
         record_created_assets(test["id"], model_label, rep, step_results, ledger_path)
+
+        # Stamp a rep-global sequence number and the name of the most recent tool
+        # call onto every timeline entry, in chronological order across all steps.
+        # This gives a single ordering key and lets analysis ask "what happened
+        # right after this tool call" (e.g. reasoning that follows a publish).
+        seq = 0
+        last_tool = None
+        for step in step_results:
+            for entry in step.get("timeline", []):
+                entry["seq"] = seq
+                entry["preceding_tool"] = last_tool
+                seq += 1
+                if entry["segment_type"] == "tool_call":
+                    last_tool = entry["name"]
 
         wall_time = time.monotonic() - wall_start
         summary = {
@@ -393,6 +454,19 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
             "steps": step_results,
         }
         (rep_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+
+        # Also drop a uniquely-named copy into the flat staging archive that the
+        # .hyper extract is built from. The name encodes test/model/run plus a
+        # timestamp so repeated runs accumulate without overwriting; skip if a
+        # file with the same name somehow already exists.
+        if staging_dir is not None:
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            flat_name = f"{test['id']}__{sanitize_label(model_label)}__run_{rep:02d}__{stamp}.json"
+            flat_path = staging_dir / flat_name
+            if not flat_path.exists():
+                flat_path.write_text(json.dumps(summary, indent=2))
+
         return summary
     finally:
         if work_dir:
@@ -409,8 +483,11 @@ def aggregate_test(test_id, model_label, rep_summaries, out_path):
     for s in rep_summaries:
         wall_times.append(s["wall_time"])
         for step in s["steps"]:
-            all_tool_calls.extend(step["tool_calls"])
-            all_non_tool.extend(step["non_tool_segments"])
+            for entry in step.get("timeline", []):
+                if entry["segment_type"] == "tool_call":
+                    all_tool_calls.append(entry)
+                else:
+                    all_non_tool.append(entry)
             if step.get("final_message"):
                 final_messages.append(step["final_message"])
             errors_seen.extend(step.get("errors", []))
@@ -532,6 +609,11 @@ def main():
     ap.add_argument("--models", help="Comma-separated model ids to sweep the same tests across, e.g. gpt-5.6-sol,o3")
     ap.add_argument("--dry-run", action="store_true", help="Print planned commands, don't execute")
     ap.add_argument("--report-only", action="store_true", help="Rebuild report from existing results/")
+    ap.add_argument("--staging-dir", type=Path, default=DEFAULT_STAGING_DIR,
+                    help="Flat archive each rep's result is copied into and the .hyper is built from (default: bench/tableau)")
+    ap.add_argument("--hyper-output", type=Path, default=DEFAULT_HYPER_OUTPUT,
+                    help="Path of the Tableau .hyper extract built at the end of a run (default: bench/bench_results.hyper)")
+    ap.add_argument("--no-hyper", action="store_true", help="Skip building the .hyper extract at the end of the run")
     args = ap.parse_args()
 
     spec = json.loads(args.prompts_file.read_text())
@@ -618,7 +700,7 @@ def main():
         for unit_index, rep in work_items:
             test, cfg, model_label, test_dir, reps = units[unit_index]
             rep_dir = test_dir / f"run_{rep:02d}"
-            fut = executor.submit(run_test_once, test, cfg, model_label, rep_dir, rep, reps, ledger_path, preamble=preamble)
+            fut = executor.submit(run_test_once, test, cfg, model_label, rep_dir, rep, reps, ledger_path, preamble=preamble, staging_dir=args.staging_dir)
             futures[fut] = (unit_index, rep)
         for fut in concurrent.futures.as_completed(futures):
             unit_index, rep = futures[fut]
@@ -636,6 +718,17 @@ def main():
         report_path = args.results_dir / "report.md"
         render_report(aggregates, report_path)
         print(f"\nReport written to {report_path}")
+
+    # Rebuild the Tableau .hyper extract from the whole staging archive, so the
+    # run finishes with an up-to-date extract combining this run with any earlier
+    # ones already staged. Kept optional (--no-hyper) since it needs tableauhyperapi.
+    if not args.no_hyper:
+        try:
+            from build_hyper import write_hyper
+        except ImportError as exc:
+            print(f"\nSkipping .hyper build ({exc}); install tableauhyperapi to enable it.")
+        else:
+            write_hyper(args.staging_dir, args.hyper_output)
 
 
 if __name__ == "__main__":
