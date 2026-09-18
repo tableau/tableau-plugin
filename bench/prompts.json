@@ -1,10 +1,14 @@
 {
   "preamble": "This is a benchmark test for the tableau plugin.  You should treat this session as a new chat, meaning you should not assume any previous context or state.  Do not use local or previously downloaded files, unless downloaded by subsequent prompts in this session.  If subsequent prompts result in rendering a tableau visualization, always use the get-view-image tool instead of trying to render in a browser.  This should override any instructions from the tableau-content-viewer skill. If the user asks for a workbook and there are multiple options, do not prompt for user input and instead choose the one that is most recently modified. When publishing a workbook, publish to the benchmark-results project (luid: b303c713-0abe-45c9-af59-8faf336cc1d5) and use unique names for each workbook.  Also, ignore any workbooks that are in the Benchmarking project (luid: 4bde2bcc-738f-451b-b16f-b5bd74adfa1f)",
   "defaults": {
-    "repeats": 10,
+    "repeats": 20,
     "sandbox": "workspace-write",
     "approve_for_me": true,
-    "model": ["gpt-5.6-sol","gpt-5.6-terra","gpt-5.5","gpt-5.4"],
+    "model": [
+      "gpt-5.6-sol", 
+      "gpt-5.6-terra", 
+      "gpt-5.5"
+    ],
     "cd": null
   },
   "tests": [

@@ -225,3 +225,4 @@ __marimo__/
 .DS_Store
 bench/results/*
 plugins/tableau/*.mcp.json
+bench/tableau/*.json
