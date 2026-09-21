@@ -1,6 +1,6 @@
 ---
 name: author-data-app
-description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool (and finalize its postUnzip plan on remote/http), author the extension's query + visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use whenever a user wants to create, build, or publish a Tableau data app.
+description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool (already fully finalized on both local and remote/http), author the extension's query + visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use whenever a user wants to create, build, or publish a Tableau data app.
 ---
 
 # Author Data App
@@ -50,41 +50,23 @@ field names to wire — omit to wire every field) directly in this call:
 This wires the datasource into the scaffolded workbook server-side, in the
 same call — see Phase 1.5 below for when this does and doesn't apply.
 
-The result shape tells you which transport you're on and what's left to do:
+The result shape tells you where the finalized workspace lives — both are
+already fully substituted, nothing left to apply client-side:
 
-- **local (stdio):** result has `filePath` and **no** `postUnzip`. The workspace
-  is already written to disk, fully substituted. **Nothing more to do in this
-  phase** — the workspace is at `filePath`.
-- **remote (http):** result has `s3URL` + a `postUnzip` plan. The server returned
-  an *un-substituted* template zip; the client must download, unzip, and apply
-  the plan. Do this deterministically with the bundled script — applying it
-  freehand leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` tokens or
-  interleaves edits and renames in the wrong order.
+- **local (stdio):** result has `filePath`. The workspace is already written
+  to disk. **Nothing more to do in this phase** — the workspace is at
+  `filePath`.
+- **remote (http) / S3 configured:** result has `s3URL`, a short-lived
+  presigned URL to a zip of the already-finished workspace. Download and
+  unzip it:
 
-### Finalizing a remote (postUnzip) result
+  ```bash
+  WORK="$(mktemp -d -t dataapp)"
+  curl -fsSL "<s3URL>" -o "$WORK/workspace.zip"
+  unzip -q "$WORK/workspace.zip" -d "$WORK"
+  ```
 
-```bash
-SKILL_DIR="<absolute path to this skill directory>"
-WORK="$(mktemp -d -t dataapp)"
-
-# 1. Save the postUnzip object verbatim (do NOT reformat — find tokens must match byte-for-byte)
-cat > "$WORK/plan.json" <<'PLAN_JSON'
-{ …paste the result's postUnzip object here… }
-PLAN_JSON
-
-# 2. Download + unzip the template from the (short-lived) s3URL
-curl -fsSL "<s3URL>" -o "$WORK/template.zip"
-mkdir -p "$WORK/unzipped"
-unzip -q "$WORK/template.zip" -d "$WORK/unzipped"
-
-# 3. Apply the plan (edits first, then renames; verifies no placeholders survive)
-node "$SKILL_DIR/apply-plan.mjs" "$WORK/unzipped" "$WORK/plan.json"
-```
-
-`apply-plan.mjs` prints the finalized workspace root on stdout. See
-[apply-plan.mjs](apply-plan.mjs) for the full contract; it hard-fails if a `find`
-token is missing (the served zip is stale / out of sync with the plan) rather
-than emitting a broken workspace.
+  **Nothing more to do in this phase** — the workspace is under `$WORK`.
 
 At the end of phase 1 you have a finalized workspace directory:
 ```
@@ -278,13 +260,12 @@ to Slack clients).
 
 - **Nesting the workspace folder in the .twbx.** Zip the *contents* (`.twb` +
   `Packages/` at root), not the `<App Name>/` directory. Always `unzip -l` to confirm.
-- **Applying a postUnzip plan freehand.** Use `apply-plan.mjs` — edits before
-  renames, renames deepest-first, verified. See its Common Mistakes section.
+- **Forgetting to unzip a remote/S3 result.** The `s3URL` result is a zip of
+  the already-finished workspace — download and unzip it before authoring;
+  there is no separate finalize step for either transport.
 - **Hand-editing the `<datasources/>` wiring.** Use `wire-datasource.mjs` — freehand
   edits mismatch the `sqlproxy.<hash>` join key across its four locations or leave an
   empty `<datasources />` anchor, and the app silently reaches no data.
-- **Running finalize on a local result.** A result with `filePath` and no
-  `postUnzip` is already done; skip straight to phase 3 (after authoring).
 - **Handing off `app.js` to the human unprompted.** Phase 2 authoring is the
   fixed default — always write `app.js` yourself from the human's stated
   criteria/vibe. Only hand off when the human explicitly says they want to

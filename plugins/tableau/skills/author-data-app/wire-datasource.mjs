@@ -10,7 +10,7 @@
  * `sqlproxy` (Data Server) datasource, keeping the `sqlproxy.<hash>` join key
  * byte-identical everywhere it must appear.
  *
- * It is a script rather than freehand XML for the same reason as apply-plan.mjs:
+ * It is a script rather than freehand XML because
  * the wiring spans four coordinated locations (root datasource `name`, root
  * `relation connection`, view `datasource name`, `datasource-dependencies
  * datasource`) that must agree exactly, and it's easy to leave one empty anchor
