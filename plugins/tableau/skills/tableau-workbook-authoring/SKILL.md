@@ -25,28 +25,28 @@ Call these tool IDs directly when they are available. Do not scan or print the
 full tool catalog merely to rediscover their names or schemas.
 
 - Workbook search:
-  `mcp__tableau__search_content`
+  `mcp__Tableau__search-content`
   with `{ terms, filter: { contentTypes: ["workbook"] }, limit }`
 - View / Dashboard search:
-  `mcp__tableau__search_content`
+  `mcp__Tableau__search-content`
   with `{ terms, filter: { contentTypes: ["view"] }, limit }`
 - Exact project lookup:
-  `mcp__tableau__list_projects`
+  `mcp__Tableau__list-projects`
   with `{ filter: "name:eq:<project-name>", limit }`
 - Workbook download:
-  `mcp__tableau__download_workbook`
+  `mcp__Tableau__download-workbook`
   with `{ workbookId, includeExtract: true }`
 - Workbook publish:
-  `mcp__tableau__publish_workbook`
+  `mcp__Tableau__publish-workbook`
   with `{ name, projectId, workbookFilePath, overwrite }`
 - Staged-upload fallback:
-  `mcp__tableau__request_workbook_upload`
+  `mcp__Tableau__request-workbook-upload`
 - Workbook metadata:
-  `mcp__tableau__get_workbook`
+  `mcp__Tableau__get-workbook`
 - View metadata:
-  `mcp__tableau__get_view`
+  `mcp__Tableau__get-view`
 - Static view render:
-  `mcp__tableau__get_view_image`
+  `mcp__Tableau__get-view-image`
   with `{ viewId, format: "PNG", width, height }`
 
 If a directly named tool is not callable, perform one focused availability
@@ -63,9 +63,9 @@ catalog.
   3. If a match is returned, read [`references/catalog-templates.md`](references/catalog-templates.md), inspect the match, and use `instantiate` for a new workbook or `inject` for an existing one.
 - Adding a breakdown/color split, or a filter, to an existing worksheet (not a whole new chart) → read [`references/field-edits.md`](references/field-edits.md) and use `add-encoding`/`add-filter`. Run `inspect-workbook` first if the field names the user gave aren't confirmed against the workbook yet.
 - No catalog match, and no field-level match above, or a genuinely custom construct neither covers → hand-edit the TWB XML per the steps below.
-- First edit/republish of an existing workbook this task → resolve it with `search-content` (`filter: { contentTypes: ["workbook"] }`; see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches), then `download-workbook`.
+- First edit/republish of an existing workbook this task → resolve it with `mcp__Tableau__search-content` (`filter: { contentTypes: ["workbook"] }`; see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches), then `mcp__Tableau__download-workbook`.
 - Brand-new workbook with no starting point and no catalog match → read [`references/new-workbook.md`](references/new-workbook.md) first.
-`request-workbook-upload`, `publish-workbook`, `download-workbook`, and interactive rendering may be feature-gated — report a missing tool rather than retrying it.
+`mcp__Tableau__request-workbook-upload`, `mcp__Tableau__publish-workbook`, `mcp__Tableau__download-workbook`, and interactive rendering may be feature-gated — report a missing tool rather than retrying it.
 
 ## Fast path for follow-up edits
 
@@ -73,8 +73,8 @@ Reuse the extracted TWB/TWBX, published workbook ID, project ID, name, and view 
 
 ## Existing workbook, first pass this task
 
-1. Resolve the workbook (and destination project, if named) — reuse LUIDs already known this task; otherwise `search-content` (see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches). Resolve independent lookups in parallel when supported.
-2. `download-workbook` with `includeExtract: true` unless this is pure inspection that won't be republished. Unzip a TWBX and edit the root TWB.
+1. Resolve the workbook (and destination project, if named) — reuse LUIDs already known this task; otherwise `mcp__Tableau__search-content` (see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches). Resolve independent lookups in parallel when supported.
+2. `mcp__Tableau__download-workbook` with `includeExtract: true` unless this is pure inspection that won't be republished. Unzip a TWBX and edit the root TWB.
 3. Add or change content: prefer `inject` against a catalog match (see Routing and [`references/catalog-templates.md`](references/catalog-templates.md)); otherwise hand-edit only the affected worksheet/dashboard and its `<datasource-dependencies>`, matching adjacent XML conventions. **Skip this step** for a plain copy/republish/move with no requested content change.
 4. Validate and publish (below).
 5. Render the result — see [`../../references/rendering.md`](../../references/rendering.md).
@@ -91,7 +91,7 @@ sh "$PLUGIN_ROOT/skills/tableau-workbook-authoring/scripts/run_validator.sh" pat
 
 The session-start hook prepares the validator environment and installs `lxml` from `skills/tableau-workbook-authoring/scripts/requirements.txt`. If the environment is missing, run `bootstrap_python.sh` from that same directory before running the validator.
 
-For TWBX, run `unzip -t` after rebuilding it. Publish with `publish-workbook`, using `request-workbook-upload` first and pass its `workbookUploadId`.  If the `request-workbook-upload` tool is disabled, use `workbookFilePath` and pass in a local path. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
+For TWBX, run `unzip -t` after rebuilding it. Publish with `mcp__Tableau__publish-workbook`, using `mcp__Tableau__request-workbook-upload` first and pass its `workbookUploadId`.  If the `mcp__Tableau__request-workbook-upload` tool is disabled, use `workbookFilePath` and pass in a local path. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
 
 If validation fails, fix the reported lines/elements and retry once; stop after 10 cycles and report the remaining errors.
 
@@ -103,7 +103,7 @@ Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up 
 - Prefer fields already declared in the TWB's `<column>` metadata over inspecting the extract or datasource metadata; `inspect-workbook` (see `references/field-edits.md`) reads exactly that metadata.
 - Don't invent field names, roles, or numbers not backed by inspected metadata.
 - Don't force-fit a catalog template onto a chart it doesn't match — fall back to hand-editing instead of stretching the closest template.
-- If the `download-workbook` tool returns a temporary URL, download the file locally
+- If the `mcp__Tableau__download-workbook` tool returns a temporary URL, download the file locally
 
 # References
 

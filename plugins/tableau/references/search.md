@@ -1,10 +1,10 @@
 # Search Tableau content
 
 Resolve a name/keyword to a specific piece of Tableau content (workbook,
-view, datasource, etc.) via `search-content`, and disambiguate when more
+view, datasource, etc.) via `mcp__Tableau__search-content`, and disambiguate when more
 than one result plausibly matches.
 
-## Call `search-content`
+## Call `mcp__Tableau__search-content`
 
 ```json
 { "terms": "<user's keyword or name>", "filter": { "contentTypes": ["view", "workbook"] }, "limit": 10 }
@@ -19,8 +19,8 @@ than one result plausibly matches.
 - Reuse a LUID already resolved earlier in the current task instead of
   searching again for the same content.
 
-`search-content` never returns a URL, only a `luid`. Resolving a
-render-ready URL (`get-view`/`get-workbook`) is a separate step — not part
+`mcp__Tableau__search-content` never returns a URL, only a `luid`. Resolving a
+render-ready URL (`mcp__Tableau__get-view`/`mcp__Tableau__get-workbook`) is a separate step — not part
 of search.
 
 ## Interpret the results
@@ -39,7 +39,7 @@ search → if 429, retry immediately → return final result to model
 
 ## Disambiguating with `request-user-input`
 
-Build one option per candidate from the fields `search-content` actually
+Build one option per candidate from the fields `mcp__Tableau__search-content` actually
 returns — don't invent a distinguishing detail it didn't surface:
 
 - `title` — the name to show.

@@ -9,16 +9,16 @@ Find a specific Tableau view (or workbook) and render it live via `open_in_codex
 
 # Routing
 
-- Find the content → `search-content` — see [`../../references/search.md`](../../references/search.md) for the call shape and how to disambiguate multiple matches. Reuse an already-resolved LUID/URL instead of searching again for the same content.
-- Get a render-ready URL → `get-view` (resolved `luid` as `viewId`) or `get-workbook` (as `workbookId`, only when no specific view matched). `search-content` never returns a URL — this call is required.
-- Render → `render-interactive-viz` with the resolved `luid` and matching `objectType`. If unavailable, call `open_in_codex` with the direct URL — see [`../../references/rendering.md`](../../references/rendering.md).
+- Find the content → `mcp__Tableau__search-content` — see [`../../references/search.md`](../../references/search.md) for the call shape and how to disambiguate multiple matches. Reuse an already-resolved LUID/URL instead of searching again for the same content.
+- Get a render-ready URL → `mcp__Tableau__get-view` (resolved `luid` as `viewId`) or `mcp__Tableau__get-workbook` (as `workbookId`, only when no specific view matched). `mcp__Tableau__search-content` never returns a URL — this call is required.
+- Render → `mcp__Tableau__render-interactive-viz` with the resolved `luid` and matching `objectType`. If unavailable, call `open_in_codex` with the direct URL — see [`../../references/rendering.md`](../../references/rendering.md).
 
 # Requirements
 
 - Prefer a view result when the user asked for a view; a workbook-only match is fine only when the user asked for the workbook as a whole.
 - Don't fabricate a view/workbook name or URL the search tools didn't surface.
-- A missing `render-interactive-viz`/search/content tool usually means a site admin disabled its group (`mcp-apps`/`EXCLUDE_TOOLS`) — that's site config, not a bug.
-- If the `download-workbook` tool returns a temporary URL, download the file locally
+- A missing `mcp__Tableau__render-interactive-viz`/search/content tool usually means a site admin disabled its group (`mcp-apps`/`EXCLUDE_TOOLS`) — that's site config, not a bug.
+- If the `mcp__Tableau__download-workbook` tool returns a temporary URL, download the file locally
 
 # References
 
