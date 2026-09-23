@@ -91,7 +91,7 @@ sh "$PLUGIN_ROOT/skills/tableau-workbook-authoring/scripts/run_validator.sh" pat
 
 The session-start hook prepares the validator environment and installs `lxml` from `skills/tableau-workbook-authoring/scripts/requirements.txt`. If the environment is missing, run `bootstrap_python.sh` from that same directory before running the validator.
 
-For TWBX, run `unzip -t` after rebuilding it. Publish with `publish-workbook`, using `workbookFilePath` when the runtime can pass a local path, otherwise `request-workbook-upload` first and pass its `workbookUploadId`. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
+For TWBX, run `unzip -t` after rebuilding it. Publish with `publish-workbook`, using `request-workbook-upload` first and pass its `workbookUploadId`.  If the `request-workbook-upload` tool is disabled, use `workbookFilePath` and pass in a local path. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
 
 If validation fails, fix the reported lines/elements and retry once; stop after 10 cycles and report the remaining errors.
 
