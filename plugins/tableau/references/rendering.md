@@ -17,7 +17,7 @@ and URLs already resolved during the current task.
 2. Return a successful interactive render as-is.
 3. If the interactive-render tool is missing, unknown, disabled, or fails,
    call `open_in_codex` with the direct view URL (below).
-4. If `open_in_codex` is unavailable or fails, call `mcp__node_repl__js` wotj the direct view URL (below)
+4. If `open_in_codex` is unavailable or fails, call `mcp__node_repl__js` with the direct view URL (below)
 4. If `mcp__node_repl__js` is unavailable or fails, call `get-view-image` once
    with:
    - `viewId`: the resolved view LUID;
