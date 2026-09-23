@@ -14,7 +14,7 @@ Use `--json` only when machine-readable errors help automate a repair.
 
 A clean XSD pass is necessary but not sufficient. It may not catch calculated
 field formula errors, dangling datasource/worksheet references, or invalid
-connection attributes. For a TWB, `publish-workbook` validates inline and
+connection attributes. For a TWB, `mcp__Tableau__publish-workbook` validates inline and
 returns structured `errors`/`warnings` with line, column, element, and
 message — use those to make a targeted repair. For a TWBX, Tableau validates
 the packaged extract during publish itself, so a failure surfaces as a

@@ -26,11 +26,11 @@ Use this when the callable tool schema/runtime cannot pass a server-accessible
 `workbookFilePath`, or after a local-path call explicitly reports that the
 transport is unsupported:
 
-1. Call `request-workbook-upload` with the real `.twb` or `.twbx` filename.
+1. Call `mcp__Tableau__request-workbook-upload` with the real `.twb` or `.twbx` filename.
 2. Upload the exact file bytes to the returned URL using every required header.
-3. Call `publish-workbook` with the returned `workbookUploadId`, name, the
+3. Call `mcp__Tableau__publish-workbook` with the returned `workbookUploadId`, name, the
    destination project's **LUID** (`projectId` — the `id` string from
-   `list-projects`, e.g. `9dbd2263-16b7-...`; never a numeric ID pulled from a
+   `mcp__Tableau__list-projects`, e.g. `9dbd2263-16b7-...`; never a numeric ID pulled from a
    URL or another tool's output), and overwrite setting.
 
 Staged upload IDs are short-lived and single-use. Request a fresh ID after a

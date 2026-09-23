@@ -162,7 +162,7 @@ already uses elsewhere doesn't get a redundant second declaration.
 
 | Error | Cause | Fix |
 | --- | --- | --- |
-| `Workbook has no <worksheet> named ...` | `--worksheet` doesn't match any worksheet in the input | Re-check the name against `download-workbook`'s content or the raw XML |
+| `Workbook has no <worksheet> named ...` | `--worksheet` doesn't match any worksheet in the input | Re-check the name against `mcp__Tableau__download-workbook`'s content or the raw XML |
 | `Workbook has N <datasource-dependencies> blocks; expected exactly one` | The worksheet blends more than one datasource | Not supported — hand-edit instead |
 | `Workbook has N <pane> elements; expected exactly one` | The worksheet is a trellis/dual-axis view with multiple panes | Not supported — hand-edit the specific pane instead |
 | `Datasource <name> has no field named ...` | `--field` doesn't match a declared field | Run `inspect-workbook` for the exact name |

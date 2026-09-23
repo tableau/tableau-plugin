@@ -9,7 +9,7 @@ already resolved during the current task.
 Use one render attempt per available path and reuse workbook IDs, view IDs,
 and URLs already resolved during the current task.
 
-1. If `render-interactive-viz` is callable, call it once:
+1. If `mcp__Tableau__render-interactive-viz` is callable, call it once:
    - use the resolved view LUID with `objectType: "view"` when a specific
      view is known;
    - use the workbook LUID with `objectType: "workbook"` only when no
@@ -18,14 +18,14 @@ and URLs already resolved during the current task.
 3. If the interactive-render tool is missing, unknown, disabled, or fails,
    call `open_in_codex` with the direct view URL (below).
 4. If `open_in_codex` is unavailable or fails, call `mcp__node_repl__js` with the direct view URL (below)
-4. If `mcp__node_repl__js` is unavailable or fails, call `get-view-image` once
+4. If `mcp__node_repl__js` is unavailable or fails, call `mcp__Tableau__get-view-image` once
    with:
    - `viewId`: the resolved view LUID;
    - `format: "PNG"`;
    Then display the returned PNG directly to the user.
 6. Do not retry an unavailable rendering tool or repeat a failed path.
 
-Use `open_in_codex` before `get-view-image` even for “render,” “show,” and
+Use `open_in_codex` before `mcp__Tableau__get-view-image` even for “render,” “show,” and
 “preview” requests. The PNG route is the final fallback when interactive
 rendering and `open_in_codex` are both unavailable.
 
@@ -33,7 +33,7 @@ rendering and `open_in_codex` are both unavailable.
 
 Prefer IDs and URLs returned by the current task’s publish result.
 
-When `publish-workbook` returns a list of views:
+When `mcp__Tableau__publish-workbook` returns a list of views:
 
 1. Select the view whose name matches the worksheet or dashboard created or
    edited for the user.
@@ -48,8 +48,8 @@ target view.
 
 ## `open_in_codex` fallback
 
-`open_in_codex` is the preferred fallback after `render-interactive-viz`. Use
-it before attempting `get-view-image`.
+`open_in_codex` is the preferred fallback after `mcp__Tableau__render-interactive-viz`. Use
+it before attempting `mcp__Tableau__get-view-image`.
 
 ### Build a direct view URL
 
@@ -94,7 +94,7 @@ than one specific view.
 
 - Attempt each available render path at most once.
 - Use this fallback order:
-  `render-interactive-viz` → `open_in_codex` → `get-view-image` with PNG.
+  `mcp__Tableau__render-interactive-viz` → `open_in_codex` → `mcp__Tableau__get-view-image` with PNG.
 - Do not retry tools that report unknown, unavailable, or disabled.
 - If `open_in_codex` reports unavailable or blocked, do not try another
   render surface; continue to the PNG fallback.

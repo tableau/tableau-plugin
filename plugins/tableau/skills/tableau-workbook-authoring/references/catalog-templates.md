@@ -23,12 +23,12 @@ mismatched template — fall back to hand-authoring the worksheet per
    `instantiate`/`inject`; the CLI rejects the rest.
 4. Transform: `instantiate` builds a new workbook from the bundled starter;
    `inject` adds a resource into an existing workbook (from
-   `download-workbook`).
+   `mcp__Tableau__download-workbook`).
 5. `instantiate`/`inject` validate their own output before writing it — see
    each command's section below. Run `validate` again only if you need an
    absolute structural check independent of that built-in gate.
 6. Continue with `SKILL.md`'s "Validate and publish" section: publish with
-   `publish-workbook`, then render.
+   `mcp__Tableau__publish-workbook`, then render.
 
 ## Quick reference
 
@@ -222,9 +222,9 @@ to tolerate because its baseline is the clean bundled starter.)
   is not readable, or is not valid UTF-8. The error text goes to stderr
   instead of stdout, and there is no JSON list to parse.
 
-This local check is not the same gate as `publish-workbook`'s own inline
+This local check is not the same gate as `mcp__Tableau__publish-workbook`'s own inline
 validation — run both: this catches structural drift the moment you produce
-a file, `publish-workbook` is still the final gate before the workbook is
+a file, `mcp__Tableau__publish-workbook` is still the final gate before the workbook is
 live (see `SKILL.md`'s "Validate and publish" section).
 
 ## Failure recovery
