@@ -1,6 +1,6 @@
 ---
 name: author-data-app
-description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool (and finalize its postUnzip plan on remote/http), author the extension's query + visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use whenever a user wants to create, build, or publish a Tableau data app.
+description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, author the extension's query + visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use whenever a user wants to create, build, or publish a Tableau data app.
 ---
 
 # Author Data App
@@ -41,18 +41,28 @@ Call the `scaffold-data-app` MCP tool with the app name:
 
 > scaffold-data-app({ datappName: "Sales Demo" })
 
-The result shape tells you which transport you're on and what's left to do:
+**Both transports return the same static, un-substituted template *zip* plus an
+identical `postUnzip` plan.** They no longer differ in what's returned or how
+it's finalized — only in how the zip gets onto disk:
 
-- **local (stdio):** result has `filePath` and **no** `postUnzip`. The workspace
-  is already written to disk, fully substituted. **Nothing more to do in this
-  phase** — the workspace is at `filePath`.
-- **remote (http):** result has `s3URL` + a `postUnzip` plan. The server returned
-  an *un-substituted* template zip; the client must download, unzip, and apply
-  the plan. Do this deterministically with the bundled script — applying it
-  freehand leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` tokens or
-  interleaves edits and renames in the wrong order.
+- **local (stdio):** result has `filePath` + a `postUnzip` plan. `filePath`
+  points at the same static template **zip** the S3 path serves — it is *not* a
+  pre-finalized workspace directory. Unzip it to a temp dir, then apply the plan
+  there. No download needed, but unzip still is.
+- **remote (http):** result has `s3URL` + a `postUnzip` plan. Download the zip
+  from `s3URL` first, then unzip it to a temp dir and apply the plan there.
 
-### Finalizing a remote (postUnzip) result
+Past the fetch step the two are identical: same unzip, same plan — including the
+root-dir rename (`Data App Name` → `<displayName>`), which now applies to both.
+Apply the plan deterministically with the bundled script — applying it freehand
+leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` tokens or interleaves
+edits and renames in the wrong order.
+
+### Finalizing — apply the postUnzip plan (both transports)
+
+Save the plan, unzip the template into a temp dir (remote downloads first;
+local doesn't), then run `apply-plan.mjs` against that directory — the apply
+step itself is identical for both transports.
 
 ```bash
 SKILL_DIR="<absolute path to this skill directory>"
@@ -62,20 +72,35 @@ WORK="$(mktemp -d -t dataapp)"
 cat > "$WORK/plan.json" <<'PLAN_JSON'
 { …paste the result's postUnzip object here… }
 PLAN_JSON
+```
 
-# 2. Download + unzip the template from the (short-lived) s3URL
+**Remote (http) — download, then unzip:**
+
+```bash
 curl -fsSL "<s3URL>" -o "$WORK/template.zip"
 mkdir -p "$WORK/unzipped"
 unzip -q "$WORK/template.zip" -d "$WORK/unzipped"
+```
 
-# 3. Apply the plan (edits first, then renames; verifies no placeholders survive)
+**Local (stdio) — unzip only, no download** (`filePath` is already the same
+template zip, just sitting on local disk instead of behind a presigned URL):
+
+```bash
+mkdir -p "$WORK/unzipped"
+unzip -q "<filePath>" -d "$WORK/unzipped"
+```
+
+**Both transports — apply the plan** (edits first, then renames; verifies no
+placeholders survive):
+
+```bash
 node "$SKILL_DIR/apply-plan.mjs" "$WORK/unzipped" "$WORK/plan.json"
 ```
 
 `apply-plan.mjs` prints the finalized workspace root on stdout. See
 [apply-plan.mjs](apply-plan.mjs) for the full contract; it hard-fails if a `find`
-token is missing (the served zip is stale / out of sync with the plan) rather
-than emitting a broken workspace.
+token is missing (the zip is stale / out of sync with the plan) rather than
+emitting a broken workspace.
 
 At the end of phase 1 you have a finalized workspace directory:
 ```
@@ -260,8 +285,11 @@ to Slack clients).
 - **Hand-editing the `<datasources/>` wiring.** Use `wire-datasource.mjs` — freehand
   edits mismatch the `sqlproxy.<hash>` join key across its four locations or leave an
   empty `<datasources />` anchor, and the app silently reaches no data.
-- **Running finalize on a local result.** A result with `filePath` and no
-  `postUnzip` is already done; skip straight to phase 3 (after authoring).
+- **Assuming a local result's `filePath` is already substituted, or skipping
+  unzip because it's local.** `filePath` points at the same static,
+  un-substituted template **zip** the S3 path serves — not a finalized
+  workspace directory. Unzip it (no download needed, but unzip still is) and
+  apply the plan before authoring, exactly like the remote path.
 - **Handing off `app.js` to the human unprompted.** Phase 2 authoring is the
   fixed default — always write `app.js` yourself from the human's stated
   criteria/vibe. Only hand off when the human explicitly says they want to

@@ -107,21 +107,30 @@ for (const { from, to } of renames) {
 const finalRootRel = renames.at(-1)?.to;
 const finalRoot = finalRootRel ? safeJoin(finalRootRel) : unzipDir;
 
-// 4) Verify no placeholder tokens survived in the substituted text files. The
-//    substituted files are the edit targets, now living under the renamed root;
-//    recompute their final paths by swapping the old root prefix for the new.
-const oldRootRel = renames.find((r) => !r.from.includes('/'))?.from;
+// 4) Verify no placeholder tokens survived in the substituted text files.
+//    Recompute each edited file's final path by applying every rename's
+//    from->to prefix substitution, in order (a file may be moved by more
+//    than one rename, e.g. a root-dir rename AND a nested package-dir rename).
+function remapThroughRenames(relPath) {
+  let current = relPath;
+  for (const { from, to } of renames) {
+    if (current === from) {
+      current = to;
+    } else if (current.startsWith(from + '/')) {
+      current = to + current.slice(from.length);
+    }
+  }
+  return current;
+}
+
 const residual = [];
 for (const { file } of edits) {
-  const finalRel =
-    oldRootRel && finalRootRel && file.startsWith(oldRootRel + '/')
-      ? finalRootRel + file.slice(oldRootRel.length)
-      : file;
+  const finalRel = remapThroughRenames(file);
   let content;
   try {
     content = readFileSync(safeJoin(finalRel), 'utf8');
-  } catch {
-    continue;
+  } catch (error) {
+    die(`Finalized file missing for placeholder check: ${finalRel} (${error.message})`);
   }
   const tokens = plan.wiresDatasource
     ? [...PLACEHOLDER_TOKENS, WIRING_ANCHOR_TOKEN]
