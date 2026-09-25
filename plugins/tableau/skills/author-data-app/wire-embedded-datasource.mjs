@@ -143,6 +143,9 @@ const overridesByName = new Map((Array.isArray(descriptor.fields) ? descriptor.f
 
 const fields = header.map((name, i) => {
   if (!name) die(`CSV header has an empty column name at position ${i}.`);
+  if (header.indexOf(name) !== i) {
+    die(`CSV header has a duplicate column name "${name}" at position ${i} (already used at an earlier column) — rename one of the columns.`);
+  }
   const override = overridesByName.get(name);
   const columnValues = sampleRows.map((row) => row[i] ?? '');
   const datatype = override?.datatype || inferDatatype(columnValues);
@@ -183,7 +186,7 @@ const metadataRecords = fields
             <remote-name>${esc(f.name)}</remote-name>
             <remote-type>${f.type === 'quantitative' ? 5 : 129}</remote-type>
             <local-name>${esc(f.localName)}</local-name>
-            <parent-name>[${esc(tableBaseName)}]</parent-name>
+            <parent-name>[${esc(filename)}]</parent-name>
             <remote-alias>${esc(f.name)}</remote-alias>
             <ordinal>${f.ordinal}</ordinal>
             <local-type>${esc(f.datatype)}</local-type>

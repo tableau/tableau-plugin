@@ -215,9 +215,11 @@ local file) and copies the file into the workspace for you.
    role }`) for just the fields to override — same shape as the published path's
    descriptor, minus `repositoryId`/`site`/`server`.
 
-The script hard-fails the same way `wire-datasource.mjs` does — missing anchor,
-survived empty `<datasources />`, or join key referenced <4× — never a
-half-wired workbook.
+The script hard-fails rather than emit a half-wired workbook — on a missing
+anchor, a surviving empty `<datasources />`, the `federated.<hash>` connection
+name referenced <3×, or the `textscan.<hash>` named connection referenced <2×
+(this path verifies two join keys with separate thresholds, unlike
+`wire-datasource.mjs`'s single `sqlproxy.<hash>` key).
 
 ---
 
