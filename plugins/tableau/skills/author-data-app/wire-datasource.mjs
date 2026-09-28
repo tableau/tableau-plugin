@@ -1,23 +1,19 @@
 #!/usr/bin/env node
 /**
- * Deterministically wire a published datasource into a scaffolded data-app `.twb`.
+ * Wire a published datasource into a scaffolded data-app `.twb`.
  *
- * The `scaffold-data-app` MCP tool emits a workbook with TWO empty
- * `<datasources />` anchors — one at the workbook root and one inside the
- * worksheet `<view>`. Until they are filled, the running extension calls
- * `getAllDataSourcesAsync()`, finds nothing, and renders "no data source found
- * in the workbook." This script fills both anchors with a single published
- * `sqlproxy` (Data Server) datasource, keeping the `sqlproxy.<hash>` join key
- * byte-identical everywhere it must appear.
+ * `scaffold-data-app` emits a workbook with TWO empty `<datasources />` anchors
+ * (workbook root + worksheet `<view>`). Until both are filled the extension's
+ * `getAllDataSourcesAsync()` finds nothing and renders "no data source found in
+ * the workbook." This fills both with one published `sqlproxy` (Data Server)
+ * datasource, keeping the `sqlproxy.<hash>` join key byte-identical everywhere.
  *
- * It is a script rather than freehand XML for the same reason as apply-plan.mjs:
- * the wiring spans four coordinated locations (root datasource `name`, root
- * `relation connection`, view `datasource name`, `datasource-dependencies
- * datasource`) that must agree exactly, and it's easy to leave one empty anchor
- * behind. Get any of that wrong and the workbook silently reaches no data.
+ * A script, not freehand XML, because the wiring spans four locations that must
+ * agree exactly (root datasource `name`, root `relation connection`, view
+ * `datasource name`, `datasource-dependencies datasource`); miss one and the
+ * workbook silently reaches no data.
  *
- * Usage:
- *   node wire-datasource.mjs <path-to.twb> <descriptor.json>
+ * Usage: node wire-datasource.mjs <path-to.twb> <descriptor.json>
  *
  * descriptor.json (Claude assembles from list-datasources + get-datasource-metadata;
  * list ONLY the fields the app will query):
@@ -34,10 +30,6 @@
  *       { "name": "Region", "datatype": "string", "role": "dimension" }
  *     ]
  *   }
- *
- * Exits non-zero with a diagnostic on any failure (missing/already-filled
- * anchor, empty fields, drifted template) rather than emitting a broken workbook.
- * Prints the wired `.twb` path on stdout.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -71,12 +63,12 @@ function typeOf(datatype) {
     case 'datetime':
       return 'ordinal';
     default:
-      return 'nominal'; // string and anything unrecognized
+      return 'nominal';
   }
 }
 
-// A field's derived attributes, computed once and reused across all blocks so
-// the root metadata-record, the view column, and the column-instance agree.
+// Derive a field's attributes once, reused across the root metadata-record, view
+// column, and column-instance so all three agree.
 function deriveField(field, ordinal) {
   const name = field?.name;
   if (!name || typeof name !== 'string') {
@@ -234,8 +226,8 @@ const wired = head + tail;
 if (wired.includes(EMPTY_ANCHOR)) {
   die('An empty <datasources /> anchor survived wiring — refusing to write a half-wired workbook.');
 }
-// name appears: root datasource name, root relation connection, view datasource
-// name, datasource-dependencies datasource = at least 4 references.
+// Join key must appear >=4x: root datasource name, root relation connection,
+// view datasource name, datasource-dependencies datasource.
 const refCount = wired.split(`'${connectionName}'`).length - 1;
 if (refCount < 4) {
   die(`Expected the connection name to appear >=4 times, saw ${refCount} — wiring incomplete.`);

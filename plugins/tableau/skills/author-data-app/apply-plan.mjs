@@ -1,32 +1,21 @@
 #!/usr/bin/env node
 /**
- * Deterministically finalize a scaffolded data app workspace by applying the
- * `postUnzip` plan returned by the `scaffold-data-app` MCP tool.
- *
- * The remote (http) transport returns a plan of the shape:
- *   { instructions, edits: [{ file, replacements: [{ find, replace, occurrence }] }],
+ * Finalize a scaffolded data-app workspace by applying the `postUnzip` plan from
+ * the `scaffold-data-app` MCP tool. Plan shape:
+ *   { edits: [{ file, replacements: [{ find, replace, occurrence }] }],
  *     renames: [{ from, to }], wiresDatasource }
- * where every `file`/`from`/`to` path is relative to the unzip directory and
- * includes the template root dir prefix (e.g. "Data App Name/...").
+ * Every path is relative to the unzip dir, incl. the template root prefix
+ * (e.g. "Data App Name/...").
  *
- * Order matters and is the whole reason this is a script rather than freehand
- * edits: apply EVERY edit first (literal, non-regex find/replace on file
- * contents), THEN apply the renames in the given order (deepest paths first,
- * the root dir last). Doing renames before edits would invalidate the edit
- * paths; reordering renames would rename a parent out from under a child.
+ * Order is why this is a script, not freehand edits: apply ALL edits first, THEN
+ * renames in the given order (deepest first, root last). Renaming before editing
+ * invalidates edit paths; reordering renames orphans a child under its parent.
  *
- * Each replacement's `occurrence` is `'first'` (replace only the first
- * remaining occurrence — used to resolve two textually-identical anchors to
- * two different values in sequence) or `'all'`/omitted (replace every
- * occurrence, the default). When `wiresDatasource` is truthy, the plan's
- * `.twb` edit included datasource-wiring replacements, so the residual-token
- * check below also verifies no empty `<datasources />` anchor survived.
+ * `occurrence: 'first'` replaces only the first remaining match — used to resolve
+ * two identical anchors to different values in sequence; 'all'/omitted replaces
+ * every match. `wiresDatasource` adds `<datasources />` to the residual-token check.
  *
- * Usage:
- *   node apply-plan.mjs <unzipDir> <planJsonPath>
- *
- * Exits non-zero with a diagnostic on any failure, and after applying,
- * verifies no residual placeholder tokens remain in the finalized files.
+ * Usage: node apply-plan.mjs <unzipDir> <planJsonPath>
  */
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -107,10 +96,9 @@ for (const { from, to } of renames) {
 const finalRootRel = renames.at(-1)?.to;
 const finalRoot = finalRootRel ? safeJoin(finalRootRel) : unzipDir;
 
-// 4) Verify no placeholder tokens survived in the substituted text files.
-//    Recompute each edited file's final path by applying every rename's
-//    from->to prefix substitution, in order (a file may be moved by more
-//    than one rename, e.g. a root-dir rename AND a nested package-dir rename).
+// 4) Verify no placeholder tokens survived. Recompute each edited file's final
+//    path through every rename — a file can move via more than one (e.g. the
+//    root-dir rename AND a nested package-dir rename).
 function remapThroughRenames(relPath) {
   let current = relPath;
   for (const { from, to } of renames) {
