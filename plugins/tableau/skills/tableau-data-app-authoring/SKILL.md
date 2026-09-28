@@ -91,10 +91,10 @@ below live under `scripts/`, relative to this skill directory (`$SKILL_DIR`):
    verifies no placeholders survive):
 
    ```bash
-   node "$SKILL_DIR/scripts/apply-plan.mjs" "$WORK/unzipped" "$WORK/plan.json"
+   python3 "$SKILL_DIR/scripts/apply_plan.py" "$WORK/unzipped" "$WORK/plan.json"
    ```
 
-   `scripts/apply-plan.mjs` prints the finalized workspace root on stdout. See
+   `scripts/apply_plan.py` prints the finalized workspace root on stdout. See
    its header comment for the full contract; it hard-fails if a `find` token is
    missing (the zip is stale / out of sync with the plan) rather than emitting a
    broken workspace.
@@ -144,7 +144,7 @@ path applies.
 **Published datasource:** the wiring spans four coordinated locations (root
 datasource `name`, root `relation connection`, view `datasource name`,
 `datasource-dependencies datasource`) that must all carry the identical
-`sqlproxy.<hash>` join key. Use `scripts/wire-datasource.mjs`, which does all
+`sqlproxy.<hash>` join key. Use `scripts/wire_datasource.py`, which does all
 four edits atomically and hard-fails rather than emitting a half-wired workbook.
 
 1. **Get the datasource's identity** with `list-datasources` (LUID, name/caption,
@@ -174,7 +174,7 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
    consistent `sqlproxy.<hash>` unless you supply `connectionName`):
 
    ```bash
-   node "$SKILL_DIR/scripts/wire-datasource.mjs" "<App Name>/<App Name>.twb" "$WORK/descriptor.json"
+   python3 "$SKILL_DIR/scripts/wire_datasource.py" "<App Name>/<App Name>.twb" "$WORK/descriptor.json"
    ```
 
 The script hard-fails if an anchor is missing (already wired / template drifted),
@@ -185,7 +185,7 @@ nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
 
 **Embedded datasource (CSV):** the wiring is a `federated`/`textscan` connection
 instead of `sqlproxy`, filling the same two anchors with a `federated.<hash>`
-join key. Use `scripts/wire-embedded-datasource.mjs`, which infers column
+join key. Use `scripts/wire_embedded_datasource.py`, which infers column
 datatype/role straight from the CSV (there's no MCP introspection tool for a
 local file) and copies the file into the workspace for you.
 
@@ -195,7 +195,7 @@ local file) and copies the file into the workspace for you.
    and role (measure/dimension):
 
    ```bash
-   node "$SKILL_DIR/scripts/wire-embedded-datasource.mjs" "<App Name>/<App Name>.twb" "<path-to-file>.csv"
+   python3 "$SKILL_DIR/scripts/wire_embedded_datasource.py" "<App Name>/<App Name>.twb" "<path-to-file>.csv"
    ```
 
    This also copies the CSV to `<App Name>/Data/<filename>.csv` — a sibling of
@@ -210,7 +210,7 @@ The script hard-fails rather than emit a half-wired workbook — on a missing
 anchor, a surviving empty `<datasources />`, the `federated.<hash>` connection
 name referenced <3×, or the `textscan.<hash>` named connection referenced <2×
 (this path verifies two join keys with separate thresholds, unlike
-`wire-datasource.mjs`'s single `sqlproxy.<hash>` key).
+`wire_datasource.py`'s single `sqlproxy.<hash>` key).
 
 ## Author `app.js`
 
@@ -326,16 +326,16 @@ to Slack clients).
 - Don't nest the workspace folder inside the `.twbx`. Zip the *contents*
   (`.twb` + `Packages/` at root), not the `<App Name>/` directory — always
   `unzip -l` to confirm.
-- Don't apply a postUnzip plan freehand. Use `scripts/apply-plan.mjs` — edits
+- Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.
-- Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire-datasource.mjs`
-  (published) or `scripts/wire-embedded-datasource.mjs` (embedded CSV) —
+- Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire_datasource.py`
+  (published) or `scripts/wire_embedded_datasource.py` (embedded CSV) —
   freehand edits mismatch the join key across their coordinated locations or
   leave an empty `<datasources />` anchor, and the app silently reaches no data.
 - Don't nest `Data/` inside `Packages/`, or forget to zip it at all. An
   embedded CSV's `Data/` directory must sit at the `.twbx` archive root, as a
-  sibling of `Packages/` — not nested inside it. `scripts/wire-embedded-datasource.mjs`
+  sibling of `Packages/` — not nested inside it. `scripts/wire_embedded_datasource.py`
   copies the file to the right place; the Package stage still needs the extra
   `zip -rX "$OUT" Data` step, or the workbook ships with no data behind it.
 - Don't assume a local result's `filePath` is already substituted, or skip
