@@ -25,6 +25,12 @@ Build a new Tableau workbook or update an existing one from a natural-language r
 
 The model constructs the workbook definition programmatically. Users do not need to understand or edit workbook XML themselves.
 
+### Build a live data app
+
+Scaffold, wire to a datasource, author, package, and publish a Tableau data app — a custom viz-extension web app hosted on a worksheet that queries a datasource live, instead of using marks, Show Me, or the chart catalog.
+
+The model authors the app's query and visualization code directly from the user's stated criteria and vibe; users do not need to write that code themselves. Use this workflow instead of standard workbook authoring when the request is for a live-querying custom viz extension rather than a native chart.
+
 ## Planning and review capabilities
 
 
@@ -83,6 +89,7 @@ Use the focused Tableau skill that best matches the requested outcome:
 
 - Use `tableau-content-viewer` to find, open, or show existing Tableau content.
 - Use `tableau-dashboard-advisor` for advice on how to design and build a dashboard, including a nonfunctional planning wireframe. It does not create the Tableau dashboard.
+- Use `tableau-data-app-authoring` to scaffold, wire, author, package, and publish a live-querying data app (viz extension).
 - Use `tableau-data-quality-sentinel` to review published datasource metadata.
 - Use `tableau-viz-critique` to evaluate an existing dashboard or view.
 - Use `tableau-workbook-authoring` to create, edit, copy, or publish a workbook.
@@ -100,3 +107,4 @@ For requests spanning multiple workflows, sequence them explicitly. For example,
 - `Compare metadata quality for Orders and Orders v2.`
 - `Review this dashboard and prioritize its three highest-impact improvements.`
 - `Add a monthly trend chart to this workbook and publish the update.`
+- `Build a data app that shows profit ratio by category as a live chart, and publish it.`
