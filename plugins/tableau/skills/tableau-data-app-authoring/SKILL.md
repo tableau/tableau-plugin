@@ -1,41 +1,39 @@
 ---
 name: tableau-data-app-authoring
-description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, author the extension's query + visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use whenever a user wants to create, build, or publish a Tableau data app.
+description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, wire in a published or embedded datasource, author the extension's query and visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use for requests to create, build, vibe-code, or publish a Tableau data app or custom viz-extension web app that queries a datasource live. Do not use for a standard native Tableau workbook or dashboard built from marks, Show Me, or the chart catalog — see tableau-workbook-authoring — or to open, show, or render an already-published data app or other existing Tableau content — see tableau-content-viewer.
 ---
 
-# Author Data App
+# Tableau Data App Authoring
 
-Builds a Tableau data app from nothing to published. Walk the phases top to
-bottom.
+Builds a Tableau data app from nothing to published. Walk the stages top to
+bottom — every request follows all five, in order.
 
 ```
-1. Scaffold + finalize  →  1.5 Wire datasource*  →  2. Author (you)  →  3. Package  →  4. Publish
+Scaffold + finalize  →  Wire datasource*  →  Author (you)  →  Package  →  Publish
 ```
 
-\* Phase 1.5 is a prerequisite to a *working* app: the name-only
-`scaffold-data-app` ships an empty `<datasources/>`, so a scaffolded app reaches
-no datasource at runtime and renders "no data source found." Wire the target
-published datasource into the `.twb` before authoring against it. (Publishing the
+\* Wiring is a prerequisite to a *working* app: the name-only `scaffold-data-app`
+ships an empty `<datasources/>`, so a scaffolded app reaches no datasource at
+runtime and renders "no data source found." Wire a datasource into the
+`.twb` before authoring against it — see Wire a datasource in below. (Publishing the
 starter as-is to prove packaging works does not need it.)
 
-**Division of labor: you write ALL the code, every phase, always — including
+**Division of labor: you write ALL the code, every stage, always — including
 `app.js`.** The human "vibe codes" by describing what they want (criteria,
 theme, vibe, target insights) — they do not write `app.js` themselves. Read
-the two bundled guides before authoring: [design-data-app.md](design-data-app.md)
-(what to build) and [build-data-app.md](build-data-app.md) (how, using this
+the two bundled guides before authoring: [Design a data app](references/design-data-app.md)
+(what to build) and [Build a data app](references/build-data-app.md) (how, using this
 skill's local tools). Only skip authoring `app.js` if the human explicitly says
-they want to write it themselves for this app (rare) — in that case hand off
-the workspace path and point them at both guides as their own reference.
+they want to write it themselves for this app (rare) — see the exception at
+the end of Author `app.js` below.
 
-There is intentionally **no separate validation phase** — a TWBX cannot be
+There is intentionally **no separate validation stage** — a TWBX cannot be
 pre-validated (Tableau validates extracts/extensions at publish time), so
-`publish-workbook` surfaces any errors when you reach phase 4. The one thing you
-must get right before then is package *layout* (phase 3), or the workbook won't
-open at all.
+`publish-workbook` surfaces any errors when you reach Publish. The one thing
+you must get right before then is package *layout* (Package into a .twbx),
+or the workbook won't open at all.
 
----
-
-## Phase 1 — Scaffold + finalize
+## Scaffold and finalize the workspace
 
 Call the `scaffold-data-app` MCP tool with the app name:
 
@@ -58,51 +56,50 @@ Apply the plan deterministically with the bundled script — applying it freehan
 leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` tokens or interleaves
 edits and renames in the wrong order.
 
-### Finalizing — apply the postUnzip plan (both transports)
+Finalize the plan (both transports — save, fetch, apply). Scripts referenced
+below live under `scripts/`, relative to this skill directory (`$SKILL_DIR`):
 
-Save the plan, unzip the template into a temp dir (remote downloads first;
-local doesn't), then run `apply-plan.mjs` against that directory — the apply
-step itself is identical for both transports.
+1. Save the plan:
 
-```bash
-SKILL_DIR="<absolute path to this skill directory>"
-WORK="$(mktemp -d -t dataapp)"
+   ```bash
+   SKILL_DIR="<absolute path to this skill directory>"
+   WORK="$(mktemp -d -t dataapp)"
 
-# 1. Save the postUnzip object verbatim (do NOT reformat — find tokens must match byte-for-byte)
-cat > "$WORK/plan.json" <<'PLAN_JSON'
-{ …paste the result's postUnzip object here… }
-PLAN_JSON
-```
+   # Save the postUnzip object verbatim (do NOT reformat — find tokens must match byte-for-byte)
+   cat > "$WORK/plan.json" <<'PLAN_JSON'
+   { …paste the result's postUnzip object here… }
+   PLAN_JSON
+   ```
 
-**Remote (http) — download, then unzip:**
+2. Fetch the template — **remote (http)** downloads then unzips:
 
-```bash
-curl -fsSL "<s3URL>" -o "$WORK/template.zip"
-mkdir -p "$WORK/unzipped"
-unzip -q "$WORK/template.zip" -d "$WORK/unzipped"
-```
+   ```bash
+   curl -fsSL "<s3URL>" -o "$WORK/template.zip"
+   mkdir -p "$WORK/unzipped"
+   unzip -q "$WORK/template.zip" -d "$WORK/unzipped"
+   ```
 
-**Local (stdio) — unzip only, no download** (`filePath` is already the same
-template zip, just sitting on local disk instead of behind a presigned URL):
+   **Local (stdio)** unzips only, no download (`filePath` is already the same
+   template zip, just sitting on local disk instead of behind a presigned URL):
 
-```bash
-mkdir -p "$WORK/unzipped"
-unzip -q "<filePath>" -d "$WORK/unzipped"
-```
+   ```bash
+   mkdir -p "$WORK/unzipped"
+   unzip -q "<filePath>" -d "$WORK/unzipped"
+   ```
 
-**Both transports — apply the plan** (edits first, then renames; verifies no
-placeholders survive):
+3. Apply the plan — identical for both transports (edits first, then renames;
+   verifies no placeholders survive):
 
-```bash
-node "$SKILL_DIR/apply-plan.mjs" "$WORK/unzipped" "$WORK/plan.json"
-```
+   ```bash
+   node "$SKILL_DIR/scripts/apply-plan.mjs" "$WORK/unzipped" "$WORK/plan.json"
+   ```
 
-`apply-plan.mjs` prints the finalized workspace root on stdout. See
-[apply-plan.mjs](apply-plan.mjs) for the full contract; it hard-fails if a `find`
-token is missing (the zip is stale / out of sync with the plan) rather than
-emitting a broken workspace.
+   `scripts/apply-plan.mjs` prints the finalized workspace root on stdout. See
+   its header comment for the full contract; it hard-fails if a `find` token is
+   missing (the zip is stale / out of sync with the plan) rather than emitting a
+   broken workspace.
 
-At the end of phase 1 you have a finalized workspace directory:
+At the end of this stage you have a finalized workspace directory:
 ```
 <App Name>/
   <App Name>.twb
@@ -114,15 +111,13 @@ At the end of phase 1 you have a finalized workspace directory:
     content/src/…
 ```
 
----
-
-## Phase 1.5 — Wire a datasource in (prerequisite for a working app)
+## Wire a datasource in
 
 The scaffolded `.twb` ships an **empty `<datasources/>`** (both at the workbook
 root and inside the worksheet `<view>`). At runtime the app calls
 `getAllDataSourcesAsync()` and finds nothing → it renders **"no data source found
 in the workbook."** To query live data the workbook must have a real datasource
-wired in.
+wired in — this stage is a prerequisite for a working app.
 
 Do this once the user has told you what to connect to; it is skippable if the
 user only wants to publish the starter to prove packaging.
@@ -146,13 +141,11 @@ atomically with a matching join key across multiple coordinated locations, or
 the app silently reaches no data. Use the bundled wiring script for whichever
 path applies.
 
-### Published datasource
-
-The wiring spans four coordinated locations (root datasource `name`, root
-`relation connection`, view `datasource name`, `datasource-dependencies
-datasource`) that must all carry the identical `sqlproxy.<hash>` join key. Use
-[wire-datasource.mjs](wire-datasource.mjs), which does all four edits atomically
-and hard-fails rather than emitting a half-wired workbook.
+**Published datasource:** the wiring spans four coordinated locations (root
+datasource `name`, root `relation connection`, view `datasource name`,
+`datasource-dependencies datasource`) that must all carry the identical
+`sqlproxy.<hash>` join key. Use `scripts/wire-datasource.mjs`, which does all
+four edits atomically and hard-fails rather than emitting a half-wired workbook.
 
 1. **Get the datasource's identity** with `list-datasources` (LUID, name/caption,
    contentUrl, and the server host + site) and `get-datasource-metadata({ datasourceLuid })`
@@ -181,7 +174,7 @@ and hard-fails rather than emitting a half-wired workbook.
    consistent `sqlproxy.<hash>` unless you supply `connectionName`):
 
    ```bash
-   node "$SKILL_DIR/wire-datasource.mjs" "<App Name>/<App Name>.twb" "$WORK/descriptor.json"
+   node "$SKILL_DIR/scripts/wire-datasource.mjs" "<App Name>/<App Name>.twb" "$WORK/descriptor.json"
    ```
 
 The script hard-fails if an anchor is missing (already wired / template drifted),
@@ -190,11 +183,9 @@ Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
 
-### Embedded datasource (CSV)
-
-The wiring is a `federated`/`textscan` connection instead of `sqlproxy`, filling
-the same two anchors with a `federated.<hash>` join key. Use
-[wire-embedded-datasource.mjs](wire-embedded-datasource.mjs), which infers column
+**Embedded datasource (CSV):** the wiring is a `federated`/`textscan` connection
+instead of `sqlproxy`, filling the same two anchors with a `federated.<hash>`
+join key. Use `scripts/wire-embedded-datasource.mjs`, which infers column
 datatype/role straight from the CSV (there's no MCP introspection tool for a
 local file) and copies the file into the workspace for you.
 
@@ -204,11 +195,11 @@ local file) and copies the file into the workspace for you.
    and role (measure/dimension):
 
    ```bash
-   node "$SKILL_DIR/wire-embedded-datasource.mjs" "<App Name>/<App Name>.twb" "<path-to-file>.csv"
+   node "$SKILL_DIR/scripts/wire-embedded-datasource.mjs" "<App Name>/<App Name>.twb" "<path-to-file>.csv"
    ```
 
    This also copies the CSV to `<App Name>/Data/<filename>.csv` — a sibling of
-   `Packages/` at the workspace root, per phase 3's packaging layout below.
+   `Packages/` at the workspace root, per the Package into a .twbx stage below.
 3. **Override inference if needed.** If a column's inferred datatype/role is
    wrong (e.g. a numeric ID that should be a dimension, not a measure), pass a
    third `descriptor.json` argument with a `fields` array (`{ name, datatype,
@@ -221,23 +212,22 @@ name referenced <3×, or the `textscan.<hash>` named connection referenced <2×
 (this path verifies two join keys with separate thresholds, unlike
 `wire-datasource.mjs`'s single `sqlproxy.<hash>` key).
 
----
-
-## Phase 2 — Author
+## Author `app.js`
 
 **Always author `app.js` yourself — this is the fixed default, not a
 fallback.** The human vibe-codes: they describe what they want (criteria,
 theme, target insights, audience) and you turn that into the actual
 `ds.queryAsync(...)` → chart implementation. Read
-[design-data-app.md](design-data-app.md) (what to build) and
-[build-data-app.md](build-data-app.md) (how) first, then:
+[Design a data app](references/design-data-app.md) (what to build) and
+[Build a data app](references/build-data-app.md) (how) first, then:
 
 1. **Introspect the datasource.** `list-datasources` → find the LUID →
    `get-datasource-metadata({ datasourceLuid })` for fields/model/params →
    `query-datasource({ datasourceLuid, query, limit })` to preview real VDS
    `{ data: [...] }` rows and confirm field captions/types before committing to a
-   chart. (Ensure Phase 1.5 wiring is done — the app can't query without it.)
-2. **Design what to build** using [design-data-app.md](design-data-app.md): pick
+   chart. (Ensure Wire a datasource in, above, is already done — the app can't
+   query without it.)
+2. **Design what to build** using [Design a data app](references/design-data-app.md): pick
    the archetype by audience, lead with the message (BLUF), choose the mark by the
    perception hierarchy, keep graphical integrity (zero baseline, "as of"
    provenance), use action titles + direct labels, and restrained color (grey +
@@ -255,20 +245,18 @@ theme, target insights, audience) and you turn that into the actual
    never `innerHTML` with live values). Don't re-derive them.
 5. **There is no local preview.** You cannot see the app render against live data
    while authoring — the visual review happens live in Tableau after publish
-   (phase 4).
+   (Publish, below).
 
-### Rare exception: the human wants to write `app.js` themselves
-
-Only skip authoring if the human explicitly says they want to write `app.js`
-themselves for this app — an override of the default, not the norm. In that
-case, stop and hand off: tell them the workspace path
+**Exception — the human wants to write `app.js` themselves:** only skip
+authoring if the human explicitly says they want to write `app.js` themselves
+for this app — an override of the default, not the norm. Stop and hand off:
+tell them the workspace path
 (`Packages/com.tableau.mcp.<slug>/content/src/app.js`) and point them at
-[design-data-app.md](design-data-app.md) and [build-data-app.md](build-data-app.md)
-as their own reference. Resume at phase 3 once they say it's authored.
+[Design a data app](references/design-data-app.md) and
+[Build a data app](references/build-data-app.md) as their own reference.
+Resume at Package into a .twbx once they say it's authored.
 
----
-
-## Phase 3 — Package into a .twbx
+## Package into a .twbx
 
 A `.twbx` is a zip of the workspace **contents** with the `.twb` and `Packages/`
 at the **archive root** — never nested inside the `<App Name>/` folder. Nesting
@@ -291,8 +279,8 @@ unzip -l "$OUT"                      # sanity: .twb + Packages/… at top level,
 The listing must show `<App Name>.twb` and `Packages/com.tableau.mcp.<slug>/…`
 at the top level with no wrapping folder and no `.DS_Store`/`__MACOSX` entries.
 
-**If phase 1.5 embedded a CSV**, the `.twbx` also needs the `Data/` directory
-zipped in at the archive root — a third step, run after the two above:
+**If Wire a datasource in embedded a CSV**, the `.twbx` also needs the `Data/`
+directory zipped in at the archive root — a third step, run after the two above:
 
 ```bash
 zip -rX "$OUT" Data -x '*.DS_Store' '*/.DS_Store' '__MACOSX*'
@@ -305,9 +293,7 @@ The listing must then also show `Data/<filename>.csv` at the top level, alongsid
 > extension wired into a pane, `.trex` with `author email`, `<resources>` block,
 > `<icon>`, `min-api-version`). Packaging is the only structural step you own.
 
----
-
-## Phase 4 — Publish
+## Publish
 
 Uses the MCP publish tools (gated by the `authoring-tools` feature; not available
 to Slack clients).
@@ -335,29 +321,30 @@ to Slack clients).
    wiring, not packaging. Set `overwrite: true` only if the user wants to replace
    an existing workbook of the same name.
 
----
+## Non-negotiable limits
 
-## Common Mistakes
-
-- **Nesting the workspace folder in the .twbx.** Zip the *contents* (`.twb` +
-  `Packages/` at root), not the `<App Name>/` directory. Always `unzip -l` to confirm.
-- **Applying a postUnzip plan freehand.** Use `apply-plan.mjs` — edits before
-  renames, renames deepest-first, verified. See its Common Mistakes section.
-- **Hand-editing the `<datasources/>` wiring.** Use `wire-datasource.mjs` — freehand
-  edits mismatch the `sqlproxy.<hash>` join key across its four locations or leave an
-  empty `<datasources />` anchor, and the app silently reaches no data.
-- **Nesting `Data/` inside `Packages/`, or forgetting to zip it at all.** An
+- Don't nest the workspace folder inside the `.twbx`. Zip the *contents*
+  (`.twb` + `Packages/` at root), not the `<App Name>/` directory — always
+  `unzip -l` to confirm.
+- Don't apply a postUnzip plan freehand. Use `scripts/apply-plan.mjs` — edits
+  before renames, renames deepest-first, verified; see its header comment for
+  the full contract.
+- Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire-datasource.mjs`
+  (published) or `scripts/wire-embedded-datasource.mjs` (embedded CSV) —
+  freehand edits mismatch the join key across their coordinated locations or
+  leave an empty `<datasources />` anchor, and the app silently reaches no data.
+- Don't nest `Data/` inside `Packages/`, or forget to zip it at all. An
   embedded CSV's `Data/` directory must sit at the `.twbx` archive root, as a
-  sibling of `Packages/` — not nested inside it. `wire-embedded-datasource.mjs`
-  copies the file to the right place; phase 3 packaging still needs the extra
+  sibling of `Packages/` — not nested inside it. `scripts/wire-embedded-datasource.mjs`
+  copies the file to the right place; the Package stage still needs the extra
   `zip -rX "$OUT" Data` step, or the workbook ships with no data behind it.
-- **Assuming a local result's `filePath` is already substituted, or skipping
-  unzip because it's local.** `filePath` points at the same static,
+- Don't assume a local result's `filePath` is already substituted, or skip
+  unzip because it's local. `filePath` points at the same static,
   un-substituted template **zip** the S3 path serves — not a finalized
   workspace directory. Unzip it (no download needed, but unzip still is) and
   apply the plan before authoring, exactly like the remote path.
-- **Handing off `app.js` to the human unprompted.** Phase 2 authoring is the
-  fixed default — always write `app.js` yourself from the human's stated
+- Don't hand off `app.js` to the human unprompted. Authoring `app.js` yourself
+  is the fixed default — always write it from the human's stated
   criteria/vibe. Only hand off when the human explicitly says they want to
   write it themselves.
-- **Shipping OS cruft.** Exclude `.DS_Store` / `__MACOSX` from the `.twbx`.
+- Don't ship OS cruft. Exclude `.DS_Store` / `__MACOSX` from the `.twbx`.
