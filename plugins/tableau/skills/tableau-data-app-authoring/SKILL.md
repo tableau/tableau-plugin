@@ -1,5 +1,5 @@
 ---
-name: author-data-app
+name: tableau-data-app-authoring
 description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, author the extension's query + visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use whenever a user wants to create, build, or publish a Tableau data app.
 ---
 
