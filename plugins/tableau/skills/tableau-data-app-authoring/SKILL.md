@@ -116,23 +116,43 @@ At the end of phase 1 you have a finalized workspace directory:
 
 ---
 
-## Phase 1.5 — Wire the published datasource (prerequisite for a working app)
+## Phase 1.5 — Wire a datasource in (prerequisite for a working app)
 
 The scaffolded `.twb` ships an **empty `<datasources/>`** (both at the workbook
 root and inside the worksheet `<view>`). At runtime the app calls
 `getAllDataSourcesAsync()` and finds nothing → it renders **"no data source found
-in the workbook."** To query live data the workbook must have a real published
-datasource wired in.
+in the workbook."** To query live data the workbook must have a real datasource
+wired in.
 
-Do this once the user has named a target published datasource; it is
-skippable if the user only wants to publish the starter to prove packaging.
+Do this once the user has told you what to connect to; it is skippable if the
+user only wants to publish the starter to prove packaging.
 
-Do **not** hand-edit the XML — the wiring spans four coordinated locations (root
-datasource `name`, root `relation connection`, view `datasource name`,
-`datasource-dependencies datasource`) that must all carry the identical
-`sqlproxy.<hash>` join key, and both empty anchors must be filled. Use the bundled
-[wire-datasource.mjs](wire-datasource.mjs) script, which does all four edits
-atomically and hard-fails rather than emitting a half-wired workbook.
+**Ask the user: published or embedded?**
+
+- **Published** — the app queries a datasource that already exists on the
+  server (a `sqlproxy` connection, resolved live by VDS). This is the default
+  and what most apps want.
+- **Embedded** — the app queries a local file bundled *inside* the `.twbx`,
+  with no server-side datasource at all (a `federated`/`textscan` connection).
+  Useful for demos, fixtures, or data that has nowhere published to live.
+  **CSV only for now** — Tableau can in principle embed Excel/Access/JSON/
+  spatial/statistical files and true Hyper extracts, but only the CSV/
+  `textscan` path has been validated end-to-end with this skill. If the user
+  hands you a non-CSV file, say so and ask them to provide (or let you convert
+  to) a CSV.
+
+Do **not** hand-edit the XML for either path — both anchors must be filled
+atomically with a matching join key across multiple coordinated locations, or
+the app silently reaches no data. Use the bundled wiring script for whichever
+path applies.
+
+### Published datasource
+
+The wiring spans four coordinated locations (root datasource `name`, root
+`relation connection`, view `datasource name`, `datasource-dependencies
+datasource`) that must all carry the identical `sqlproxy.<hash>` join key. Use
+[wire-datasource.mjs](wire-datasource.mjs), which does all four edits atomically
+and hard-fails rather than emitting a half-wired workbook.
 
 1. **Get the datasource's identity** with `list-datasources` (LUID, name/caption,
    contentUrl, and the server host + site) and `get-datasource-metadata({ datasourceLuid })`
@@ -169,6 +189,37 @@ if any empty `<datasources />` survives, or if the join key isn't referenced ≥
 Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
+
+### Embedded datasource (CSV)
+
+The wiring is a `federated`/`textscan` connection instead of `sqlproxy`, filling
+the same two anchors with a `federated.<hash>` join key. Use
+[wire-embedded-datasource.mjs](wire-embedded-datasource.mjs), which infers column
+datatype/role straight from the CSV (there's no MCP introspection tool for a
+local file) and copies the file into the workspace for you.
+
+1. **Ask the user which file to embed** (CSV only — see above). Get its path.
+2. **Run the wiring script** — no descriptor required; it reads the CSV header
+   plus a sample of rows to infer each column's datatype (integer/real/string)
+   and role (measure/dimension):
+
+   ```bash
+   node "$SKILL_DIR/wire-embedded-datasource.mjs" "<App Name>/<App Name>.twb" "<path-to-file>.csv"
+   ```
+
+   This also copies the CSV to `<App Name>/Data/<filename>.csv` — a sibling of
+   `Packages/` at the workspace root, per phase 3's packaging layout below.
+3. **Override inference if needed.** If a column's inferred datatype/role is
+   wrong (e.g. a numeric ID that should be a dimension, not a measure), pass a
+   third `descriptor.json` argument with a `fields` array (`{ name, datatype,
+   role }`) for just the fields to override — same shape as the published path's
+   descriptor, minus `repositoryId`/`site`/`server`.
+
+The script hard-fails rather than emit a half-wired workbook — on a missing
+anchor, a surviving empty `<datasources />`, the `federated.<hash>` connection
+name referenced <3×, or the `textscan.<hash>` named connection referenced <2×
+(this path verifies two join keys with separate thresholds, unlike
+`wire-datasource.mjs`'s single `sqlproxy.<hash>` key).
 
 ---
 
@@ -240,6 +291,16 @@ unzip -l "$OUT"                      # sanity: .twb + Packages/… at top level,
 The listing must show `<App Name>.twb` and `Packages/com.tableau.mcp.<slug>/…`
 at the top level with no wrapping folder and no `.DS_Store`/`__MACOSX` entries.
 
+**If phase 1.5 embedded a CSV**, the `.twbx` also needs the `Data/` directory
+zipped in at the archive root — a third step, run after the two above:
+
+```bash
+zip -rX "$OUT" Data -x '*.DS_Store' '*/.DS_Store' '__MACOSX*'
+```
+
+The listing must then also show `Data/<filename>.csv` at the top level, alongside
+`<App Name>.twb` and `Packages/…` — never nested inside `Packages/`.
+
 > The template these workspaces come from is already publish-valid (`.twb`
 > extension wired into a pane, `.trex` with `author email`, `<resources>` block,
 > `<icon>`, `min-api-version`). Packaging is the only structural step you own.
@@ -285,6 +346,11 @@ to Slack clients).
 - **Hand-editing the `<datasources/>` wiring.** Use `wire-datasource.mjs` — freehand
   edits mismatch the `sqlproxy.<hash>` join key across its four locations or leave an
   empty `<datasources />` anchor, and the app silently reaches no data.
+- **Nesting `Data/` inside `Packages/`, or forgetting to zip it at all.** An
+  embedded CSV's `Data/` directory must sit at the `.twbx` archive root, as a
+  sibling of `Packages/` — not nested inside it. `wire-embedded-datasource.mjs`
+  copies the file to the right place; phase 3 packaging still needs the extra
+  `zip -rX "$OUT" Data` step, or the workbook ships with no data behind it.
 - **Assuming a local result's `filePath` is already substituted, or skipping
   unzip because it's local.** `filePath` points at the same static,
   un-substituted template **zip** the S3 path serves — not a finalized
