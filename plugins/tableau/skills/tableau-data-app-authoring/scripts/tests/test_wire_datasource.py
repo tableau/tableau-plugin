@@ -86,6 +86,19 @@ def test_happy_path_wires_all_four_locations_with_matching_join_key(tmp_path):
     assert "<column-instance column='[Region]' derivation='None' name='[none:Region:nk]' pivot='key' type='nominal' />" in wired
 
 
+def test_spatial_field_aggregates_with_collect(tmp_path):
+    descriptor = descriptor_happy()
+    descriptor['fields'] = [{"name": "Geometry", "datatype": "spatial", "role": "dimension"}]
+    twb_path = write_twb(tmp_path)
+    desc_path = write_descriptor(tmp_path, descriptor)
+    result = run_wire(twb_path, desc_path)
+
+    assert result.returncode == 0
+    wired = open(twb_path).read()
+    # spatial field aggregates with Collect (derive_field's spatial branch), matching the embedded path
+    assert "<column aggregation='Collect' datatype='spatial' name='[Geometry]' role='dimension' type='nominal' />" in wired
+
+
 def test_missing_required_descriptor_field(tmp_path):
     descriptor = descriptor_happy()
     del descriptor['site']

@@ -79,13 +79,15 @@ def derive_field(field, ordinal):
     role = 'measure' if field.get('role') == 'measure' else 'dimension'
     is_measure = role == 'measure'
     field_type = type_of(datatype)
+    # Spatial fields aggregate with Collect (a geometry union), not Sum/Count.
+    aggregation = 'Collect' if datatype == 'spatial' else ('Sum' if is_measure else 'Count')
     return {
         'name': name,
         'datatype': datatype,
         'role': role,
         'type': field_type,
         'ordinal': ordinal,
-        'aggregation': 'Sum' if is_measure else 'Count',
+        'aggregation': aggregation,
         # role attribute: 0 = dimension, 1 = measure
         'roleAttr': 1 if is_measure else 0,
         'localName': f'[{name}]',

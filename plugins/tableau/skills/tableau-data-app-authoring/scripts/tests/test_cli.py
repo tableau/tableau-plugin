@@ -22,3 +22,4 @@ def test_unsupported_extension_lists_supported_types(tmp_path):
     assert '.xlsx' in result.stderr
     assert '.hyper' in result.stderr
     assert '.zip' in result.stderr
+    assert '.json' in result.stderr

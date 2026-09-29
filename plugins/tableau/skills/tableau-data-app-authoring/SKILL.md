@@ -143,9 +143,13 @@ user only wants to publish the starter to prove packaging.
   connector-specific named connection). Useful for demos, fixtures, or data
   that has nowhere published to live. The wiring script dispatches by file
   extension:
-  - **`.csv`, `.xlsx`, `.json`** — validated end-to-end (scaffold → wire →
-    package → publish → query-datasource returning real rows, including
-    correct `SUM`/`COUNT` aggregation).
+  - **`.csv`** — validated end-to-end (scaffold → wire → package → publish →
+    query-datasource returning real rows, including correct `SUM`/`COUNT`
+    aggregation).
+  - **`.xlsx`, `.json`** — script-level wiring support (emit the XML shape
+    observed in real Tableau-authored workbooks), but their own live
+    query-datasource validation is not yet confirmed — treat as "wiring
+    validated, live query unconfirmed."
   - **`.hyper`** (wiring-only — the file must already exist; requires a
     `descriptor.json` with a `fields` list, since a `.hyper`'s schema isn't
     stdlib-readable) and **`.zip`** (spatial/shapefile — v1 assumes any `.zip`
