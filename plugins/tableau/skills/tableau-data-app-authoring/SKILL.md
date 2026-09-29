@@ -18,6 +18,17 @@ runtime and renders "no data source found." Wire a datasource into the
 `.twb` before authoring against it — see Wire a datasource in below. (Publishing the
 starter as-is to prove packaging works does not need it.)
 
+**Already have a built app locally?** The five stages above assume starting
+from the template — none of them ingest an existing `.twb`/`.twbx`/unpacked
+workspace, so following them top to bottom would scaffold an unrelated new app
+instead of publishing the one you have. Skip straight to whichever applies:
+**Package into a .twbx** (if it's an unpacked `<App Name>/` folder) or
+**Publish** (if it's already a `.twbx`) — but first check the `.twb`'s
+`<datasources>` is actually wired (not an empty `<datasources/>`) and the
+package layout is correct, since none of this skill's own tooling
+(`wire_datasource.py`/`wire_embedded_datasource.py`, the zip-layout checks
+below) has run against it.
+
 **Division of labor: you write ALL the code, every stage, always — including
 `app.js`.** The human "vibe codes" by describing what they want (criteria,
 theme, vibe, target insights) — they do not write `app.js` themselves. Read
