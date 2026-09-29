@@ -130,11 +130,13 @@ user only wants to publish the starter to prove packaging.
 - **Embedded** — the app queries a local file bundled *inside* the `.twbx`,
   with no server-side datasource at all (a `federated`/`textscan` connection).
   Useful for demos, fixtures, or data that has nowhere published to live.
-  **CSV only for now** — Tableau can in principle embed Excel/Access/JSON/
-  spatial/statistical files and true Hyper extracts, but only the CSV/
-  `textscan` path has been validated end-to-end with this skill. If the user
-  hands you a non-CSV file, say so and ask them to provide (or let you convert
-  to) a CSV.
+  **CSV and Excel** — the wiring script supports both `.csv` (`federated`/
+  `textscan`) and `.xlsx` (`federated`/`excel-direct`) inputs, both validated
+  end-to-end (scaffold → wire → package → publish → query-datasource returning
+  real rows). Tableau can in principle also embed Access/JSON/spatial/
+  statistical files and true Hyper extracts, but those have no script support
+  here. For any other file type, ask the user to provide (or let you convert
+  to) a CSV or `.xlsx`.
 
 Do **not** hand-edit the XML for either path — both anchors must be filled
 atomically with a matching join key across multiple coordinated locations, or
@@ -183,14 +185,18 @@ Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
 
-**Embedded datasource (CSV):** the wiring is a `federated`/`textscan` connection
-instead of `sqlproxy`, filling the same two anchors with a `federated.<hash>`
-join key. Use `scripts/wire_embedded_datasource.py`, which infers column
-datatype/role straight from the CSV (there's no MCP introspection tool for a
-local file) and copies the file into the workspace for you.
+**Embedded datasource (CSV, Excel):** the wiring is a `federated`/`textscan`
+(CSV) or `federated`/`excel-direct` (`.xlsx`) connection instead of `sqlproxy`,
+filling the same two anchors with a `federated.<hash>` join key. Use
+`scripts/wire_embedded_datasource.py`, which dispatches on file extension, infers
+column datatype/role straight from the file (there's no MCP introspection tool
+for a local file) and copies the file into the workspace for you. **No date type:**
+inference only distinguishes integer/real/string — a date-looking column comes
+back `string`/nominal, though VDS may still return it as an ISO-ish timestamp at
+query time regardless of that declared type.
 
-1. **Ask the user which file to embed** (CSV only — see above). Get its path.
-2. **Run the wiring script** — no descriptor required; it reads the CSV header
+1. **Ask the user which file to embed** (`.csv` or `.xlsx` — see above). Get its path.
+2. **Run the wiring script** — no descriptor required; it reads the header
    plus a sample of rows to infer each column's datatype (integer/real/string)
    and role (measure/dimension):
 
@@ -208,44 +214,24 @@ local file) and copies the file into the workspace for you.
 
 The script hard-fails rather than emit a half-wired workbook — on a missing
 anchor, a surviving empty `<datasources />`, the `federated.<hash>` connection
-name referenced <3×, or the `textscan.<hash>` named connection referenced <2×
-(this path verifies two join keys with separate thresholds, unlike
-`wire_datasource.py`'s single `sqlproxy.<hash>` key).
+name referenced <3×, or the named connection (`textscan.<hash>` for CSV,
+`excel-direct.<hash>` for Excel) referenced <2× (this path verifies two join
+keys with separate thresholds, unlike `wire_datasource.py`'s single
+`sqlproxy.<hash>` key).
 
 ## Author `app.js`
 
 **Always author `app.js` yourself — this is the fixed default, not a
 fallback.** The human vibe-codes: they describe what they want (criteria,
 theme, target insights, audience) and you turn that into the actual
-`ds.queryAsync(...)` → chart implementation. Read
-[Design a data app](references/design-data-app.md) (what to build) and
-[Build a data app](references/build-data-app.md) (how) first, then:
+`ds.queryAsync(...)` → chart implementation.
 
-1. **Introspect the datasource.** `list-datasources` → find the LUID →
-   `get-datasource-metadata({ datasourceLuid })` for fields/model/params →
-   `query-datasource({ datasourceLuid, query, limit })` to preview real VDS
-   `{ data: [...] }` rows and confirm field captions/types before committing to a
-   chart. (Ensure Wire a datasource in, above, is already done — the app can't
-   query without it.)
-2. **Design what to build** using [Design a data app](references/design-data-app.md): pick
-   the archetype by audience, lead with the message (BLUF), choose the mark by the
-   perception hierarchy, keep graphical integrity (zero baseline, "as of"
-   provenance), use action titles + direct labels, and restrained color (grey +
-   one accent, colorblind-safe).
-3. **Edit `content/src/app.js` on disk** (there is no upsert tool). Inside the
-   `AUTHOR YOUR APP HERE` block, replace the `renderStarter(...)` call with a real
-   `ds.queryAsync(query)` → `extractData(result)` → build a Vega-Lite spec →
-   `vegaEmbed(el, spec)`; match columns by field name. Vendor
-   vega/vega-lite/vega-embed locally under `content/src/` and load them from
-   `index.html` (mirror how `tableau.extensions.1.latest.js` is already vendored
-   relative and loaded before `app.js`).
-4. **Follow the sandbox rules in the `AUTHOR YOUR APP HERE` comment** — that
-   comment is the source of truth (render-first/initialize-second, surface every
-   error via `renderError`, no CDN, 2D over WebGL, `textContent`/`createElement`
-   never `innerHTML` with live values). Don't re-derive them.
-5. **There is no local preview.** You cannot see the app render against live data
-   while authoring — the visual review happens live in Tableau after publish
-   (Publish, below).
+Read [Design a data app](references/design-data-app.md) (what to build) and
+[Build a data app](references/build-data-app.md) (how — introspect the
+datasource, design the chart, edit `content/src/app.js`, follow the sandbox
+rules in its `AUTHOR YOUR APP HERE` comment) and follow that workflow; it is
+not restated here. There is no local preview — the visual review happens live
+in Tableau, after publish.
 
 **Exception — the human wants to write `app.js` themselves:** only skip
 authoring if the human explicitly says they want to write `app.js` themselves

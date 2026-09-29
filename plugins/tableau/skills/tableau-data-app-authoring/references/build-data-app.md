@@ -29,7 +29,7 @@ published datasource, so it always reflects current data. Two consequences:
    you cannot see real rows until the app is published and opened in Tableau. While authoring,
    introspect the datasource with `get-datasource-metadata` / `query-datasource` to design and
    sanity-check the query; do the **visual** review in Tableau **after** publishing. (For an
-   **embedded CSV** datasource, this introspection itself requires one publish first — there's no LUID
+   **embedded (CSV or Excel)** datasource, this introspection itself requires one publish first — there's no LUID
    to query until the workbook exists on the server; see Workflow step 3 below.)
 
 ## Workflow
@@ -43,8 +43,8 @@ published datasource, so it always reflects current data. Two consequences:
    - **Published:** find the target published datasource and its LUID with `list-datasources` (ask
      the user which one if ambiguous). You can wire more than one if the app genuinely needs it. This
      LUID drives both the 'Wire a datasource in' `.twb` wiring and your introspection queries.
-   - **Embedded (CSV):** `list-datasources` only sees published datasources — an embedded one has no
-     LUID until the workbook is published. Wire the CSV in first ('Wire a datasource in'), then get a
+   - **Embedded (CSV or Excel):** `list-datasources` only sees published datasources — an embedded one has no
+     LUID until the workbook is published. Wire the file in first ('Wire a datasource in'), then get a
      queryable LUID for it per the Embedded case in step 3 below.
 3. **Introspect the datasource before writing `app.js`.**
    - **Published:**
@@ -53,11 +53,11 @@ published datasource, so it always reflects current data. Two consequences:
      - `query-datasource({ datasourceLuid, query, limit })` → preview real VDS `{ data: [...] }` rows
        so you can sanity-check the exact query the app will run before you commit to a chart. Match
        columns by field caption/name, not by position.
-   - **Embedded (CSV):** there's no MCP tool that queries an embedded datasource straight from the
+   - **Embedded (CSV or Excel):** there's no MCP tool that queries an embedded datasource straight from the
      wired `.twb` — it only gets a queryable LUID once the workbook is published. This still counts
      as the SKILL's "ask explicitly before publishing" gate below — it creates content on the user's
      site just like the final publish does, so get a clear yes before doing it, same as any other
-     publish. Once you have it, after 'Wire a datasource in' has wired the CSV, publish the workbook
+     publish. Once you have it, after 'Wire a datasource in' has wired the file, publish the workbook
      as-is (a stub `app.js` is fine; you don't need the real chart written yet):
      1. `publish-workbook(...)` to get a `workbookId`.
      2. `get-workbook({ workbookId })` — its `upstreamDatasources` now includes the embedded entry
@@ -95,8 +95,12 @@ the `renderStarter(...)` call with the real flow:
 - Build a VDS query (fields + optional filters/aggregations) and call `ds.queryAsync(query)`.
 - Read rows with the provided `extractData()` helper (returns `result.data`); match columns by field
   name.
-- Render with a chart. **Default library: Vega-Lite** — build a spec from the rows and render with
-  `vegaEmbed(el, spec)`.
+- Render with **hand-rolled inline SVG/Canvas** (`document.createElementNS`, manual mark
+  positioning) — no vendored charting library. Confirmed 2026-09-28: vendoring the
+  Vega/Vega-Lite/Vega-Embed stack (~830KB across 3 files) broke live extension loading
+  ("Extensions API not loaded"); a sibling app with zero vendored library loaded fine.
+  Mechanism unconfirmed — treat vendoring a large third-party charting library as a known
+  way to break the live load.
 
 Prefer to derive new fields / change data shapes **at query time** rather than in JS. There is no
 required file layout, chart count, or palette — a good app clearly addresses the user's objective.
@@ -108,9 +112,10 @@ The published app runs inside the Tableau viz-extension sandbox, not a browser. 
 rules live in the `AUTHOR YOUR APP HERE` comment in the scaffolded `app.js` and are **not restated
 here** to avoid drift. In brief, that comment requires: surface every error on-screen (no visible
 console — use the starter's `renderError`); render first / initialize second; **vendor libraries
-locally, no CDN** (add vega/vega-lite/vega-embed under `content/src/` and load them from
-`index.html` with relative paths, mirroring how `tableau.extensions.1.latest.js` is already vendored
-and loaded before `app.js`); prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
+locally, no CDN** (mirroring how `tableau.extensions.1.latest.js` is already vendored and loaded
+before `app.js`) — but keep the vendored payload small; a ~830KB Vega/Vega-Lite/Vega-Embed vendor
+broke live loading (see Author `app.js` above), so prefer hand-rolled SVG/Canvas over pulling in a
+large charting library; prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
 (`textContent` / `createElement`), never `innerHTML` with live values.
 
 ## Review the live app in Tableau
