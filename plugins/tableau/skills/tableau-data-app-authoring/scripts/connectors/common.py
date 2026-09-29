@@ -24,9 +24,18 @@ def esc(value):
     )
 
 
-# datatype -> Tableau column `type`.
+# datatype -> Tableau column `type`. Mirrors wire_datasource.py's type_of() exactly —
+# the two must stay in lockstep or a descriptor override supplying datatype: "date"/
+# "datetime" on the embedded path (no connector infers dates itself, but overrides
+# aren't restricted to inferred values) would silently type as nominal instead of
+# ordinal, diverging from the published path with no error.
 def type_of(datatype):
-    return 'quantitative' if datatype in ('real', 'integer') else 'nominal'
+    d = str(datatype).lower()
+    if d in ('real', 'integer'):
+        return 'quantitative'
+    if d in ('date', 'datetime'):
+        return 'ordinal'
+    return 'nominal'
 
 
 # A field's derived attributes, computed once and reused across all blocks so the

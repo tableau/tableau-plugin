@@ -126,3 +126,22 @@ def test_json_descriptor_role_override_applies(tmp_path):
     wired = open(twb_path).read()
     # role forced to dimension -> Count/None even though datatype is real
     assert "<column-instance column='[rating]' derivation='None' name='[none:rating:nk]' pivot='key' type='quantitative' />" in wired
+
+
+def test_json_descriptor_datatype_override_to_date_types_ordinal_not_nominal(tmp_path):
+    # No connector infers 'date' itself, but a descriptor override isn't restricted
+    # to inferred values. connectors/common.py's type_of() must map date/datetime ->
+    # ordinal exactly like wire_datasource.py's (published-path) type_of() does —
+    # regression guard for a divergence where the embedded path fell through to
+    # nominal instead.
+    twb_path = write_twb(tmp_path)
+    json_path = write_json(tmp_path, PRODUCT_ROWS)
+    desc_path = write_descriptor(tmp_path, {
+        "connectionName": "federated.abc123",
+        "fields": [{"name": "product", "datatype": "date"}],
+    })
+    result = run_wire(twb_path, json_path, desc_path)
+
+    assert result.returncode == 0
+    wired = open(twb_path).read()
+    assert "<column-instance column='[product]' derivation='None' name='[none:product:nk]' pivot='key' type='ordinal' />" in wired
