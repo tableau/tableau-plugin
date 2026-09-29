@@ -128,15 +128,28 @@ user only wants to publish the starter to prove packaging.
   server (a `sqlproxy` connection, resolved live by VDS). This is the default
   and what most apps want.
 - **Embedded** — the app queries a local file bundled *inside* the `.twbx`,
-  with no server-side datasource at all (a `federated`/`textscan` connection).
-  Useful for demos, fixtures, or data that has nowhere published to live.
-  **CSV and Excel** — the wiring script supports both `.csv` (`federated`/
-  `textscan`) and `.xlsx` (`federated`/`excel-direct`) inputs, both validated
-  end-to-end (scaffold → wire → package → publish → query-datasource returning
-  real rows). Tableau can in principle also embed Access/JSON/spatial/
-  statistical files and true Hyper extracts, but those have no script support
-  here. For any other file type, ask the user to provide (or let you convert
-  to) a CSV or `.xlsx`.
+  with no server-side datasource at all (a `federated` connection wrapping a
+  connector-specific named connection). Useful for demos, fixtures, or data
+  that has nowhere published to live. The wiring script dispatches by file
+  extension:
+  - **`.csv`, `.xlsx`, `.json`** — validated end-to-end (scaffold → wire →
+    package → publish → query-datasource returning real rows, including
+    correct `SUM`/`COUNT` aggregation).
+  - **`.hyper`** (wiring-only — the file must already exist; requires a
+    `descriptor.json` with a `fields` list, since a `.hyper`'s schema isn't
+    stdlib-readable) and **`.zip`** (spatial/shapefile — v1 assumes any `.zip`
+    passed here is a shapefile zip) — file-level wiring and packaging are
+    proven correct against real ground-truth data, but neither has a
+    confirmed live query-datasource pass on this environment: Hyper hit an
+    extract-server connectivity error (reproduced even on an untouched
+    control workbook), and ogrdirect hit a 403 site-capability error
+    (reproduced on a valid embedded datasource but not on a no-datasource
+    control) — both look like environment/site gaps, not connector defects,
+    but treat them as "wiring validated, live query unconfirmed" rather than
+    fully supported until re-tested somewhere that isn't blocked.
+  - Tableau can in principle also embed Access/SPSS/SAS files, but those have
+    no script support here — ask the user to provide (or let you convert to)
+    one of the supported types above.
 
 Do **not** hand-edit the XML for either path — both anchors must be filled
 atomically with a matching join key across multiple coordinated locations, or
@@ -185,38 +198,58 @@ Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
 
-**Embedded datasource (CSV, Excel):** the wiring is a `federated`/`textscan`
-(CSV) or `federated`/`excel-direct` (`.xlsx`) connection instead of `sqlproxy`,
-filling the same two anchors with a `federated.<hash>` join key. Use
-`scripts/wire_embedded_datasource.py`, which dispatches on file extension, infers
-column datatype/role straight from the file (there's no MCP introspection tool
-for a local file) and copies the file into the workspace for you. **No date type:**
-inference only distinguishes integer/real/string — a date-looking column comes
-back `string`/nominal, though VDS may still return it as an ISO-ish timestamp at
-query time regardless of that declared type.
+**Embedded datasource:** the wiring fills the same two anchors as the
+published path but with a `federated.<hash>` join key wrapping a
+connector-specific named connection instead of `sqlproxy` — `textscan`
+(`.csv`), `excel-direct` (`.xlsx`), `hyper` (`.hyper`), `ogrdirect` (`.zip`,
+spatial), or `semistructpassivestore-direct` (`.json`). Use
+`scripts/wire_embedded_datasource.py`, which dispatches on file extension,
+infers column datatype/role straight from the file where possible (there's no
+MCP introspection tool for a local file), and copies the file into the
+workspace for you. **No date type:** inference only distinguishes
+integer/real/string — a date-looking column comes back `string`/nominal,
+though VDS may still return it as an ISO-ish timestamp at query time
+regardless of that declared type.
 
-1. **Ask the user which file to embed** (`.csv` or `.xlsx` — see above). Get its path.
-2. **Run the wiring script** — no descriptor required; it reads the header
-   plus a sample of rows to infer each column's datatype (integer/real/string)
-   and role (measure/dimension):
+1. **Ask the user which file to embed** (`.csv`, `.xlsx`, `.hyper`, `.zip`
+   spatial, or `.json` — see above). Get its path.
+2. **Run the wiring script:**
 
    ```bash
-   python3 "$SKILL_DIR/scripts/wire_embedded_datasource.py" "<App Name>/<App Name>.twb" "<path-to-file>.csv"
+   python3 "$SKILL_DIR/scripts/wire_embedded_datasource.py" "<App Name>/<App Name>.twb" "<path-to-file>"
    ```
 
-   This also copies the CSV to `<App Name>/Data/<filename>.csv` — a sibling of
+   - `.csv` / `.xlsx` / `.json` need no descriptor — the script reads the
+     file itself (header + a row sample) to infer each column's datatype
+     (integer/real/string, plus `boolean` for JSON) and role
+     (measure/dimension).
+   - `.hyper` **requires** a `descriptor.json` (third argument) with a
+     non-empty `fields` array (`{ name, datatype }` at minimum) — a
+     `.hyper`'s schema isn't stdlib-readable, so there's nothing to
+     introspect.
+   - `.zip` (spatial) reads the field list from the zip's `.dbf` member via a
+     stdlib parser; a synthetic spatial `Geometry` field is added
+     automatically.
+   - `.json` (v1 scope): a flat array of flat objects only — a field whose
+     value is itself an object/array is rejected rather than silently
+     mistyped. Every JSON number is wired as `real`, never `integer`
+     (Tableau's own JSON introspection does the same).
+
+   This also copies the file to `<App Name>/Data/<filename>` — a sibling of
    `Packages/` at the workspace root, per the Package into a .twbx stage below.
 3. **Override inference if needed.** If a column's inferred datatype/role is
    wrong (e.g. a numeric ID that should be a dimension, not a measure), pass a
-   third `descriptor.json` argument with a `fields` array (`{ name, datatype,
-   role }`) for just the fields to override — same shape as the published path's
-   descriptor, minus `repositoryId`/`site`/`server`.
+   `descriptor.json` argument (required for `.hyper`, optional otherwise) with
+   a `fields` array (`{ name, datatype, role }`) for just the fields to
+   override — same shape as the published path's descriptor, minus
+   `repositoryId`/`site`/`server`.
 
 The script hard-fails rather than emit a half-wired workbook — on a missing
 anchor, a surviving empty `<datasources />`, the `federated.<hash>` connection
-name referenced <3×, or the named connection (`textscan.<hash>` for CSV,
-`excel-direct.<hash>` for Excel) referenced <2× (this path verifies two join
-keys with separate thresholds, unlike `wire_datasource.py`'s single
+name referenced <3×, or the named connection (`textscan.<hash>` /
+`excel-direct.<hash>` / `hyper.<hash>` / `ogrdirect.<hash>` /
+`semistructpassivestore-direct.<hash>`) referenced <2× (this path verifies two
+join keys with separate thresholds, unlike `wire_datasource.py`'s single
 `sqlproxy.<hash>` key).
 
 ## Author `app.js`
@@ -265,14 +298,15 @@ unzip -l "$OUT"                      # sanity: .twb + Packages/… at top level,
 The listing must show `<App Name>.twb` and `Packages/com.tableau.mcp.<slug>/…`
 at the top level with no wrapping folder and no `.DS_Store`/`__MACOSX` entries.
 
-**If Wire a datasource in embedded a CSV**, the `.twbx` also needs the `Data/`
-directory zipped in at the archive root — a third step, run after the two above:
+**If Wire a datasource in embedded a local file** (any of `.csv`/`.xlsx`/
+`.hyper`/`.zip`/`.json`), the `.twbx` also needs the `Data/` directory zipped
+in at the archive root — a third step, run after the two above:
 
 ```bash
 zip -rX "$OUT" Data -x '*.DS_Store' '*/.DS_Store' '__MACOSX*'
 ```
 
-The listing must then also show `Data/<filename>.csv` at the top level, alongside
+The listing must then also show `Data/<filename>` at the top level, alongside
 `<App Name>.twb` and `Packages/…` — never nested inside `Packages/`.
 
 > The template these workspaces come from is already publish-valid (`.twb`
@@ -316,11 +350,11 @@ to Slack clients).
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.
 - Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire_datasource.py`
-  (published) or `scripts/wire_embedded_datasource.py` (embedded CSV) —
+  (published) or `scripts/wire_embedded_datasource.py` (embedded file) —
   freehand edits mismatch the join key across their coordinated locations or
   leave an empty `<datasources />` anchor, and the app silently reaches no data.
 - Don't nest `Data/` inside `Packages/`, or forget to zip it at all. An
-  embedded CSV's `Data/` directory must sit at the `.twbx` archive root, as a
+  embedded file's `Data/` directory must sit at the `.twbx` archive root, as a
   sibling of `Packages/` — not nested inside it. `scripts/wire_embedded_datasource.py`
   copies the file to the right place; the Package stage still needs the extra
   `zip -rX "$OUT" Data` step, or the workbook ships with no data behind it.

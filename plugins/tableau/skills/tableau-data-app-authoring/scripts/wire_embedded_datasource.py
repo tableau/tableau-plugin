@@ -20,15 +20,22 @@ Embedded connector types are supported, dispatched by file extension:
                 is read from the zip's `.dbf` member via a minimal stdlib struct
                 parser, plus a synthetic spatial `Geometry` field. Any `.zip` passed
                 here is assumed (v1) to be a shapefile zip.
+  - `.json`  -> `federated`/`semistructpassivestore-direct` connection (JSON). Column
+                types are inferred directly from the file's own values (v1 scope: a
+                flat array of flat objects only — nested objects/arrays are rejected).
+                Every JSON number is typed `real`, never `integer` (JSON has no
+                distinct int type). See connectors/jsonfile.py for what was
+                deliberately NOT replicated from the ground-truth workbook.
 
 The CSV/`textscan` path is validated end-to-end (published and queried live from a
-data-app extension). The Excel/`excel-direct`, Hyper/`hyper`, and shapefile/`ogrdirect`
-paths have script-level support (this file emits the XML shape observed in real
-Tableau-Desktop-authored workbooks) but their own live end-to-end validation happens
-separately.
+data-app extension). The Excel/`excel-direct`, Hyper/`hyper`, shapefile/`ogrdirect`,
+and JSON/`semistructpassivestore-direct` paths have script-level support (this file
+emits the XML shape observed in real Tableau-Desktop-authored workbooks) but their
+own live end-to-end validation happens separately.
 
 Each connector's introspection + root-XML builder lives in its own module under
-`connectors/` (csv.py, excel.py, hyper.py, ogrdirect.py); shared helpers
+`connectors/` (csv.py, excel.py, hyper.py, ogrdirect.py, jsonfile.py — named to avoid
+shadowing this file's own top-level `import json`); shared helpers
 (die/esc/derive_field) live in `connectors/common.py`. This file owns the CLI:
 descriptor loading, the override-by-name mechanism, dispatch via the CONNECTORS
 registry, anchor-splitting/replacement in the `.twb`, ref-count verification, and
@@ -72,7 +79,7 @@ import shutil
 import string
 import sys
 
-from connectors import csv, excel, hyper, ogrdirect
+from connectors import csv, excel, hyper, jsonfile, ogrdirect
 from connectors.common import derive_field, die, esc
 
 # The exact empty anchors emitted by the scaffold template. Matched literally.
@@ -92,6 +99,7 @@ CONNECTORS = {
     '.xlsx': excel.CONNECTOR,
     '.hyper': hyper.CONNECTOR,
     '.zip': ogrdirect.CONNECTOR,
+    '.json': jsonfile.CONNECTOR,
 }
 
 
