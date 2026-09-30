@@ -15,14 +15,17 @@ There's no official Tableau plugin for Codex yet (Tableau's docs say one is
 plugins/tableau/
   .codex-plugin/plugin.json                    # plugin manifest
   .mcp.json                                    # bundles the hosted Tableau MCP server
-  skills/tableau-analytics/                    # read-oriented: querying/exploring content
+  skills/tableau-about/                        # explains the plugin's purpose and capabilities
   skills/tableau-content-viewer/               # find a view/workbook and render it, no data querying or editing
   skills/tableau-workbook-authoring/           # generate/modify workbooks by editing TWB XML
-  skills/shared/rendering.md                   # shared render-in-side-panel steps, used by both of the above
-  schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd           # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
+  skills/tableau-data-app-authoring/           # scaffold, wire, author, package, and publish a Tableau data app (viz extension)
+  skills/tableau-dashboard-advisor/            # advise on dashboard design from business questions + schema, no publishing
+  skills/tableau-data-quality-sentinel/        # profile published datasource metadata for schema/field hygiene
+  skills/tableau-viz-critique/                 # review and score an existing dashboard/view against a design rubric
+  references/rendering.md                      # shared render-in-side-panel steps, used by several skills
+  skills/tableau-workbook-authoring/resources/schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd   # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
   skills/tableau-workbook-authoring/scripts/validate_workbook.py   # validates a .twb/.twbx against the matching XSD
   skills/tableau-workbook-authoring/scripts/requirements.txt       # lxml, needed by validate_workbook.py
-  scripts/render_embed.py                      # builds an embeddable URL + local iframe fallback
 ```
 
 The workbook validator needs `lxml`. The plugin's session-start hook installs it from `plugins/tableau/skills/tableau-workbook-authoring/scripts/requirements.txt` into the plugin's writable data directory.
