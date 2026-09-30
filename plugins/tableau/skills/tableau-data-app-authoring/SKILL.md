@@ -18,16 +18,11 @@ runtime and renders "no data source found." Wire a datasource into the
 `.twb` before authoring against it — see Wire a datasource in below. (Publishing the
 starter as-is to prove packaging works does not need it.)
 
-**Already have a built app locally?** The five stages above assume starting
-from the template — none of them ingest an existing `.twb`/`.twbx`/unpacked
-workspace, so following them top to bottom would scaffold an unrelated new app
-instead of publishing the one you have. Skip straight to whichever applies:
-**Package into a .twbx** (if it's an unpacked `<App Name>/` folder) or
-**Publish** (if it's already a `.twbx`) — but first check the `.twb`'s
-`<datasources>` is actually wired (not an empty `<datasources/>`) and the
-package layout is correct, since none of this skill's own tooling
-(`wire_datasource.py`/`wire_embedded_datasource.py`, the zip-layout checks
-below) has run against it.
+**Already have a built app locally?** Skip straight to whichever applies:
+**Package into a .twbx** (unpacked `<App Name>/` folder) or **Publish**
+(already a `.twbx`) — but first confirm the `.twb`'s `<datasources>` is
+actually wired (not empty) and the package layout is correct, since none of
+this skill's tooling has run against it.
 
 **Division of labor: you write ALL the code, every stage, always — including
 `app.js`.** The human "vibe codes" by describing what they want (criteria,
@@ -38,11 +33,9 @@ skill's local tools). Only skip authoring `app.js` if the human explicitly says
 they want to write it themselves for this app (rare) — see the exception at
 the end of Author `app.js` below.
 
-There is intentionally **no separate validation stage** — a TWBX cannot be
-pre-validated (Tableau validates extracts/extensions at publish time), so
-`publish-workbook` surfaces any errors when you reach Publish. The one thing
-you must get right before then is package *layout* (Package into a .twbx),
-or the workbook won't open at all.
+There's no separate validation stage — `publish-workbook` is where errors
+surface. Get package *layout* right (see Package into a .twbx) or the
+workbook won't open at all.
 
 ## Scaffold and finalize the workspace
 
@@ -51,8 +44,7 @@ Call the `scaffold-data-app` MCP tool with the app name:
 > scaffold-data-app({ datappName: "Sales Demo" })
 
 **Both transports return the same static, un-substituted template *zip* plus an
-identical `postUnzip` plan.** They no longer differ in what's returned or how
-it's finalized — only in how the zip gets onto disk:
+identical `postUnzip` plan** — they differ only in how the zip gets onto disk:
 
 - **local (stdio):** result has `filePath` + a `postUnzip` plan. `filePath`
   points at the same static template **zip** the S3 path serves — it is *not* a
@@ -61,8 +53,8 @@ it's finalized — only in how the zip gets onto disk:
 - **remote (http):** result has `s3URL` + a `postUnzip` plan. Download the zip
   from `s3URL` first, then unzip it to a temp dir and apply the plan there.
 
-Past the fetch step the two are identical: same unzip, same plan — including the
-root-dir rename (`Data App Name` → `<displayName>`), which now applies to both.
+Past the fetch step the two are identical: same unzip, same plan, including the
+root-dir rename (`Data App Name` → `<displayName>`).
 Apply the plan deterministically with the bundled script — applying it freehand
 leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` tokens or interleaves
 edits and renames in the wrong order.
@@ -136,31 +128,14 @@ user only wants to publish the starter to prove packaging.
 **Ask the user: published or embedded?**
 
 - **Published** — the app queries a datasource that already exists on the
-  server (a `sqlproxy` connection, resolved live by VDS). This is the default
-  and what most apps want.
-- **Embedded** — the app queries a local file bundled *inside* the `.twbx`,
-  with no server-side datasource at all (a `federated` connection wrapping a
-  connector-specific named connection). Useful for demos, fixtures, or data
-  that has nowhere published to live. The wiring script dispatches by file
-  extension:
-  - **`.csv`, `.xlsx`, `.json`** — validated end-to-end (scaffold → wire →
-    package → publish → query-datasource returning real rows, including
-    correct `SUM`/`COUNT` aggregation).
-  - **`.hyper`** (wiring-only — the file must already exist; requires a
-    `descriptor.json` with a `fields` list, since a `.hyper`'s schema isn't
-    stdlib-readable) and **`.zip`** (spatial/shapefile — v1 assumes any `.zip`
-    passed here is a shapefile zip) — file-level wiring and packaging are
-    proven correct against real ground-truth data, but neither has a
-    confirmed live query-datasource pass on this environment: Hyper hit an
-    extract-server connectivity error (reproduced even on an untouched
-    control workbook), and ogrdirect hit a 403 site-capability error
-    (reproduced on a valid embedded datasource but not on a no-datasource
-    control) — both look like environment/site gaps, not connector defects,
-    but treat them as "wiring validated, live query unconfirmed" rather than
-    fully supported until re-tested somewhere that isn't blocked.
-  - Tableau can in principle also embed Access/SPSS/SAS files, but those have
-    no script support here — ask the user to provide (or let you convert to)
-    one of the supported types above.
+  server (a `sqlproxy` connection, resolved live by VDS). Default choice.
+- **Embedded** — the app queries a local file bundled *inside* the `.twbx`
+  (a `federated` connection wrapping a connector-specific named connection).
+  The wiring script dispatches by file extension: `.csv`, `.xlsx`, `.json`,
+  `.hyper` (requires a `descriptor.json` with a `fields` list — its schema
+  isn't stdlib-readable), `.zip` (spatial/shapefile — any `.zip` passed here
+  is assumed to be a shapefile zip). Access/SPSS/SAS have no script support —
+  ask the user to convert to one of the above.
 
 Do **not** hand-edit the XML for either path — both anchors must be filled
 atomically with a matching join key across multiple coordinated locations, or
@@ -211,9 +186,7 @@ nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
 
 **Embedded datasource:** the wiring fills the same two anchors as the
 published path but with a `federated.<hash>` join key wrapping a
-connector-specific named connection instead of `sqlproxy` — `textscan`
-(`.csv`), `excel-direct` (`.xlsx`), `hyper` (`.hyper`), `ogrdirect` (`.zip`,
-spatial), or `semistructpassivestore-direct` (`.json`). Use
+connector-specific named connection instead of `sqlproxy`. Use
 `scripts/wire_embedded_datasource.py`, which dispatches on file extension,
 infers column datatype/role straight from the file where possible (there's no
 MCP introspection tool for a local file), and copies the file into the
