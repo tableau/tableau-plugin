@@ -16,7 +16,10 @@ Scaffold + finalize  →  Wire datasource*  →  Author (you)  →  Package  →
 ships an empty `<datasources/>`, so a scaffolded app reaches no datasource at
 runtime and renders "no data source found." Wire a datasource into the
 `.twb` before authoring against it — see Wire a datasource in below. (Publishing the
-starter as-is to prove packaging works does not need it.)
+starter as-is to prove packaging works does not need it.) For an embedded
+datasource, Wire also inserts an extra Package + Publish checkpoint before
+Author, to verify the file's inferred types actually work — see Embedded
+datasource below.
 
 **Already have a built app locally?** Skip straight to whichever applies:
 **Package into a .twbx** (unpacked `<App Name>/` folder) or **Publish**
@@ -125,7 +128,10 @@ wired in — this stage is a prerequisite for a working app.
 Do this once the user has told you what to connect to; it is skippable if the
 user only wants to publish the starter to prove packaging.
 
-**Ask the user: published or embedded?**
+**Ask the user: published or embedded?** Either way, the datasource's
+identity can come straight from the user, or be reused from a datasource
+already wired into some other existing workbook — see Reuse an existing
+workbook's datasource below.
 
 - **Published** — the app queries a datasource that already exists on the
   server (a `sqlproxy` connection, resolved live by VDS). Default choice.
@@ -151,7 +157,9 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
 1. **Get the datasource's identity** with `list-datasources` (LUID, name/caption,
    contentUrl, and the server host + site) and `get-datasource-metadata({ datasourceLuid })`
    (field names + datatypes). The published DS **contentUrl** is the
-   `repositoryId`.
+   `repositoryId`. (To reuse an existing workbook's datasource instead, see
+   Reuse an existing workbook's datasource below — it gets you here, then
+   continues at step 2.)
 2. **Write a descriptor** listing *only the fields the app will query* (name +
    datatype + role), e.g.:
 
@@ -196,7 +204,10 @@ though VDS may still return it as an ISO-ish timestamp at query time
 regardless of that declared type.
 
 1. **Ask the user which file to embed** (`.csv`, `.xlsx`, `.hyper`, `.zip`
-   spatial, or `.json` — see above). Get its path.
+   spatial, or `.json` — see above). Get its path. (To reuse an existing
+   workbook's embedded datasource instead of a fresh file, see Reuse an
+   existing workbook's datasource below — it gets you here, then continues
+   at step 2.)
 2. **Run the wiring script:**
 
    ```bash
@@ -227,6 +238,40 @@ regardless of that declared type.
    a `fields` array (`{ name, datatype, role }`) for just the fields to
    override — same shape as the published path's descriptor, minus
    `repositoryId`/`site`/`server`.
+4. **Verify before authoring — inferred types have no ground truth to check
+   against.** Publish once as a checkpoint before moving on to Author `app.js`,
+   under a distinct scratch name so it can never collide with (and never
+   needs to overwrite) any real workbook — `"<App Name> (checkpoint)"`, not
+   `"<App Name>"`: package the current workspace (see Package into a .twbx)
+   and `publish-workbook({ name: "<App Name> (checkpoint)", ... })` — the
+   checkpoint's `app.js` doesn't matter yet, the unedited template default is
+   fine. Then:
+   - `get-workbook({ workbookId })` — confirm the datasource entry shows
+     `queryability.isQueryable: true`. `queryability` can be omitted for a few
+     seconds right after publish (server-side indexing lag, not a failure) —
+     retry once before treating a missing/false result as broken wiring.
+   - `query-datasource({ datasourceLuid, query })` against the wired fields —
+     confirm real rows come back with the expected values/aggregation. VDS can
+     still return sensible values through a wrong declared type in some cases
+     (e.g. a date column inferred as nominal/string can still come back as an
+     ISO-ish timestamp) — check the actual returned values, not just whether
+     the query errored.
+
+   If a field's datatype/role is wrong: don't hand-edit, and don't re-run the
+   wiring script against this already-wired `.twb` (it hard-fails — the
+   anchors are no longer template placeholders). Re-run
+   `wire_embedded_datasource.py` against a fresh, unwired copy of the
+   finalized workspace (keep one from before this step) with a corrected
+   `descriptor.json`, then repackage and republish under the same scratch
+   name (`overwrite: true` — safe here, since it only ever replaces the
+   checkpoint you created), and repeat this verification.
+
+   Only move on to Author `app.js` once verification passes. Package and
+   publish again at the end **under the app's real name** to ship the
+   finished app — a first-time publish, so `overwrite` stays `false` unless
+   the user separately wants to replace an existing real workbook of that
+   name (see Publish below). The checkpoint left under
+   `"<App Name> (checkpoint)"` is not the deliverable.
 
 The script hard-fails rather than emit a half-wired workbook — on a missing
 anchor, a surviving empty `<datasources />`, the `federated.<hash>` connection
@@ -235,6 +280,79 @@ name referenced <3×, or the named connection (`textscan.<hash>` /
 `semistructpassivestore-direct.<hash>`) referenced <2× (this path verifies two
 join keys with separate thresholds, unlike `wire_datasource.py`'s single
 `sqlproxy.<hash>` key).
+
+**Reuse an existing workbook's datasource:** point either path above at a
+datasource already wired into some *other* already-published workbook,
+instead of a fresh published DS or a fresh local file. Works regardless of
+that datasource's type — resolve it, then continue in whichever path above
+actually applies, picking up at its step 2 (you already have what its own
+step 1 would have produced).
+
+1. Find the workbook (`list-workbooks`/`search-content`; ask the user which
+   if ambiguous), then call `get-workbook({ workbookId })` and read
+   `upstreamDatasources[]` — ask which entry if it lists more than one.
+2. Each entry's `datasourceType` says which path to continue in, and its
+   `luid` is the `datasourceLuid` that path's own step 1 would have
+   produced:
+   - **`"published"`** — still run the rest of Published datasource step 1
+     (`list-datasources` filtered by this LUID, for `contentUrl`/site/server
+     — `get-workbook` doesn't carry those — plus
+     `get-datasource-metadata({ datasourceLuid })` for fields), then
+     continue at step 2. Filter candidate fields to `columnClass: "COLUMN"`
+     (drop `CALCULATION`/`TABLE_CALCULATION` as in the embedded case, plus
+     `BIN`/`GROUP` — those are also Tableau-computed groupings with no
+     matching raw column). This metadata response often includes an
+     explicit `role` (`"DIMENSION"`/`"MEASURE"`) per field — when present,
+     lowercase and use it directly instead of inferring from
+     `defaultAggregation`; fall back to the embedded case's
+     `defaultAggregation`-based heuristic when `role` is absent (it isn't
+     always populated). **Caveat, confirmed by direct testing:** this
+     dispatch branch — a workbook whose `get-workbook` response actually
+     reports `datasourceType: "published"` — could not be produced or
+     exercised end-to-end in this environment. `get-workbook`'s "published"
+     classification appears to require server-side provenance from
+     Tableau's own "connect to a published datasource" flow, not just a
+     structurally-correct `sqlproxy` connection: wiring a fresh app directly
+     at a real published datasource via `wire_datasource.py` and publishing
+     it came back from `get-workbook` as `datasourceType: "embedded"` with a
+     brand-new LUID (unrelated to the original), even though the connection
+     queried real live data correctly. A real fixture
+     (`tableau-mcp/tests/e2e/fixtures/workbooks/superstore-datasource.twb`)
+     shows genuine published connections carry a `derived-from` provenance
+     attribute on `repository-location` that `wire_datasource.py` doesn't
+     emit; manually adding it to a fresh publish gets a hard `400` from
+     `publish-workbook`, confirming it's server-populated, not
+     client-authorable. Treat this branch as documented-but-unverified until
+     tested against a genuine Desktop/Web-Authoring-connected workbook.
+   - **`"embedded"`** — continue at Embedded datasource step 2, with two
+     substitutions: the file to wire is not a fresh one from the user — get
+     it by calling `download-workbook({ workbookId })`, unzipping the
+     result, and pulling the real file out of *somewhere* under its `Data/`
+     directory — a Tableau-Desktop-authored workbook nests it a level deeper
+     (`Data/<workbook name>/<filename>`, not flat `Data/<filename>`), so
+     search the whole `Data/` tree rather than assuming a fixed depth.
+     Preserve its original filename when you copy it out, since the wiring
+     script's caption default is derived from it — but don't actually rely
+     on that default: always pass an explicit `"caption"` in the descriptor,
+     sourced from the matched `upstreamDatasources[].name` entry. The
+     script's filename-derived default has a confirmed bug for filenames
+     containing " - " (its regex only replaces the dash character, not the
+     surrounding spaces it sits inside — e.g. `"Sample - Superstore.xlsx"`
+     comes out as `"Sample   Superstore"`), and the authoritative name is
+     already sitting in `upstreamDatasources[]` for free. And always build a
+     descriptor from `get-datasource-metadata({ datasourceLuid })`'s
+     authoritative fields rather than letting the script infer blind —
+     first filter to `columnClass: "COLUMN"` entries in the group matching
+     the datasource's real table (drop `CALCULATION`/`TABLE_CALCULATION`
+     entries: those are Tableau-computed fields with no matching column in
+     the actual file, so feeding them into the descriptor would describe
+     columns that don't exist). For each remaining field, lowercase its
+     `dataType` (`INTEGER`→`integer`, `REAL`→`real`, `STRING`→`string`,
+     `BOOLEAN`→`boolean` for a JSON target, else `string`), and only set
+     `role` when `defaultAggregation` disagrees with the script's own
+     default (`SUM`-like → measure, `COUNT`-like → dimension) — same shape
+     as any other override descriptor. Step 4's checkpoint verification still
+     applies.
 
 ## Author `app.js`
 
