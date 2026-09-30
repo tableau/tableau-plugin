@@ -114,6 +114,13 @@ At the end of this stage you have a finalized workspace directory:
     content/src/…
 ```
 
+**Sheet name:** the worksheet's name comes from the scaffold template's
+default and may not be what the user wants. It's a plain string with no
+hash/join-key involved, so it's freely hand-editable at any point before
+packaging — just edit all 3 matching locations in the `.twb` to the same new
+value: the `<worksheet name='...'>` tag, the `<window class='worksheet'
+name='...'>` tag, and `<referenced-view ... viewId='...' />`.
+
 ## Wire a datasource in
 
 The scaffolded `.twb` ships an **empty `<datasources/>`** (both at the workbook
