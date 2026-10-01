@@ -8,7 +8,7 @@
 
 ## Live-query model (read this first)
 
-**The data app queries its datasource live via the Tableau Extensions API — there is NO local data
+**The data app queries its datasource live via the Tableau Extensions API — there is NO embedded data
 snapshot.** The shipped app calls `readMetadataAsync()` / `queryAsync()` at view time against the
 published datasource, so it always reflects current data. Two consequences:
 
@@ -28,7 +28,9 @@ published datasource, so it always reflects current data. Two consequences:
 2. **You cannot run the live query yourself.** A live query only executes inside the Tableau host, so
    you cannot see real rows until the app is published and opened in Tableau. While authoring,
    introspect the datasource with `get-datasource-metadata` / `query-datasource` to design and
-   sanity-check the query; do the **visual** review in Tableau **after** publishing.
+   sanity-check the query; do the **visual** review in Tableau **after** publishing. (For an
+   **embedded** datasource, this introspection itself requires one publish first — there's no LUID
+   to query until the workbook exists on the server; see Workflow step 3 below.)
 
 ## Workflow
 
@@ -37,16 +39,40 @@ published datasource, so it always reflects current data. Two consequences:
    datasource. Skip it when the answer is a single-value lookup or text and the user hasn't signaled
    interest in a reusable visual — then the starter handoff (the SKILL's 'Author `app.js`' default)
    is enough.
-2. **Identify the datasource(s).** Find the target published datasource and its LUID with
-   `list-datasources` (ask the user which one if ambiguous). You can wire more than one if the app
-   genuinely needs it. This LUID drives both the 'Wire a datasource in' `.twb` wiring and your
-   introspection queries.
+2. **Identify the datasource(s).**
+   - **Published:** find the target published datasource and its LUID with `list-datasources` (ask
+     the user which one if ambiguous). You can wire more than one if the app genuinely needs it. This
+     LUID drives both the 'Wire a datasource in' `.twb` wiring and your introspection queries.
+   - **Embedded:** `list-datasources` only sees published datasources — an embedded one has no
+     LUID until the workbook is published. Wire the file in first ('Wire a datasource in'), then get a
+     queryable LUID for it per the Embedded case in step 3 below.
 3. **Introspect the datasource before writing `app.js`.**
-   - `get-datasource-metadata({ datasourceLuid })` → fields, data model, parameters. This is the
-     field list the app will match by name.
-   - `query-datasource({ datasourceLuid, query, limit })` → preview real VDS `{ data: [...] }` rows
-     so you can sanity-check the exact query the app will run before you commit to a chart. Match
-     columns by field caption/name, not by position.
+   - **Published:**
+     - `get-datasource-metadata({ datasourceLuid })` → fields, data model, parameters. This is the
+       field list the app will match by name.
+     - `query-datasource({ datasourceLuid, query, limit })` → preview real VDS `{ data: [...] }` rows
+       so you can sanity-check the exact query the app will run before you commit to a chart. Match
+       columns by field caption/name, not by position.
+   - **Embedded:** there's no MCP tool that queries an embedded datasource straight from the
+     wired `.twb` — it only gets a queryable LUID once the workbook is published. This still counts
+     as the SKILL's "ask explicitly before publishing" gate below — it creates content on the user's
+     site just like the final publish does, so get a clear yes before doing it, same as any other
+     publish. Once you have it, after 'Wire a datasource in' has wired the file, publish the workbook
+     as-is (a stub `app.js` is fine; you don't need the real chart written yet):
+     1. `publish-workbook(...)` to get a `workbookId`.
+     2. `get-workbook({ workbookId })` — its `upstreamDatasources` now includes the embedded entry
+        (`datasourceType: 'embedded'`) with a queryable `luid` and a `queryability: { isQueryable,
+        reason? }` flag. `isQueryable: false` usually means the site has embedded-datasource querying
+        disabled — surface `reason` rather than guessing why the next step fails.
+     3. `query-datasource({ datasourceLuid: <that luid>, query, limit })` — same call shape as a
+        published datasource, previewing real rows before you write the real chart logic.
+     - **Don't assume a CSV's raw text survives the wire unchanged.** VDS can reformat values
+       independent of the wiring script's inferred datatype — e.g. a column wired as plain `string`
+       because its values look like `7/22/2024` can still come back from a live query as an ISO
+       timestamp (`"2024-09-30T00:00:00"`), not the original text. Confirm the *actual* shape via this
+       preview query — especially for anything date/time-shaped — before writing parsing logic in
+       `app.js` against an assumed format. (CSV-specific: other connectors' own type inference doesn't
+       regex-sniff dates from raw text the same way, so this particular quirk is most likely with CSV.)
 4. **Author `content/src/app.js`** — see Author `app.js` below.
 5. **Package** the workspace into a flat `.twbx` per the SKILL's 'Package into a .twbx' stage
    (`.twb` + `Packages/` at the archive root; `unzip -l` to confirm; no `.DS_Store`/`__MACOSX`).
