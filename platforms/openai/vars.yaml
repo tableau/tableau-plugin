@@ -1,0 +1,42 @@
+# OpenAI platform variables: ChatGPT and Codex, which share one plugin system.
+# Consumed by build/build.py when rendering *.j2 files from src/plugin/.
+
+# How the assistant refers to itself in user-facing prose.
+assistant_name: ChatGPT and Codex
+
+# Prefix applied to every Tableau MCP server tool name in prose, e.g.
+# `{{ mcp_prefix }}search-content` -> `mcp__Tableau__search-content`. On Codex,
+# tools are addressed by the bare server key from .mcp.json ("Tableau").
+mcp_prefix: "mcp__Tableau__"
+
+# Shell expansion the host substitutes for the installed plugin's root dir.
+# Codex exposes $PLUGIN_ROOT; used by hooks/hooks.json.j2.
+plugin_root: "$PLUGIN_ROOT"
+
+# Host-provided tools (NOT tools served by the Tableau MCP server). These names
+# are how each host surfaces its own built-in tools.
+tools:
+  # Native render tools, in fallback order (first available wins). Codex has one.
+  render_native:
+    - name: open_in_codex             # opens/renders a viz live in the host UI
+      context: Codex
+  js_repl: mcp__node_repl__js         # JS REPL fallback for rendering
+  elicit: request-user-input          # ask the user to pick among options
+
+# Max options the host's elicitation tool accepts before prose should fall back
+# to a plain numbered list. request-user-input caps at 3.
+elicit_max_options: 3
+
+# How to show the user a local image file (e.g. a downloaded Tableau render).
+# VERIFY: Codex/ChatGPT desktop render Markdown images with local absolute paths.
+show_image: >-
+  embed it in the reply with Markdown using its absolute path, e.g.
+  `![<view name>](/absolute/path/to/render.png)`. Don't present it as a file
+  attachment or open it in a side panel
+
+# Capability flags gating host-specific sections of the templates.
+capabilities:
+  native_render: true                 # render_native tools exist on this host
+  js_repl: true                       # tools.js_repl exists on this host
+  native_render_guaranteed: true      # render_native[0] is always present
+  shell_guaranteed: true              # a local shell is always available
