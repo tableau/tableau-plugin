@@ -1,0 +1,166 @@
+# Render published Tableau content
+
+Render the published or target Tableau view using the least expensive path
+that satisfies the user’s intent. Reuse workbook IDs, view IDs, and URLs
+already resolved during the current task.
+
+## Choose the render path
+
+Use one render attempt per available path and reuse workbook IDs, view IDs,
+and URLs already resolved during the current task.
+
+1. If `{{ mcp_prefix }}render-interactive-viz` is callable, call it once:
+   - use the resolved view LUID with `objectType: "view"` when a specific
+     view is known;
+   - use the workbook LUID with `objectType: "workbook"` only when no
+     specific view can be resolved.
+
+   Return a successful interactive render as-is.
+{% if capabilities.native_render %}
+2. If the interactive-render tool is missing, unknown, disabled, or fails,
+   open the direct `/t/SITE/views/...` URL (see
+   [Build a direct view URL](#build-a-direct-view-url)) in the in-app browser.
+   Use the first available tool, in this order. Don't call a later one once
+   an earlier one succeeds, and skip any that report unknown, unavailable, or
+   disabled:
+{% for t in tools.render_native %}
+   - `{{ t.name }}`: {{ t.context }}
+{% endfor %}
+{% if capabilities.js_repl %}
+   - `{{ tools.js_repl }}` with the direct view URL, if no tool above worked
+{% endif %}
+
+   Return a successful in-app render as-is. If the page asks the user to sign
+   in to Tableau, tell them to sign in there; that still counts as success.
+3. If no in-app browser is available or it fails, fall back to a static
+   image:
+{% else %}
+2. If the interactive-render tool is missing, unknown, disabled, or fails,
+   fall back to a static image:
+{% endif %}
+   - give the user the full direct `/t/SITE/views/...` URL as a Markdown
+     hyperlink, e.g. `[<view name>](https://HOST/t/SITE/views/WORKBOOK/VIEW?...)`;
+   - call `{{ mcp_prefix }}get-view-image` once with `viewId` (the resolved
+     view LUID) and `format: "PNG"`, then handle the result as described in
+     [Download the PNG immediately](#download-the-png-immediately).
+
+Do not retry an unavailable rendering tool or repeat a failed path. The
+static image is the final fallback, even for "render," "show," and "preview"
+requests.
+
+## Download the PNG immediately
+
+`{{ mcp_prefix }}get-view-image` returns either an inline image or a
+`resource_link` holding a short-lived presigned URL. The URL expires quickly,
+so any delay between receiving it and fetching it can lose the render.
+
+- **Before calling**, pick the output path, e.g.
+  `<temp-dir>/<view-luid>.png`, so nothing is left to work out afterwards.
+- **Inline image:** it's already in the chat; don't download it.
+- **`resource_link`:** downloading it is the very next action. Don't call
+  any other tool, read a reference file, write to the user, or reason about
+  the result first. Download with a direct HTTP client, not a browser:
+
+  ```bash
+  curl -sSfL -o "<temp-dir>/<view-luid>.png" "<url>"
+  ```
+
+  If `curl` isn't available, use
+  `python3 -c "import sys,urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])" "<url>" "<temp-dir>/<view-luid>.png"`.
+- **After downloading**, check the file is a non-empty image, then show it
+  inline in the chat: {{ show_image }}.
+- **If the download fails because the URL expired**, call
+  `{{ mcp_prefix }}get-view-image` once more and download the new URL
+  straight away. This is the only exception to calling it once. If that also
+  fails, treat the PNG path as failed.
+
+## Resolve the target view
+
+Prefer IDs and URLs returned by the current task’s publish result.
+
+When `{{ mcp_prefix }}publish-workbook` returns a list of views:
+
+1. Select the view whose name matches the worksheet or dashboard created or
+   edited for the user.
+2. Use that view’s LUID directly.
+3. Do not search for the workbook or list its views again.
+
+If the publish result contains only a workbook and default-view ID, use the
+default view unless the user requested another named view.
+
+Search or list views only when the current task has not already resolved the
+target view.
+
+## Build a direct view URL
+
+Convert a Tableau application-shell URL:
+
+`https://HOST/#/site/SITE/views/WORKBOOK/VIEW`
+
+to:
+
+`https://HOST/t/SITE/views/WORKBOOK/VIEW`
+
+Preserve URLs already using `/t/SITE/views/...` or `/views/...`.
+
+For Pulse metric URLs such as:
+
+`https://HOST/pulse/site/SITE/metrics/METRIC_ID`
+
+preserve the URL unchanged.
+
+For a specific view, merge these query parameters before any fragment:
+
+- `:showVizHome=no`
+- `:embed=yes`
+- `:toolbar=no`
+- `:tabs=no`
+
+Example:
+
+`https://HOST/t/SITE/views/WORKBOOK/VIEW?:showVizHome=no&:embed=yes&:toolbar=no&:tabs=no`
+
+Use `:tabs=yes` only when intentionally rendering a tabbed workbook rather
+than one specific view.
+
+{% if capabilities.native_render %}
+## Open in the in-app browser
+
+1. Call the first available in-app browser tool once with the direct view URL.
+2. If it reports unknown, unavailable, or disabled, try the next one in the
+   list; otherwise don't call another.
+3. Treat a returned success as confirmation that the view opened; don't call
+   the same tool again for the same URL within this task.
+4. Don't substitute web search, a guessed URL, or a render surface not listed
+   above.
+
+{% endif %}
+## Failure handling
+
+- Attempt each available render path at most once.
+- Use this fallback order:
+{% if capabilities.native_render %}
+  `{{ mcp_prefix }}render-interactive-viz` → in-app browser ({% for t in tools.render_native %}`{{ t.name }}`{% if not loop.last %}, {% endif %}{% endfor %}{% if capabilities.js_repl %}, `{{ tools.js_repl }}`{% endif %}) → hyperlink plus `{{ mcp_prefix }}get-view-image` PNG.
+{% else %}
+  `{{ mcp_prefix }}render-interactive-viz` → hyperlink plus `{{ mcp_prefix }}get-view-image` PNG.
+{% endif %}
+- Do not retry tools that report unknown, unavailable, or disabled.
+- If the PNG also fails, still give the direct URL hyperlink and briefly
+  identify which rendering capabilities were unavailable.
+- Do not let rendering failure obscure a successful workbook publication.
+
+## Success criteria
+
+Rendering is complete when one of the following is true:
+
+- the requested Tableau view is displayed interactively;
+{% if capabilities.native_render %}
+- the direct view URL is open in the in-app browser;
+{% endif %}
+- the user has the direct URL as a hyperlink and a PNG of the view inline in
+  the chat; or
+- every render path failed and the user has the direct URL hyperlink with a
+  concise explanation.
+
+Report the rendered view’s name and preserve the workbook LUID, view LUID,
+project LUID, and direct URL for follow-up edits.

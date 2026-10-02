@@ -1,0 +1,4 @@
+# Only needed once a platform introduces templating (.j2 files) or a vars.yaml.
+# The Codex build currently uses neither, so it runs on the stdlib alone.
+Jinja2>=3.1
+PyYAML>=6.0

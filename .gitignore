@@ -12,7 +12,10 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
+# build/ holds this repo's build script, so don't ignore it wholesale.
+build/*
+!build/build.py
+!build/requirements.txt
 develop-eggs/
 dist/
 downloads/
@@ -225,3 +228,8 @@ __marimo__/
 .DS_Store
 bench/results/*
 bench/tableau/*.json
+
+# Local build venv and packaged zips.
+.build-venv/
+# Local clone of the Claude marketplace repo used by reload-plugin.sh.
+.claude-marketplace/

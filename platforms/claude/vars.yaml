@@ -1,0 +1,49 @@
+# Claude platform variables: the Claude apps (web, Desktop Chat, Cowork), which
+# share one plugin format (.claude-plugin/). Consumed by build/build.py when
+# rendering *.j2 files from src/plugin/.
+#
+# Values tagged VERIFY still need confirming in a real Claude app install.
+
+# How the assistant refers to itself in user-facing prose.
+assistant_name: Claude
+
+# Empty on purpose. In the Claude apps the Tableau connector's tools get a
+# host-assigned prefix that isn't predictable from the plugin (e.g.
+# mcp__<connector-uuid>__search-content), so skills name tools by base name and
+# a note tells the model to match on the suffix. Prose renders as `search-content`.
+mcp_prefix: ""
+
+# Shell expansion the host substitutes for the installed plugin's root dir.
+# Used by hooks/hooks.json.j2 (hooks only run in Cowork, not Chat).
+plugin_root: "${CLAUDE_PLUGIN_ROOT}"
+
+# Host-provided tools. render_native is the in-app browser: Claude's built-in
+# browser pane, whose `navigate` tool opens the pane at a URL if it isn't open
+# yet. Listed by base name; the host may prefix it (e.g. mcp__Claude_Browser__).
+# VERIFY the tool name in Chat and Cowork. No node_repl or user-choice tool is
+# assumed; prose falls back to a numbered list.
+tools:
+  render_native:
+    - name: navigate
+      context: Claude's built-in (in-app) browser
+  js_repl: ""
+  elicit: ""
+
+elicit_max_options: 4
+
+# How to show the user an image file (e.g. a downloaded Tableau render) inline
+# in the chat. VERIFY: Claude Chat/Cowork render a Markdown image of a local file.
+show_image: >-
+  embed it inline in the reply with Markdown using its absolute path, e.g.
+  `![<view name>](/absolute/path/to/render.png)`. Don't present it as a file
+  attachment or open it in a side panel
+
+capabilities:
+  native_render: true                 # render_native tools may exist on this host
+  js_repl: false
+  native_render_guaranteed: false     # the browser tool may be absent (e.g. web)
+  shell_guaranteed: false
+
+# Payload paths (globs relative to src/plugin/) not shipped on this platform.
+exclude:
+  - "skills/*/agents/openai.yaml"   # OpenAI-only skill metadata
