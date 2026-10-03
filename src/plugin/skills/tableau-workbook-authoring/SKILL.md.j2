@@ -73,6 +73,7 @@ catalog.
 - No catalog match, and no field-level match above, or a genuinely custom construct neither covers → hand-edit the TWB XML per the steps below.
 - First edit/republish of an existing workbook this task → resolve it with `{{ mcp_prefix }}search-content` (`filter: { contentTypes: ["workbook"] }`; see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches), then `{{ mcp_prefix }}download-workbook`.
 - Brand-new workbook with no starting point and no catalog match → read [`references/new-workbook.md`](references/new-workbook.md) first.
+- Interactivity (dashboard filter actions, URL actions, web page zones, top-N filters) → no executable template covers these; hand-edit using `python3 <skill-dir>/scripts/tableau_resources.py list --type example --query "<action|web zone|topn>"` and read the matching `resources/examples/*.json` for the XML shape Tableau Cloud accepts.
 `{{ mcp_prefix }}request-workbook-upload`, `{{ mcp_prefix }}publish-workbook`, `{{ mcp_prefix }}download-workbook`, and interactive rendering may be feature-gated — report a missing tool rather than retrying it.
 
 ## Fast path for follow-up edits
@@ -91,7 +92,7 @@ If the downloaded package looks incomplete or a dependency is missing, read [`re
 
 ## Validate and publish
 
-Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. A workbook produced by `instantiate`/`inject` is already validated by that command itself — re-running the standalone validator on it is redundant but harmless. For a hand-edited TWB, after the edit:
+Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. `instantiate`/`inject` check names and references in their output, but not the XSD schema, so run the validator on their output as well as on any hand-edited TWB:
 
 ```bash
 python3 "<skill-dir>/../../scripts/run_python.py" "<skill-dir>/scripts/validate_workbook.py" /absolute/path/to/workbook.twb
@@ -102,6 +103,8 @@ The validator needs `lxml`, so always launch it through the plugin's shared `run
 For TWBX, run `unzip -t` after rebuilding it. Publish with `{{ mcp_prefix }}publish-workbook`, using `{{ mcp_prefix }}request-workbook-upload` first and pass its `workbookUploadId`.  If the `{{ mcp_prefix }}request-workbook-upload` tool is disabled, use `workbookFilePath` and pass in a local path. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
 
 If validation fails, fix the reported lines/elements and retry once; stop after 10 cycles and report the remaining errors.
+
+Don't add `<simple-id>` or switch `<sort class='…'>` to `<computed-sort>` (or the other `*-sort` elements) to satisfy a message: unless the workbook's `<document-format-change-manifest>` already uses those forms, Tableau Cloud rejects them. The validator enforces the form the manifest calls for.
 
 Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up can use the fast path.
 
@@ -119,6 +122,6 @@ Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up 
 - [`references/catalog-templates.md`](references/catalog-templates.md) — chart catalog: discover, inspect, and render bundled templates via `scripts/tableau_resources.py`.
 - [`references/field-edits.md`](references/field-edits.md) — add a breakdown/color split or a filter to an existing worksheet via `inspect-workbook`/`add-encoding`/`add-filter`.
 - [`references/new-workbook.md`](references/new-workbook.md) — brand-new workbook, no starting point, no catalog match.
-- [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package or staged-upload fallback.
+- [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package or staged-upload details.
 - [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md) — new XML construct or validation failure.
 - [`../../references/rendering.md`](../../references/rendering.md) — render the published/target view.

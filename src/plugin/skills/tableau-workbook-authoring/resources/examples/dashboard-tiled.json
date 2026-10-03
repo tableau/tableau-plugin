@@ -13,6 +13,7 @@
           "minheight": "800",  "maxheight": "800"
         }
       },
+      { "type": "datasources" },
       {
         "type": "zones",
         "children": [
@@ -68,6 +69,7 @@
     ]
   },
   "notes": {
+    "dashboard_datasources": "Every dashboard needs an empty <datasources /> right after <size>. The schema allows leaving it out, but Tableau Cloud rejects the publish without it.",
     "zone_id_uniqueness": "Zone IDs must be unique across all dashboards in the workbook. Find max existing ID first.",
     "visual_zone_name": "The 'name' attribute on a visual zone must exactly match an existing worksheet name (case-sensitive).",
     "fixed_sizing_requires_equal_min_max": "For sizing-mode='fixed', minwidth MUST equal maxwidth and minheight MUST equal maxheight. Otherwise Tableau fires a CheckSizeValidity LogicAssert (DashboardSizePresModelBuilder.cpp:180) and rejects the workbook load. Use sizing-mode='automatic' to allow ranges.",

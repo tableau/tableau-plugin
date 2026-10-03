@@ -1,7 +1,7 @@
 # Package and upload fallbacks
 
 Read only when package completeness is uncertain, a packaged dependency is
-missing, or the selected runtime requires staged upload.
+missing, or you need the staged-upload steps in detail.
 
 ## TWBX completeness
 
@@ -20,11 +20,11 @@ missing, or the selected runtime requires staged upload.
 XSD validation establishes TWB structure; it does not establish package
 completeness.
 
-## Staged-upload fallback
+## Staged upload
 
-Use this when the callable tool schema/runtime cannot pass a server-accessible
-`workbookFilePath`, or after a local-path call explicitly reports that the
-transport is unsupported:
+Staged upload is the default publish transport (see SKILL.md). Use
+`workbookFilePath` only when `{{ mcp_prefix }}request-workbook-upload` is disabled or not
+callable:
 
 1. Call `{{ mcp_prefix }}request-workbook-upload` with the real `.twb` or `.twbx` filename.
 2. Upload the exact file bytes to the returned URL using every required header.

@@ -1,0 +1,20 @@
+{
+  "_description": "Web page zone: embeds a URL in a dashboard tile (Tableau Cloud accepted this exact shape)",
+  "_feature": "dashboard,web-zone,web-page,embed",
+  "zone": {
+    "_placement": "Inside a dashboard's layout zone, alongside the worksheet zones",
+    "type": "zone",
+    "attrs": {
+      "id": 7, "x": 50000, "y": 30000, "w": 50000, "h": 36000,
+      "type-v2": "web",
+      "url": "https://www.youtube.com/embed/VIDEO_ID"
+    }
+  },
+  "notes": {
+    "no_name": "A web zone has no name attribute; it doesn't reference a worksheet.",
+    "embeddable_urls": "The site must allow framing. For YouTube use the /embed/<id> URL; a /watch?v= URL is refused inside the iframe.",
+    "zone_id": "The id must be unique across every dashboard in the workbook.",
+    "static_render": "get-view-image renders web zones blank. Check them in the live view, and give the iframe a few seconds to load before deciding it's empty.",
+    "dashboard_datasources": "As with any dashboard, keep the dashboard's empty <datasources /> element; Tableau Cloud rejects a dashboard without it."
+  }
+}

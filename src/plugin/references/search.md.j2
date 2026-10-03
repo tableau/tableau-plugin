@@ -48,7 +48,10 @@ of search.
 {% endif %}
 
 ## Troubleshooting
-search → if 429, retry immediately → return final result to model
+If `{{ mcp_prefix }}search-content` returns 429 (rate limited), wait a few seconds
+and retry, doubling the wait each time (for example 2 s, then 4 s), at most
+twice. If it still fails, tell the user the site is rate-limiting requests
+rather than retrying further.
 
 ## Presenting the candidates
 

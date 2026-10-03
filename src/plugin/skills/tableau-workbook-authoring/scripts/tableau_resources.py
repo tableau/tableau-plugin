@@ -50,6 +50,11 @@ TEMPLATE_TOKEN_RE = re.compile(r"\{\{[^}]+\}\}")
 # other federated token is donor residue or an unresolved placeholder.
 FEDERATED_RE = re.compile(r"federated\.[\w.\-]*")
 SIMPLE_ID_RE = re.compile(r"(<simple-id\b[^>]*?\buuid=)(['\"])[^'\"]*\2")
+# Opening or closing tag of a newer-form sort element, e.g. ``<computed-sort``.
+SORT_ELEMENT_RE = re.compile(r"<(/?)(computed|manual|natural|alphabetic)-sort\b")
+# Manifest flag under which Tableau accepts the newer ``<X-sort>`` elements;
+# without it Tableau requires the legacy ``<sort class='X'>`` form.
+SORT_TAG_CLEANUP_FLAG = "SortTagCleanup"
 ATTRIBUTE_RE = re.compile(r"([\w:.\-]+)\s*=\s*(['\"])(.*?)\2", re.DOTALL)
 # A quantitative filter's <min>/<max> literal for a plain number, a date, or
 # a datetime (Tableau delimits a date/datetime literal with '#', e.g.
@@ -148,9 +153,9 @@ DONOR_METADATA_ATTRIBUTES = (("column", "aggregate-role-from"),)
 PARAMETER_TYPES = frozenset({"date", "enum", "number", "string"})
 
 FRAGMENT_UUID_NAMESPACE = uuid.uuid5(
-    uuid.NAMESPACE_URL, "https://tableau.com/plugin-codex/bookmark-fragment"
+    uuid.NAMESPACE_URL, "https://tableau.com/tableau-plugin/bookmark-fragment"
 )
-WRAPPER_TAG = "codex-fragment-wrapper"
+WRAPPER_TAG = "tableau-fragment-wrapper"
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 STARTER_RELATIVE_PATH = "starters/minimal-workbook.twb"
@@ -1729,6 +1734,35 @@ def inject_fragments(twb_text: str, worksheet: str, window: str) -> str:
     return output
 
 
+def match_target_conventions(twb_text: str, fragment: str) -> str:
+    """Rewrite a rendered fragment into the forms the target workbook accepts.
+
+    Templates come from many Tableau versions, but what Tableau accepts depends
+    on the target's own format, not the template's:
+
+    - Without ``SortTagCleanup`` in the target's
+      ``<document-format-change-manifest>``, Tableau rejects ``<computed-sort>``
+      and its siblings, so they become the legacy ``<sort class='computed'>``
+      form with the same attributes and children.
+    - Tableau Cloud rejects ``<simple-id>`` elements in a workbook that has
+      none of its own, so they're dropped unless the target already carries
+      them.
+    """
+    root = _parse_workbook(twb_text)
+    manifest = root.find("document-format-change-manifest")
+    flags = {child.tag for child in manifest} if manifest is not None else set()
+    if root.find(".//simple-id") is None:
+        fragment = _remove_elements(fragment, "simple-id")
+    if SORT_TAG_CLEANUP_FLAG not in flags:
+        fragment = SORT_ELEMENT_RE.sub(
+            lambda match: "</sort"
+            if match.group(1)
+            else f"<sort class='{match.group(2)}'",
+            fragment,
+        )
+    return fragment
+
+
 def _bracketed_name(element: ET.Element, attribute: str) -> str | None:
     """Return a bracketed identifier attribute's decoded name, if it has one."""
     raw = element.get(attribute) or ""
@@ -1830,8 +1864,9 @@ def validate_workbook_text(text: str) -> list[str]:
     An empty list means the workbook is structurally sound: it has the three
     required containers, carries no unresolved template token or unresolved
     ``federated.`` placeholder, names each worksheet and its window once and
-    consistently, and references only datasources and fields the workbook
-    itself defines. Errors are reported in a fixed rule order so a caller can
+    consistently, gives every dashboard a ``<datasources>`` element, and
+    references only datasources, fields, and sheets (from dashboard zones and
+    action sources) the workbook itself defines. Errors are reported in a fixed rule order so a caller can
     compare two runs, and a malformed or non-workbook document reports only
     that, because every later rule would be guessing at its structure.
     """
@@ -1879,6 +1914,52 @@ def validate_workbook_text(text: str) -> list[str]:
     errors.extend(
         f"worksheet-window-name-mismatch: {name}"
         for name in sorted(set(worksheet_names) ^ worksheet_windows)
+    )
+
+    # Dashboards and actions name sheets by their plain names, so a renamed or
+    # missing sheet leaves a dangling reference the server rejects on publish.
+    dashboards = root.findall("dashboards/dashboard")
+    dashboard_names = {item.get("name") or "" for item in dashboards}
+    sheet_names = set(worksheet_names) | dashboard_names
+    errors.extend(
+        f"dashboard-missing-datasources: {item.get('name') or ''}"
+        for item in dashboards
+        if item.find("datasources") is None
+    )
+    errors.extend(
+        f"unknown-zone-sheet: {name}"
+        for name in sorted(
+            {
+                zone.get("name") or ""
+                for item in dashboards
+                for zone in item.iter("zone")
+                if zone.get("name") is not None
+            }
+            - sheet_names
+        )
+    )
+    action_sources = root.findall("actions/action/source")
+    errors.extend(
+        f"unknown-action-source-sheet: {name}"
+        for name in sorted(
+            {
+                source.get("worksheet") or ""
+                for source in action_sources
+                if source.get("worksheet") is not None
+            }
+            - set(worksheet_names)
+        )
+    )
+    errors.extend(
+        f"unknown-action-source-dashboard: {name}"
+        for name in sorted(
+            {
+                source.get("dashboard") or ""
+                for source in action_sources
+                if source.get("dashboard") is not None
+            }
+            - dashboard_names
+        )
     )
 
     unknown_datasources: set[str] = set()
@@ -2015,6 +2096,8 @@ def _apply_resource(
         datasource_caption=target.caption,
         target_fields=target.fields,
     )
+    worksheet = match_target_conventions(twb_text, worksheet)
+    window = match_target_conventions(twb_text, window)
     output = inject_fragments(twb_text, worksheet, window)
     _reject_introduced_errors(
         twb_text if baseline_text is None else baseline_text, output

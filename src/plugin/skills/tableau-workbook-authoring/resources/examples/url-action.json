@@ -1,0 +1,40 @@
+{
+  "_description": "URL action: selecting a mark opens a URL built from a field on that mark (Tableau Cloud accepted this exact shape)",
+  "_feature": "dashboard,action,url-action,link,interactivity",
+  "action": {
+    "_placement": "Child of the top-level <actions> element (after </datasources>, before <worksheets>)",
+    "type": "action",
+    "attrs": {
+      "caption": "Play on YouTube",
+      "name": "[Action2_YouTube]"
+    },
+    "children": [
+      {
+        "type": "activation",
+        "attrs": {
+          "type": "on-select"
+        }
+      },
+      {
+        "type": "source",
+        "attrs": {
+          "dashboard": "Overview Dashboard",
+          "type": "sheet",
+          "worksheet": "Top Songs"
+        }
+      },
+      {
+        "type": "link",
+        "attrs": {
+          "caption": "Play on YouTube",
+          "expression": "<[federated.XXXX].[none:YouTube URL:nk]>"
+        }
+      }
+    ]
+  },
+  "notes": {
+    "expression": "A URL template. Each field is written <[datasource].[column-instance]> (escaped as &lt;...&gt; in the XML attribute) and may be mixed with literal text, e.g. https://example.com/search?q=<[federated.XXXX].[none:Song:nk]>.",
+    "field_must_be_in_view": "Every field used in the expression must be in the source sheet's view; if it isn't on a shelf, add it to Detail (<lod column='...' /> under the pane's <encodings>) and declare its column/column-instance in <datasource-dependencies>.",
+    "verify": "Click a mark in the live view to confirm the link resolves; the PNG render can't show it."
+  }
+}

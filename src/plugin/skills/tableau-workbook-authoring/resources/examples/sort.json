@@ -15,6 +15,7 @@
     "column": "The dimension column-instance being sorted",
     "using": "The measure column-instance to sort by",
     "class_values_Sort-G": ["computed", "manual", "natural", "alphabetic"],
+    "legacy_vs_newer_form": "Use this legacy <sort class='computed'> form unless the workbook's <document-format-change-manifest> contains <SortTagCleanup />; only then use <computed-sort ...> (same attributes). Tableau Cloud rejects <computed-sort> without the flag, even though the XSD defines it. The validator enforces this.",
     "direction_values_SortDirection-ST": ["ASC", "DESC"],
     "WRONG_placements": [
       "Inside column node in datasource-dependencies — stripped by loadMetadataFromXml",

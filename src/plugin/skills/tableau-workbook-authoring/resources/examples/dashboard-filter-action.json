@@ -1,0 +1,34 @@
+{
+  "_description": "Dashboard filter action: selecting marks on one sheet filters the other sheets on the dashboard (Tableau Cloud accepted this exact shape)",
+  "_feature": "dashboard,action,filter-action,interactivity",
+  "action": {
+    "_placement": "Child of a top-level <actions> element, which sits directly after </datasources> and before <worksheets>",
+    "type": "action",
+    "attrs": { "caption": "Filter by Artist", "name": "[Action1_FilterArtist]" },
+    "children": [
+      { "type": "activation", "attrs": { "auto-clear": "true", "type": "on-select" } },
+      {
+        "type": "source",
+        "attrs": { "dashboard": "Overview Dashboard", "type": "sheet", "worksheet": "Top Artists" }
+      },
+      {
+        "type": "command",
+        "attrs": { "command": "tsc:tsl-filter" },
+        "children": [
+          { "type": "param", "attrs": { "name": "special-fields", "value": "all" } },
+          { "type": "param", "attrs": { "name": "target", "value": "Overview Dashboard" } }
+        ]
+      }
+    ]
+  },
+  "notes": {
+    "placement": "<actions> is a workbook-level element, not a dashboard child. Order: <datasources>, <actions>, <worksheets>, <dashboards>, <windows>.",
+    "name_format": "The action name is bracketed, e.g. [Action1_FilterArtist], and unique across the workbook.",
+    "source_names": "source/@dashboard must match a dashboard name and source/@worksheet a worksheet on that dashboard, exactly (the validator checks both).",
+    "special_fields_all": "special-fields=all filters on every field of the selected marks. To filter on specific fields only, omit it and add <param name='field-captions' value='Artist' />.",
+    "target": "target names the dashboard whose sheets get filtered; every sheet on it except the source is a target.",
+    "activation_types": ["on-select", "on-hover", "on-menu"],
+    "auto_clear": "auto-clear='true' shows all values again when the selection is cleared; omit it to keep the last filter.",
+    "verify": "Filter actions don't show up in a static PNG. Verify them by clicking a mark in the live view (see rendering.md)."
+  }
+}

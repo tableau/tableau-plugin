@@ -1,0 +1,66 @@
+{
+  "_description": "Top-N categorical filter that ranks within a date range: the date filter must be a context filter, or Top N is computed over all dates first (Tableau Cloud accepted this exact shape)",
+  "_feature": "filter,topn,context-filter",
+  "date_filter": {
+    "_placement": "worksheet > table > view, before the top-N filter",
+    "type": "filter",
+    "attrs": {
+      "class": "quantitative",
+      "column": "[federated.XXXX].[none:Date:qk]",
+      "context": "true",
+      "included-values": "in-range"
+    },
+    "children": [
+      { "type": "min", "content": "#2015-01-01#" },
+      { "type": "max", "content": "#2025-12-31#" }
+    ]
+  },
+  "topn_filter": {
+    "_placement": "worksheet > table > view, after the context filter",
+    "type": "filter",
+    "attrs": { "class": "categorical", "column": "[federated.XXXX].[none:Artist:nk]" },
+    "children": [
+      {
+        "type": "groupfilter",
+        "attrs": {
+          "count": "10", "end": "top", "function": "end", "units": "records",
+          "user:ui-marker": "end", "user:ui-top-by-field": "true"
+        },
+        "children": [
+          {
+            "type": "groupfilter",
+            "attrs": {
+              "direction": "DESC", "expression": "SUM([Weeks at Number One])",
+              "function": "order", "user:ui-marker": "order"
+            },
+            "children": [
+              {
+                "type": "groupfilter",
+                "attrs": {
+                  "function": "level-members", "level": "[none:Artist:nk]",
+                  "user:ui-enumeration": "all", "user:ui-marker": "enumerate"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "sort": {
+    "_placement": "worksheet > table > view, after the filters",
+    "_description": "Top N doesn't sort the bars; add a view-level sort too (see sort.json)",
+    "type": "sort",
+    "attrs": {
+      "class": "computed",
+      "column": "[federated.XXXX].[none:Artist:nk]",
+      "direction": "DESC",
+      "using": "[federated.XXXX].[sum:Weeks at Number One:qk]"
+    }
+  },
+  "notes": {
+    "why_context": "Tableau applies Top N before ordinary dimension and measure filters. Without context='true' on the date filter, Top N picks the all-time top 10 and the date filter then removes most of them (for example, only 4 bars remain).",
+    "slices": "List both filtered fields under the view's <slices>.",
+    "user_namespace": "The user: attributes need xmlns:user='http://www.tableausoftware.com/xml/user' on the root <workbook>."
+  }
+}

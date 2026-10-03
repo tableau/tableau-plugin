@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-validate_workbook.py — Standalone structural validator for Tableau workbooks.
+validate_workbook.py — Standalone validator for Tableau workbooks.
 
 Validates a Tableau workbook's XML against the public Tableau workbook (TWB)
 XSD schemas bundled in this repository under `resources/schemas/<YYYY_R>/`.
@@ -23,15 +23,20 @@ Pipeline, per workbook:
        is bundled; if the workbook's version is newer than anything bundled,
        fall back to the newest schema and warn; if it's older than the oldest
        bundled schema, reject it (no schema exists to validate against).
-    4. Validate structure with libxml2 (via lxml), collecting line/element-
+    4. Apply rules the XSD gets wrong for real workbooks: the accepted sort
+       element depends on the `SortTagCleanup` manifest flag (see
+       `_apply_manifest_rules`).
+    5. Validate structure with libxml2 (via lxml), collecting line/element-
        tagged errors.
+    6. Check cross-references the XSD can't express: datasource and field
+       references, dashboard zone and action source sheet names, and each
+       dashboard's `<datasources>` element (shared with
+       `tableau_resources.validate_workbook_text`).
 
-IMPORTANT — scope. XSD validation is *structural* only. It does NOT reproduce
-Tableau's *semantic* validation (field/datasource resolution, calculated
-field parsing, cross-references between sheets, connection attributes). The
-schemas explicitly mark those regions `processContents="skip"`. A green
-result here means "structurally well-formed against the schema", not
-"guaranteed to open in Tableau". See README.md.
+IMPORTANT — scope. This does NOT reproduce all of Tableau's semantic
+validation (calculated field parsing, connection attributes, and more). A
+green result here means "passes the checks above", not "guaranteed to open in
+Tableau"; Tableau's publish-time validation remains the final word.
 """
 
 from __future__ import annotations
@@ -176,6 +181,11 @@ _IGNORED_ISSUE_PATTERNS = (
     re.compile(r"^Element 'workbook': Missing child element\(s\)\. Expected is .*\bexplain-data\b.*\.$"),
     re.compile(r"^Element 'data-orientation': This element is not expected\. Expected is \( explain-data \)\.$"),
     re.compile(r"^Element 'accelerator-details': This element is not expected\. Expected is .*\bexplain-data\b.*\.$"),
+    # Missing `simple-id`: `worksheet`/`dashboard`/`window` end their sequence
+    # with a required `simple-id`, but Tableau Cloud's own downloads omit it
+    # and Cloud has rejected workbooks with hand-added ones. Never ask an
+    # author to add it.
+    re.compile(r"^Element '(worksheet|dashboard|window)': Missing child element\(s\)\. Expected is .*\bsimple-id\b.*\.$"),
 )
 
 
@@ -191,21 +201,80 @@ def _is_ignored_issue(message: str) -> bool:
 # attribute, so this doesn't block validation from running — it's surfaced
 # as a warning rather than silently ignored, since a missing `source-build`
 # is unusual enough to be worth flagging.
-#
-#   - missing `simple-id`: `worksheet` and `dashboard` elements end their
-#     sequence with a required `simple-id` (a UUID Tableau's own authoring
-#     tools always stamp on save, used for cross-references elsewhere in the
-#     schema). Observed only in hand-built/tooling-generated files (e.g.
-#     `PublishToolTest`), not organically authored workbooks — treated as
-#     worth flagging but not blocking, since it doesn't reflect a schema bug.
 _WARNING_ISSUE_PATTERNS = (
     re.compile(r"^Element 'workbook': The attribute 'source-build' is required but missing\.$"),
-    re.compile(r"^Element '(worksheet|dashboard|window)': Missing child element\(s\)\. Expected is .*\bsimple-id\b.*\.$"),
 )
 
 
 def _is_warning_issue(message: str) -> bool:
     return any(p.search(message) for p in _WARNING_ISSUE_PATTERNS)
+
+
+# The bundled XSDs define the `<computed-sort>`/`<manual-sort>`/... elements in
+# every version, but Tableau only accepts them when the workbook's
+# `<document-format-change-manifest>` carries `SortTagCleanup`. Without that
+# flag Tableau writes, and Tableau Cloud requires, the legacy form
+# `<sort class='computed' ...>`. Confirmed against Tableau Cloud: a workbook
+# downloaded unedited from Cloud uses the legacy form, and Cloud rejects
+# `<computed-sort>` in a workbook without the flag.
+SORT_TAG_CLEANUP_FLAG = "SortTagCleanup"
+SORT_CLASSES = ("computed", "manual", "natural", "alphabetic")
+
+
+def _manifest_flags(doc: "etree._Element") -> set[str]:
+    manifest = doc.find("document-format-change-manifest")
+    if manifest is None:
+        return set()
+    return {child.tag for child in manifest if isinstance(child.tag, str)}
+
+
+def _apply_manifest_rules(doc: "etree._Element") -> tuple[list[Issue], list[Issue]]:
+    """Check the parts of the workbook whose accepted form depends on its
+    manifest flags, and rewrite the parsed tree so the XSD pass judges the
+    rest. Returns (issues, warnings).
+
+    Without `SortTagCleanup`, each legacy `<sort class='X'>` is renamed to the
+    `<X-sort>` element the XSD describes (same attributes and children, so the
+    schema still checks them), and each `<X-sort>` is reported as an error.
+    With the flag, the XSD already enforces the newer form unchanged.
+    """
+    issues: list[Issue] = []
+    warnings: list[Issue] = []
+    if SORT_TAG_CLEANUP_FLAG not in _manifest_flags(doc):
+        for cls in SORT_CLASSES:
+            for element in doc.iter(f"{cls}-sort"):
+                issues.append(
+                    Issue(
+                        message=(
+                            f"Element '{cls}-sort' is rejected by Tableau when the "
+                            f"<document-format-change-manifest> has no "
+                            f"<{SORT_TAG_CLEANUP_FLAG}/>; write it as "
+                            f"<sort class='{cls}' ...> instead (same attributes)."
+                        ),
+                        line=element.sourceline,
+                    )
+                )
+        for element in doc.iter("sort"):
+            cls = element.get("class")
+            if cls in SORT_CLASSES:
+                element.tag = f"{cls}-sort"
+                del element.attrib["class"]
+
+    simple_ids = list(doc.iter("simple-id"))
+    if simple_ids:
+        warnings.append(
+            Issue(
+                message=(
+                    f"{len(simple_ids)} <simple-id> element(s) present. Tableau "
+                    "Cloud has rejected hand-added <simple-id> elements; keep only "
+                    "ones Tableau itself wrote, and never add one to fix a schema "
+                    "message."
+                ),
+                line=simple_ids[0].sourceline,
+                level="warning",
+            )
+        )
+    return issues, warnings
 
 
 # --------------------------------------------------------------------------- #
@@ -468,8 +537,9 @@ def select_schema(
 
     if not version_str:
         raise ValidationError(
-            "could not determine the workbook's version: no `version` attribute "
-            "found on the root <workbook> element"
+            "could not determine the workbook's version: the root <workbook> "
+            "element has no usable `source-build` (e.g. '2025.1.0 (...)'), no "
+            "`<!-- build ... -->` comment, and no `version` attribute"
         )
 
     parsed = parse_version(version_str)
@@ -624,12 +694,13 @@ def validate_xml(
             )
         ], []
 
-    # 4. Structural validation.
-    if schema.validate(doc):
-        return [], []
+    # 4. Manifest-dependent rules, which also normalize the tree for step 5.
+    issues, warnings = _apply_manifest_rules(doc)
 
-    issues: list[Issue] = []
-    warnings: list[Issue] = []
+    # 5. Structural validation.
+    if schema.validate(doc):
+        return issues, warnings
+
     for err in schema.error_log:
         if ignore_known_gaps and _is_ignored_issue(err.message):
             continue
@@ -646,6 +717,32 @@ def validate_xml(
             )
         )
     return issues, warnings
+
+
+# Fixes for the reference-check codes `tableau_resources` reports, keyed by
+# the code's prefix (the part before ": <name>").
+_REFERENCE_HINTS = {
+    "dashboard-missing-datasources": "add an empty <datasources /> right after the dashboard's <size>",
+    "unknown-zone-sheet": "a dashboard zone's `name` must match a worksheet or dashboard name exactly",
+    "unknown-action-source-sheet": "an action's <source worksheet=...> must match a worksheet name exactly",
+    "unknown-action-source-dashboard": "an action's <source dashboard=...> must match a dashboard name exactly",
+    "unknown-datasource-reference": "a field reference names a datasource the workbook doesn't define",
+    "unknown-field-reference": "a field reference names a field its datasource doesn't declare",
+}
+
+
+def reference_issues(xml_bytes: bytes) -> list[Issue]:
+    """Cross-reference checks the XSD can't express (datasource, field, and
+    sheet names that must resolve), shared with `tableau_resources.py` so the
+    standalone validator and `inject`/`instantiate` apply the same rules."""
+    from tableau_resources import validate_workbook_text
+
+    issues = []
+    for code in validate_workbook_text(xml_bytes.decode("utf-8-sig")):
+        hint = _REFERENCE_HINTS.get(code.split(":", 1)[0])
+        message = f"reference check: {code}"
+        issues.append(Issue(message=f"{message} ({hint})" if hint else message))
+    return issues
 
 
 def validate_workbook(
@@ -666,6 +763,8 @@ def validate_workbook(
     result.warnings.extend(Issue(message=w, level="warning") for w in warnings)
 
     issues, xml_warnings = validate_xml(xml_bytes, schema.path, ignore_known_gaps)
+    if not any(i.level == "fatal" for i in issues):
+        issues.extend(reference_issues(xml_bytes))
     result.issues = issues
     result.warnings.extend(xml_warnings)
     result.is_valid = not any(i.level in ("error", "fatal") for i in result.issues)
@@ -692,7 +791,7 @@ def _print_human(result: Result) -> None:
     for w in result.warnings:
         print(f"  {w.format()}")
     if result.is_valid:
-        print("  RESULT:  VALID (structurally conforms to the schema)")
+        print("  RESULT:  VALID (passes schema and reference checks)")
     else:
         n = len(result.issues)
         print(f"  RESULT:  INVALID ({n} issue{'s' if n != 1 else ''})")
@@ -729,8 +828,8 @@ def main(argv: Optional[list[str]] = None) -> int:
              "schema-vs-real-world gaps that are otherwise suppressed or "
              "downgraded by default: `_.fcp.*` feature-capability "
              "attributes/elements and the `explain-data`/`accelerator-details` "
-             "gap (normally dropped entirely), and the missing `source-build` "
-             "attribute and missing `simple-id` gap (normally downgraded to a "
+             "and missing `simple-id` gaps (normally dropped entirely), and the "
+             "missing `source-build` attribute (normally downgraded to a "
              "non-blocking warning). See README.md for details.",
     )
     args = parser.parse_args(argv)

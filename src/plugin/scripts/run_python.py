@@ -14,6 +14,10 @@ Interpreter choice, cheapest first:
   2. the shared venv, if its stamp matches the current requirements.txt;
   3. otherwise (re)build the venv, then use it.
 
+If a build fails (e.g. offline), --bootstrap skips retrying for
+BOOTSTRAP_RETRY_SECONDS so every session start doesn't block on PyPI; running
+a script still retries immediately, so the install happens lazily once online.
+
 The venv lives in a fixed per-user cache dir rather than a host-provided plugin
 data dir: hook processes and the model's shell don't always see the same host
 env vars, and a fixed path also survives plugin reinstalls. Stdlib-only and
@@ -28,12 +32,18 @@ import re
 import runpy
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS = PLUGIN_ROOT / "requirements.txt"
 STAMP_NAME = ".requirements-sha256"
-REQUIREMENT_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:>=\s*([0-9][0-9.]*))?$")
+FAILED_NAME = ".bootstrap-failed"
+BOOTSTRAP_RETRY_SECONDS = 24 * 60 * 60
+REQUIREMENT_LINE = re.compile(
+    r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*"
+    r"(?:>=\s*([0-9][0-9.]*))?\s*(?:,?\s*<\s*([0-9][0-9.]*))?$"
+)
 
 
 def cache_dir() -> Path:
@@ -67,14 +77,35 @@ def current_satisfies(reqs: list[str]) -> bool:
         match = REQUIREMENT_LINE.match(req)
         if not match:
             return False  # unsupported specifier: let the venv's pip handle it
-        name, minimum = match.groups()
+        name, minimum, below = match.groups()
         try:
             installed = metadata.version(name)
         except metadata.PackageNotFoundError:
             return False
         if minimum and version_tuple(installed) < version_tuple(minimum):
             return False
+        if below and version_tuple(installed) >= version_tuple(below):
+            return False
     return True
+
+
+def requirements_digest(reqs: list[str]) -> str:
+    return hashlib.sha256("\n".join(reqs).encode()).hexdigest()
+
+
+def failed_marker() -> Path:
+    return cache_dir() / FAILED_NAME
+
+
+def recently_failed(digest: str) -> bool:
+    """True if building the venv for these requirements failed recently."""
+    marker = failed_marker()
+    try:
+        if marker.read_text().strip() != digest:
+            return False
+        return time.time() - marker.stat().st_mtime < BOOTSTRAP_RETRY_SECONDS
+    except OSError:
+        return False
 
 
 def ensure_venv(reqs: list[str]) -> Path:
@@ -83,7 +114,7 @@ def ensure_venv(reqs: list[str]) -> Path:
     venv = cache_dir() / f"venv-{tag}"
     python = venv_python(venv)
     stamp = venv / STAMP_NAME
-    digest = hashlib.sha256("\n".join(reqs).encode()).hexdigest()
+    digest = requirements_digest(reqs)
     if python.exists() and stamp.exists() and stamp.read_text().strip() == digest:
         return python
 
@@ -94,10 +125,12 @@ def ensure_venv(reqs: list[str]) -> Path:
     if reqs:
         subprocess.run(
             [str(python), "-m", "pip", "install", "--disable-pip-version-check",
-             "--no-input", "-r", str(REQUIREMENTS)],
+             "--no-input", "--timeout", "15", "--retries", "1",
+             "-r", str(REQUIREMENTS)],
             check=True, stdout=sys.stderr,
         )
     stamp.write_text(digest + "\n")  # last, so a failed install is retried
+    failed_marker().unlink(missing_ok=True)
     return python
 
 
@@ -117,13 +150,24 @@ def main() -> int:
         runpy.run_path(script, run_name="__main__")
         return 0
 
+    bootstrap = args == ["--bootstrap"]
+    digest = requirements_digest(reqs)
+    if bootstrap and recently_failed(digest):
+        print("Skipping Tableau plugin setup: it failed recently and will be "
+              "retried the next time a skill script runs.", file=sys.stderr)
+        return 0
     try:
         python = ensure_venv(reqs)
     except (OSError, subprocess.CalledProcessError) as exc:
+        try:
+            failed_marker().parent.mkdir(parents=True, exist_ok=True)
+            failed_marker().write_text(digest + "\n")
+        except OSError:
+            pass
         print(f"error: could not prepare the plugin's Python environment: {exc}",
               file=sys.stderr)
         return 1
-    if args == ["--bootstrap"]:
+    if bootstrap:
         return 0
     if os.name != "nt":
         os.execv(str(python), [str(python), *args])

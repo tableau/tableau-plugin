@@ -26,6 +26,8 @@ tools:
   render_native:
     - name: navigate
       context: Claude's built-in (in-app) browser
+    - name: preview_start
+      context: Claude's built-in browser, passing the view URL as `url`
   js_repl: ""
   elicit: ""
 

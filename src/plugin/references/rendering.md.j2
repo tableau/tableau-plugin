@@ -30,8 +30,10 @@ and URLs already resolved during the current task.
    - `{{ tools.js_repl }}` with the direct view URL, if no tool above worked
 {% endif %}
 
-   Return a successful in-app render as-is. If the page asks the user to sign
-   in to Tableau, tell them to sign in there; that still counts as success.
+   Return a successful in-app render as-is. If the page lands on a Tableau
+   sign-in screen, ask the user to sign in there; never enter credentials
+   yourself. That still counts as success. After publishing interactive
+   content, also run [Verify interactivity in the browser](#verify-interactivity-in-the-browser).
 3. If no in-app browser is available or it fails, fall back to a static
    image:
 {% else %}
@@ -133,6 +135,25 @@ than one specific view.
    the same tool again for the same URL within this task.
 4. Don't substitute web search, a guessed URL, or a render surface not listed
    above.
+
+## Verify interactivity in the browser
+
+A PNG from `{{ mcp_prefix }}get-view-image` can't show actions, and it renders
+web page zones blank. When the workbook you just published has filter or URL
+actions, web zones, or parameters, and the view is open in the in-app browser,
+check them there before reporting success:
+
+- **Size:** a fixed-size dashboard wider than the pane gets cut off. If the
+  browser tools can set the viewport size, set it to the dashboard's `<size>`
+  for the check, then reset it afterwards.
+- **Web zones and iframes:** wait a few seconds for them to load before
+  deciding one is blank.
+- **Filter actions:** click a mark on the source sheet and confirm the target
+  sheets filter. Clear the selection afterwards.
+- **URL actions:** click a mark and confirm the link or target zone loads.
+
+Report what you verified and what you couldn't (for example, the user wasn't
+signed in). Don't change the workbook's content while checking it.
 
 {% endif %}
 ## Failure handling

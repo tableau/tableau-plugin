@@ -2537,6 +2537,25 @@
       "sha256": "77c7d39de7fadc51d08556bbfa20ec5eec88f5afbe78bc35318ac951df839a1b"
     },
     {
+      "id": "dashboard-filter-action",
+      "type": "example",
+      "family": null,
+      "intent": "dashboard filter action",
+      "path": "./examples/dashboard-filter-action.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "action",
+        "dashboard",
+        "example",
+        "filter"
+      ],
+      "sha256": "267117d5dfba506a93cc9a5ddbdfde6651c2d387071e629d73f9ea777fb4d2a1"
+    },
+    {
       "id": "dashboard-tiled",
       "type": "example",
       "family": null,
@@ -2552,7 +2571,7 @@
         "example",
         "tiled"
       ],
-      "sha256": "d5f3fc60900eadddd6e72c5dd18c4f3981955498cb10296edc268e40cb2c4551"
+      "sha256": "86d82912db4a5df61814e1b13cf4a9e40a44b8d8323267fa5f685425b8c286e5"
     },
     {
       "id": "dashboard-validation-grid",
@@ -4022,6 +4041,25 @@
         "relative"
       ],
       "sha256": "314bc9490cbdf22db69b10ffbe9956240f1d8563639de8a75d7a1a57ca09d1e4"
+    },
+    {
+      "id": "filter-topn-context",
+      "type": "example",
+      "family": null,
+      "intent": "filter topn context",
+      "path": "./examples/filter-topn-context.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "context",
+        "example",
+        "filter",
+        "topn"
+      ],
+      "sha256": "cb5b5cbb809556b32001a6c3ff51675b586220a3097c832fe00ad1af83978dfc"
     },
     {
       "id": "flow__chord__show-two-way-flows-in-a-matrix",
@@ -5840,7 +5878,7 @@
         "starter",
         "workbook"
       ],
-      "sha256": "6109abd16678763236f64505905e2396fa8930c631b1db0c38965a5517bb2376"
+      "sha256": "a8ccc48f499b55a2c16a189042abe5ab6a3f2f74888e92a7427b6a4ae733bdbc"
     },
     {
       "id": "parameter",
@@ -8067,7 +8105,7 @@
         "example",
         "sort"
       ],
-      "sha256": "e3a79f489d552a3b68ab306e6d3c4f2a28d66164cdbe7360e775bfad30290915"
+      "sha256": "268607c14067c11639ec4cdbc8a5b64664ceb50a226adb725987f7a9d67c24d3"
     },
     {
       "id": "spatial-choropleth-map",
@@ -9220,7 +9258,43 @@
         "reference",
         "twb"
       ],
-      "sha256": "1d17348d9d8ad3bc1b42ba0a0d964e168e6495528cf60b9abcc55c902a8e6cfe"
+      "sha256": "e8b67979aaf7e56f5bb75454ea1dbc7cc00bddcadf6276d4265bf152efe0dbbd"
+    },
+    {
+      "id": "url-action",
+      "type": "example",
+      "family": null,
+      "intent": "url action",
+      "path": "./examples/url-action.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "action",
+        "example",
+        "url"
+      ],
+      "sha256": "719a09eda28b9e7bc438e8ac4ea258e144ecc83f75de3afa8616c114d96e64b2"
+    },
+    {
+      "id": "web-zone",
+      "type": "example",
+      "family": null,
+      "intent": "web zone",
+      "path": "./examples/web-zone.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "example",
+        "web",
+        "zone"
+      ],
+      "sha256": "296d6ef1b6c424c74408b7ec7085ecb2cb1716c141e1d3436ab5e06cfd531ad9"
     },
     {
       "id": "workbook-schema-reference",

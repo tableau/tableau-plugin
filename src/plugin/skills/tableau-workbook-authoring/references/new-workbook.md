@@ -23,7 +23,11 @@ worksheet per requested chart, and the requested dashboard zones. Keep all
 names unique and all datasource, worksheet, and zone references consistent.
 
 Use an existing nearby Tableau XML pattern when available. For a genuinely new
-construct, consult the newest compatible schema under `resources/schemas/`; do not load
-the entire XSD when a targeted element lookup is enough.
+construct, consult the schema under `resources/schemas/` that matches the workbook's
+declared `source-build` version (the one the validator selects), not the newest
+one, so the XML stays loadable on the target Tableau Server/Cloud version. Even
+then, the schema allows newer forms the server may reject: follow the
+`<document-format-change-manifest>` rules in `SKILL.md` (no `<simple-id>`, legacy
+`<sort class='…'>`). Do not load the entire XSD when a targeted element lookup is enough.
 
 Return to `SKILL.md` for local validation, direct publish, and rendering.
