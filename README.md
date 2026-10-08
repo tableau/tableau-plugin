@@ -154,6 +154,52 @@ under **Customize → Plugins → Add marketplace** and install **Tableau** from
 it. After later runs, click **Check for updates** on the marketplace, or turn
 on **Sync automatically**. Private repos need the Claude GitHub App.
 
+## Network access for view images (Claude)
+
+`get-view-image` usually returns a short-lived presigned S3 URL rather than
+the image itself. On the `claude` platform the skills download it with `curl`
+(or Python) in a shell, never with the host's web fetch tool: the URL is over
+2,000 characters, and Cowork's fetch rejects it with
+`cowork_web_fetch_url_too_long`. If the download can't run, the skills fall
+back to a view link and ask for a screenshot.
+
+The shell therefore needs outbound HTTPS to the image host. The host is in the
+`resource_link` URL, e.g.
+`prod-dataplane3-...-mcp-images-....s3.us-west-2.amazonaws.com`; the bucket
+and region can differ by Tableau Cloud pod, so check the URL from your own
+site.
+
+**Claude Code.** Allow `curl` so it doesn't stop on a permission prompt, and,
+if [sandboxing](https://code.claude.com/docs/en/sandboxing) is on, allow the
+image host:
+
+```json
+{
+  "permissions": { "allow": ["Bash(curl *)"] },
+  "sandbox": {
+    "network": { "allowedDomains": ["<image host from the URL>"] }
+  }
+}
+```
+
+See [permissions](https://code.claude.com/docs/en/permissions) and the
+[settings reference](https://code.claude.com/docs/en/settings-reference).
+Managed settings can override both: `sandbox.network.allowManagedDomainsOnly`
+or `sandbox.network.strictAllowlist`, or a managed `permissions.deny` rule,
+will block the download until an admin adds the host.
+
+**Claude Chat (web, Desktop) — VERIFY.** Code execution must be on (install
+step 4), and its sandbox needs network egress that allows the image host. We
+haven't found Anthropic documentation for the exact egress setting or
+confirmed that the sandbox can reach S3. On Team and Enterprise plans, an
+admin may control this. If it can't, Chat always gets the link-and-screenshot
+fallback.
+
+**Cowork — VERIFY.** Cowork runs the shell in its own environment. We haven't
+found documentation of its network settings. Test with a view-image request:
+a downloaded image means it works; a curl connection error means the image
+host is blocked there.
+
 ## Other surfaces
 
 **ChatGPT web:** test through developer mode. Sharing with a workspace needs a

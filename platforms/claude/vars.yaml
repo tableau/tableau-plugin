@@ -32,17 +32,33 @@ tools:
 elicit_max_options: 4
 
 # How to show the user an image file (e.g. a downloaded Tableau render) inline
-# in the chat. VERIFY: Claude Chat/Cowork render a Markdown image of a local file.
+# in the chat. Markdown images of local paths render only as links in Claude
+# Desktop/Cowork, and the visualize widget's CSP blocks remote image hosts
+# (including Tableau's presigned URLs), but it does render `data:` images.
+# Verified in Claude Desktop/Cowork. VERIFY on claude.ai web.
 show_image: >-
-  embed it inline in the reply with Markdown using its absolute path, e.g.
-  `![<view name>](/absolute/path/to/render.png)`. Don't present it as a file
-  attachment or open it in a side panel
+  render it in a visualize widget (the host's `show_widget` tool; it may be
+  listed with a prefix such as `mcp__visualize__show_widget`, and its
+  `read_me` must be called once first) as an HTML `<img>` whose `src` is a
+  base64 `data:image/png;base64,...` URI of the file (get the text with
+  `base64 < "<file>" | tr -d '\n'`, or Python's `base64` module), with the view
+  name as `alt` and `style="max-width:100%;height:auto"`. Keep the file under
+  about 200 KB: if it's larger, call `get-view-image` once more for a display
+  copy with `width` of at most 1000 that preserves the aspect ratio, and embed
+  that. A Markdown image or link to the local path, a file attachment, or a side
+  panel only shows a link in this host, so it doesn't count as showing the
+  image. If no `show_widget` tool is available, embed it with Markdown
+  (`![<view name>](/absolute/path/to/render.png)`) and tell the user the
+  render couldn't be displayed inline here
 
 capabilities:
   native_render: true                 # render_native tools may exist on this host
   js_repl: false
   native_render_guaranteed: false     # the browser tool may be absent (e.g. web)
   shell_guaranteed: false
+  # Download presigned render URLs only via shell curl/Python. Cowork's web
+  # fetch rejects them (cowork_web_fetch_url_too_long). VERIFY on claude.ai web.
+  shell_download_only: true
 
 # Payload paths (globs relative to src/plugin/) not shipped on this platform.
 exclude:

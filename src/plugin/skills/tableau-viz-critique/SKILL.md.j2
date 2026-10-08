@@ -17,23 +17,31 @@ Accept any of these inputs:
 - a workbook with a user-specified view to review.
 
 When a Tableau MCP server is available, discover its actual search/list, metadata, and view-image capabilities before calling them. Resolve names and URLs to the canonical identifier returned by the server; do not assume a numeric route segment is an API identifier. Use only read operations.
+{% if not mcp_prefix %}
+
+Tool names here are the Tableau MCP server's own names. The host may list them with a server prefix (e.g. `mcp__<server>__get-view-image`); call the listed tool whose name ends in the name given here.
+{% endif %}
 
 For a workbook with several relevant views, use the view the user named. If none was named and the choice would change the review, ask which view to score; otherwise state the selected view and why it is representative. Review every view only when the user requests workbook-wide coverage.
 
-Fetch the largest practical render without distorting its intended aspect ratio. Metadata may establish owner, project, device layout, view names, or intended audience, but it is not evidence for a visual quality that is absent from the render.
+Metadata may establish owner, project, device layout, view names, or intended audience, but it is not evidence for a visual quality that is absent from the render.
 
-Tableau image tools may return the render as an inline image block or as a `resource_link` containing a short-lived presigned URL.
+## Show the dashboard
 
-- If an inline image is returned, inspect it directly.
-- Choose the download path (an OS temporary directory) before calling the image tool, so nothing is left to work out afterwards.
-- If a `resource_link` is returned, downloading it is the very next action, because the presigned URL expires quickly. Don't call any other tool, read the rubric or other references, write to the user, or analyze anything first. Download it with a direct HTTP client (`curl -sSfL -o "<path>" "<url>"`, or Python's `urllib.request.urlretrieve` if `curl` is unavailable), then inspect the local file with the available image-viewing tool.
-- Treat this read-only download as the normal completion of the Tableau image request. Do not open the presigned URL in a browser unless the user explicitly asked to view it there.
-- Verify that the downloaded file is non-empty and is actually an image before scoring.
-- Show the render to the user so they can see what is being critiqued. For a downloaded file, {{ show_image }}. An inline image is already visible to the user, so don't show it again. A screenshot the user supplied doesn't need to be shown back.
-- If the URL expires, request a fresh render and retry the download once.
-- Only ask the user for a screenshot after both inline inspection and direct download are unavailable or fail.
+When the target is Tableau content, always show the dashboard to the user in the response before the review. Follow [`../../references/rendering.md`](../../references/rendering.md) for the render path, its fallback order, direct-URL construction, PNG download, and failure handling. Reuse the view LUID and URL already resolved for the review. A screenshot the user supplied is already visible, so don't render or show it again.
 
-Do not conclude that a render is inaccessible merely because a browser blocks the image-host domain. Browser access and direct retrieval of an MCP-returned resource are separate paths; exhaust the connector's supported resource-delivery path first.
+If every render path fails, handle it as rendering.md's failure handling describes, then continue the review from whatever image you can inspect.
+
+## Capture a render to score
+
+Scoring needs an image you can inspect. An interactive{% if capabilities.native_render %} or in-app browser{% endif %} render shows the user the dashboard but doesn't give you pixels, so also fetch a static PNG:
+
+- If the render path already ended with the `{{ mcp_prefix }}get-view-image` fallback, score that PNG. Don't fetch another.
+- Otherwise call `{{ mcp_prefix }}get-view-image` once with `viewId`, `format: "PNG"`, and the largest practical `width`/`height` that preserves the dashboard's aspect ratio. Handle the result exactly as [rendering.md](../../references/rendering.md#download-the-png-immediately) describes: pick the OS-temp path before calling, download a `resource_link` as the very next action with a direct HTTP client{% if capabilities.shell_download_only %} run in the shell (never a web fetch tool){% endif %}, and retry once if the URL expires.
+- Verify the file is a non-empty image, then inspect it with the available image-viewing tool.
+- Show the user the image you scored, inline in the response, before the score: {{ show_image }}. A link or file path alone doesn't count. Skip this only when that image is already visible in the chat: an inline image returned by the tool, a PNG already shown by rendering.md's fallback, or a screenshot the user supplied.
+
+Do not conclude that a render is inaccessible merely because a browser blocks the image-host domain. Browser access and direct retrieval of an MCP-returned resource are separate paths; exhaust the connector's supported resource-delivery path first. Only ask the user for a screenshot after the PNG is unavailable or fails.
 
 If the render is too small, clipped, blank, or stale enough to make scoring unreliable, request a better image instead of guessing. A screenshot supplied directly by the user does not require Tableau access.
 
@@ -75,7 +83,7 @@ Default to a complete but compact inline review unless the user requested a brie
 
 Include:
 
-1. final score, tier, genre, and primary question, placed directly after the render shown to the user (see [Resolve the target](#resolve-the-target));
+1. final score, tier, genre, and primary question, placed directly after the dashboard shown to the user (see [Show the dashboard](#show-the-dashboard));
 2. a short verdict;
 3. the seven-domain scorecard with concrete evidence;
 4. the main score drivers and any cap;

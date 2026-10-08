@@ -40,3 +40,4 @@ capabilities:
   js_repl: true                       # tools.js_repl exists on this host
   native_render_guaranteed: true      # render_native[0] is always present
   shell_guaranteed: true              # a local shell is always available
+  shell_download_only: false          # no fetch-tool URL limit to steer around
