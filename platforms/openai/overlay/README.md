@@ -21,11 +21,11 @@ plugins/tableau/
   skills/shared/rendering.md                   # shared render-in-side-panel steps, used by both of the above
   schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd           # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
   skills/tableau-workbook-authoring/scripts/validate_workbook.py   # validates a .twb/.twbx against the matching XSD
-  skills/tableau-workbook-authoring/scripts/requirements.txt       # lxml, needed by validate_workbook.py
+  requirements.txt                             # pinned lxml, needed by validate_workbook.py
   scripts/render_embed.py                      # builds an embeddable URL + local iframe fallback
 ```
 
-The workbook validator needs `lxml`. The plugin's session-start hook installs it from `plugins/tableau/skills/tableau-workbook-authoring/scripts/requirements.txt` into the plugin's writable data directory.
+The workbook validator needs `lxml`. The first time a skill runs it, `plugins/tableau/scripts/run_python.py` installs the pinned version from `plugins/tableau/requirements.txt` into a shared per-user venv (`~/.cache/tableau-plugin/`, or `%LOCALAPPDATA%\tableau-plugin\` on Windows); this needs network access once.
 
 ## How it connects to Tableau
 

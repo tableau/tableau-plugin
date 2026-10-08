@@ -2,11 +2,11 @@
 """Run a skill script with an interpreter that has the plugin's requirements.
 
 Every skill shares one dependency list (requirements.txt at the plugin root) and
-one venv. The session-start hook prepares the venv ahead of time so skills
-never pay the install cost mid-task:
+one venv. The venv is built lazily, the first time a script needs it, so
+sessions that never run a script never touch the network:
 
-    python3 run_python.py --bootstrap                  # prepare only (hook)
     python3 run_python.py SCRIPT.py [script args...]   # run a script
+    python3 run_python.py --bootstrap                  # prepare only (e.g. before going offline)
 
 Interpreter choice, cheapest first:
   1. the running interpreter, if it already satisfies requirements.txt
@@ -15,8 +15,8 @@ Interpreter choice, cheapest first:
   3. otherwise (re)build the venv, then use it.
 
 The venv lives in a fixed per-user cache dir rather than a host-provided plugin
-data dir: hook processes and the model's shell don't always see the same host
-env vars, and a fixed path also survives plugin reinstalls. Stdlib-only and
+data dir: the model's shell doesn't always see the host's plugin env vars, and a
+fixed path also survives plugin reinstalls. Stdlib-only and
 cross-platform (macOS, Linux, Windows).
 """
 
@@ -33,7 +33,7 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS = PLUGIN_ROOT / "requirements.txt"
 STAMP_NAME = ".requirements-sha256"
-REQUIREMENT_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:>=\s*([0-9][0-9.]*))?$")
+REQUIREMENT_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:(>=|==)\s*([0-9][0-9.]*))?$")
 
 
 def cache_dir() -> Path:
@@ -67,12 +67,14 @@ def current_satisfies(reqs: list[str]) -> bool:
         match = REQUIREMENT_LINE.match(req)
         if not match:
             return False  # unsupported specifier: let the venv's pip handle it
-        name, minimum = match.groups()
+        name, op, wanted = match.groups()
         try:
             installed = metadata.version(name)
         except metadata.PackageNotFoundError:
             return False
-        if minimum and version_tuple(installed) < version_tuple(minimum):
+        if op == ">=" and version_tuple(installed) < version_tuple(wanted):
+            return False
+        if op == "==" and version_tuple(installed) != version_tuple(wanted):
             return False
     return True
 
@@ -87,14 +89,19 @@ def ensure_venv(reqs: list[str]) -> Path:
     if python.exists() and stamp.exists() and stamp.read_text().strip() == digest:
         return python
 
-    # Keep install chatter on stderr so the script's stdout stays clean.
+    # Keep install chatter on stderr so the script's stdout stays clean. Wheels
+    # only (no source builds needing a compiler), and a short timeout with one
+    # retry so an offline machine fails in seconds rather than minutes.
+    print("Installing the Tableau plugin's Python requirements (one-time)...",
+          file=sys.stderr)
     venv.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([sys.executable, "-m", "venv", "--clear", str(venv)],
                    check=True, stdout=sys.stderr)
     if reqs:
         subprocess.run(
             [str(python), "-m", "pip", "install", "--disable-pip-version-check",
-             "--no-input", "-r", str(REQUIREMENTS)],
+             "--no-input", "--only-binary=:all:", "--timeout", "15", "--retries", "1",
+             "-r", str(REQUIREMENTS)],
             check=True, stdout=sys.stderr,
         )
     stamp.write_text(digest + "\n")  # last, so a failed install is retried
@@ -120,8 +127,9 @@ def main() -> int:
     try:
         python = ensure_venv(reqs)
     except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"error: could not prepare the plugin's Python environment: {exc}",
-              file=sys.stderr)
+        print(f"error: could not prepare the plugin's Python environment: {exc}\n"
+              f"Installing {', '.join(reqs)} from PyPI needs network access; "
+              f"it is retried on the next run.", file=sys.stderr)
         return 1
     if args == ["--bootstrap"]:
         return 0

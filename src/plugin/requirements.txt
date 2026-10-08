@@ -1,4 +1,5 @@
 # Third-party packages needed by any skill script, installed once into a shared
-# venv by scripts/run_python.py (see that file). Keep to `name` or
-# `name>=version` lines so run_python.py can check them without extra tooling.
-lxml>=5.0
+# venv by scripts/run_python.py (see that file). Keep to `name`, `name>=version`
+# or `name==version` lines so run_python.py can check them without extra
+# tooling. Pinned so every install gets the version the validator is tested on.
+lxml==6.1.3

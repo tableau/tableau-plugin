@@ -13,10 +13,6 @@ assistant_name: Claude
 # a note tells the model to match on the suffix. Prose renders as `search-content`.
 mcp_prefix: ""
 
-# Shell expansion the host substitutes for the installed plugin's root dir.
-# Used by hooks/hooks.json.j2 (hooks only run in Cowork, not Chat).
-plugin_root: "${CLAUDE_PLUGIN_ROOT}"
-
 # Host-provided tools. render_native is the in-app browser: Claude's built-in
 # browser pane, whose `navigate` tool opens the pane at a URL if it isn't open
 # yet. Listed by base name; the host may prefix it (e.g. mcp__Claude_Browser__).

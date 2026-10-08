@@ -19,7 +19,6 @@
   ],
   "extensions": {
     "com.openai": {
-      "hooks": "./hooks/hooks.json",
       "interface": {
         "displayName": "Tableau",
         "composerIcon": "./assets/icon.png",

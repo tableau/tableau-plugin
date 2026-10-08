@@ -9,10 +9,6 @@ assistant_name: ChatGPT and Codex
 # tools are addressed by the bare server key from .mcp.json ("Tableau").
 mcp_prefix: "mcp__Tableau__"
 
-# Shell expansion the host substitutes for the installed plugin's root dir.
-# Codex exposes $PLUGIN_ROOT; used by hooks/hooks.json.j2.
-plugin_root: "$PLUGIN_ROOT"
-
 # Host-provided tools (NOT tools served by the Tableau MCP server). These names
 # are how each host surfaces its own built-in tools.
 tools:
