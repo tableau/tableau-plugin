@@ -105,8 +105,6 @@ def derive_field(field, ordinal, error_prefix=''):
     }
 
 
-# Desktop-style internal datasource name (`sqlproxy.` + 22 random chars). It's the join key
-# repeated across the four wiring locations, so it only needs to be unique within the workbook.
 def generate_connection_name():
     token = lambda: ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
     return f'sqlproxy.{token()}{token()}'
