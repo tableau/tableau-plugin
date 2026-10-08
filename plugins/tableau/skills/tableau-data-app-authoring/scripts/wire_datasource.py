@@ -1,26 +1,32 @@
 #!/usr/bin/env python3
 """
-Wire a published datasource into a scaffolded data-app `.twb`.
+Wire one or more published datasources into a scaffolded data-app `.twb`.
 
 `scaffold-data-app` emits a workbook with TWO empty `<datasources />` anchors
 (workbook root + worksheet `<view>`). Until both are filled the extension's
 `getAllDataSourcesAsync()` finds nothing and renders "no data source found in
-the workbook." This fills both with one published `sqlproxy` (Data Server)
-datasource, keeping the `sqlproxy.<hash>` join key byte-identical everywhere.
+the workbook." This fills both with N published `sqlproxy` (Data Server)
+datasources, keeping each `sqlproxy.<hash>` join key byte-identical everywhere.
 
-A script, not freehand XML, because the wiring spans four locations that must
-agree exactly (root datasource `name`, root `relation connection`, view
-`datasource name`, `datasource-dependencies datasource`); miss one and the
-workbook silently reaches no data.
+A script, not freehand XML, because the wiring spans coordinated locations that
+must agree exactly (root datasource `name`, root `relation connection`, view
+`datasource name`, and for the primary `datasource-dependencies datasource`);
+miss one and the workbook silently reaches no data.
+
+Every datasource is listed on the extension's host sheet `<view>`: the server
+only connects and keeps datasources listed there, so one listed only elsewhere
+fails at query time. The first datasource is the primary (it alone gets
+`datasource-dependencies`); the app finds the rest by caption via
+`getAllDataSourcesAsync()`.
 
 Usage: python3 wire_datasource.py <path-to.twb> <descriptor.json>
 
 descriptor.json (Claude assembles from list-datasources + get-datasource-metadata;
-list ONLY the fields the app will query):
+list ONLY the fields the app will query). Either one datasource:
   {
     "caption":      "Superstore Datasource",
     "repositoryId": "SuperstoreDatasource",   // published DS contentUrl (== repo-location id / dbname)
-    "site":         "mcp-test",
+    "site":         "mcp-test",                // "" for the Default site
     "server":       "10ax.online.tableau.com",
     "channel":      "https",   // optional, default https
     "port":         443,       // optional, default 443 (use http/80 for on-prem)
@@ -30,6 +36,8 @@ list ONLY the fields the app will query):
       { "name": "Region", "datatype": "string", "role": "dimension" }
     ]
   }
+or any number of them, primary first, wired in a single run:
+  { "datasources": [ { ...as above... }, { ...as above... } ] }
 """
 
 import json
@@ -71,10 +79,10 @@ def type_of(datatype):
 
 # Derive a field's attributes once, reused across the root metadata-record, view
 # column, and column-instance so all three agree.
-def derive_field(field, ordinal):
+def derive_field(field, ordinal, label=''):
     name = field.get('name') if isinstance(field, dict) else None
     if not name or not isinstance(name, str):
-        die(f'Every field needs a string "name" (field #{ordinal} was {json.dumps(field, separators=(",", ":"))}).')
+        die(f'{label}Every field needs a string "name" (field #{ordinal} was {json.dumps(field, separators=(",", ":"))}).')
     datatype = str(field.get('datatype') or 'string').lower()
     role = 'measure' if field.get('role') == 'measure' else 'dimension'
     is_measure = role == 'measure'
@@ -97,48 +105,81 @@ def derive_field(field, ordinal):
     }
 
 
-def main():
-    argv = sys.argv
-    if len(argv) < 3:
-        die('Usage: python3 wire_datasource.py <path-to.twb> <descriptor.json>')
-    twb_path_arg, descriptor_path_arg = argv[1], argv[2]
-    twb_path = os.path.abspath(twb_path_arg)
+def random_connection_name():
+    token = lambda: ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
+    return f'sqlproxy.{token()}{token()}'[:37]
 
-    try:
-        with open(descriptor_path_arg, 'r', encoding='utf-8') as f:
-            descriptor = json.load(f)
-    except Exception as error:
-        die(f'Could not read/parse descriptor JSON at {descriptor_path_arg}: {error}')
-        return
 
+# Validate one datasource descriptor. `label` prefixes errors when wiring several.
+def parse_datasource(descriptor, label=''):
+    if not isinstance(descriptor, dict):
+        die(f'{label}Descriptor must be a JSON object.')
     for key in ('caption', 'repositoryId', 'site', 'server'):
         value = descriptor.get(key)
-        if not value or not isinstance(value, str):
-            die(f'Descriptor is missing required string "{key}".')
-    caption, repository_id, site, server = (
-        descriptor['caption'],
-        descriptor['repositoryId'],
-        descriptor['site'],
-        descriptor['server'],
-    )
+        # site may be "" (the Default site); everything else must be non-empty.
+        if not isinstance(value, str) or (not value and key != 'site'):
+            die(f'{label}Descriptor is missing required string "{key}".')
     channel = descriptor.get('channel') or 'https'
     port = descriptor.get('port') if descriptor.get('port') is not None else (443 if channel == 'https' else 80)
 
     fields_in = descriptor.get('fields') if isinstance(descriptor.get('fields'), list) else []
     if len(fields_in) == 0:
-        die('Descriptor "fields" must list at least one field the app will query.')
-    fields = [derive_field(f, i) for i, f in enumerate(fields_in)]
+        die(f'{label}Descriptor "fields" must list at least one field the app will query.')
 
-    # Single source of truth for the join key.
     connection_name = descriptor.get('connectionName')
-    if not connection_name:
-        token = lambda: ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
-        connection_name = f'sqlproxy.{token()}{token()}'[:37]
-    if not connection_name.startswith('sqlproxy.'):
-        die(f'connectionName must start with "sqlproxy." (got "{connection_name}").')
+    if connection_name and not connection_name.startswith('sqlproxy.'):
+        die(f'{label}connectionName must start with "sqlproxy." (got "{connection_name}").')
 
-    # --- build the XML blocks ----------------------------------------------
+    return {
+        'caption': descriptor['caption'],
+        'repositoryId': descriptor['repositoryId'],
+        'site': descriptor['site'],
+        'server': descriptor['server'],
+        'channel': channel,
+        'port': port,
+        'fields': [derive_field(f, i, label) for i, f in enumerate(fields_in)],
+        'connectionName': connection_name,
+    }
 
+
+def parse_descriptor(descriptor):
+    if isinstance(descriptor, dict) and 'datasources' in descriptor:
+        entries = descriptor['datasources']
+        if not isinstance(entries, list) or len(entries) == 0:
+            die('Descriptor "datasources" must list at least one datasource.')
+        datasources = [parse_datasource(d, f'datasources[{i}]: ') for i, d in enumerate(entries)]
+    else:
+        datasources = [parse_datasource(descriptor)]
+
+    seen_repository_ids = set()
+    for i, ds in enumerate(datasources):
+        if ds['repositoryId'] in seen_repository_ids:
+            die(f'datasources[{i}]: repositoryId "{ds["repositoryId"]}" is listed more than once.')
+        seen_repository_ids.add(ds['repositoryId'])
+
+    # Single source of truth for each join key; they must be distinct across datasources.
+    explicit_names = [ds['connectionName'] for ds in datasources if ds['connectionName']]
+    if len(set(explicit_names)) != len(explicit_names):
+        die('connectionName values must be unique across datasources.')
+    used = set(explicit_names)
+    for ds in datasources:
+        if not ds['connectionName']:
+            name = random_connection_name()
+            while name in used:
+                name = random_connection_name()
+            ds['connectionName'] = name
+            used.add(name)
+    return datasources
+
+
+# The Default site has no /t/<site> path segment and no site attribute.
+def repository_location_xml(repository_id, site):
+    if not site:
+        return f"<repository-location id='{esc(repository_id)}' path='/datasources' revision='1.0' />"
+    return f"<repository-location id='{esc(repository_id)}' path='/t/{esc(site)}/datasources' revision='1.0' site='{esc(site)}' />"
+
+
+def root_datasource_xml(ds):
     metadata_records = '\n'.join(
         f"""          <metadata-record class='column'>
             <remote-name>{esc(f['name'])}</remote-name>
@@ -156,40 +197,65 @@ def main():
               <attribute datatype='integer' name='role'>{f['roleAttr']}</attribute>
             </attributes>
           </metadata-record>"""
-        for f in fields
+        for f in ds['fields']
     )
-
-    root_datasource = f"""<datasources>
-    <datasource caption='{esc(caption)}' inline='true' name='{esc(connection_name)}' version='18.1'>
-      <repository-location id='{esc(repository_id)}' path='/t/{esc(site)}/datasources' revision='1.0' site='{esc(site)}' />
-      <connection channel='{esc(channel)}' class='sqlproxy' dbname='{esc(repository_id)}' directory='dataserver' port='{esc(port)}' server='{esc(server)}' server-ds-friendly-name='{esc(caption)}' username=''>
+    return f"""    <datasource caption='{esc(ds['caption'])}' inline='true' name='{esc(ds['connectionName'])}' version='18.1'>
+      {repository_location_xml(ds['repositoryId'], ds['site'])}
+      <connection channel='{esc(ds['channel'])}' class='sqlproxy' dbname='{esc(ds['repositoryId'])}' directory='dataserver' port='{esc(ds['port'])}' server='{esc(ds['server'])}' server-ds-friendly-name='{esc(ds['caption'])}' username=''>
         <relation type='collection'>
-          <relation connection='{esc(connection_name)}' name='sqlproxy' table='[sqlproxy]' type='table' />
+          <relation connection='{esc(ds['connectionName'])}' name='sqlproxy' table='[sqlproxy]' type='table' />
         </relation>
         <metadata-records>
 {metadata_records}
         </metadata-records>
       </connection>
-    </datasource>
-  </datasources>"""
+    </datasource>"""
 
+
+def view_dependencies_xml(ds):
     view_columns = '\n'.join(
         f"            <column aggregation='{f['aggregation']}' datatype='{esc(f['datatype'])}' name='{esc(f['localName'])}' role='{f['role']}' type='{f['type']}' />"
-        for f in fields
+        for f in ds['fields']
     )
-
     view_column_instances = '\n'.join(
         f"            <column-instance column='{esc(f['localName'])}' derivation='{f['derivation']}' name='{esc(f['instanceName'])}' pivot='key' type='{f['type']}' />"
-        for f in fields
+        for f in ds['fields']
     )
-
-    view_datasources = f"""<datasources>
-            <datasource caption='{esc(caption)}' name='{esc(connection_name)}' />
-          </datasources>
-          <datasource-dependencies datasource='{esc(connection_name)}'>
+    return f"""          <datasource-dependencies datasource='{esc(ds['connectionName'])}'>
 {view_columns}
 {view_column_instances}
           </datasource-dependencies>"""
+
+
+def main():
+    argv = sys.argv
+    if len(argv) < 3:
+        die('Usage: python3 wire_datasource.py <path-to.twb> <descriptor.json>')
+    twb_path_arg, descriptor_path_arg = argv[1], argv[2]
+    twb_path = os.path.abspath(twb_path_arg)
+
+    try:
+        with open(descriptor_path_arg, 'r', encoding='utf-8') as f:
+            descriptor = json.load(f)
+    except Exception as error:
+        die(f'Could not read/parse descriptor JSON at {descriptor_path_arg}: {error}')
+        return
+
+    datasources = parse_descriptor(descriptor)
+    primary = datasources[0]
+
+    # --- build the XML blocks ----------------------------------------------
+
+    root_datasources = '<datasources>\n' + '\n'.join(root_datasource_xml(ds) for ds in datasources) + '\n  </datasources>'
+
+    view_entries = '\n'.join(
+        f"            <datasource caption='{esc(ds['caption'])}' name='{esc(ds['connectionName'])}' />"
+        for ds in datasources
+    )
+    view_datasources = f"""<datasources>
+{view_entries}
+          </datasources>
+{view_dependencies_xml(primary)}"""
 
     # --- apply, splitting on <worksheets> so each anchor is unambiguous ------
 
@@ -209,7 +275,7 @@ def main():
     # Root anchor lives in the head (before <worksheets>).
     if EMPTY_ANCHOR not in head:
         die(f'Root "{EMPTY_ANCHOR}" anchor not found before <worksheets> — already wired or template drifted.')
-    head = head.replace(EMPTY_ANCHOR, root_datasource, 1)
+    head = head.replace(EMPTY_ANCHOR, root_datasources, 1)
 
     # View anchor is the first empty <datasources /> inside the worksheets section.
     if EMPTY_ANCHOR not in tail:
@@ -222,15 +288,18 @@ def main():
 
     if EMPTY_ANCHOR in wired:
         die('An empty <datasources /> anchor survived wiring — refusing to write a half-wired workbook.')
-    # Join key must appear >=4x: root datasource name, root relation connection,
-    # view datasource name, datasource-dependencies datasource.
-    ref_count = wired.count(f"'{connection_name}'")
-    if ref_count < 4:
-        die(f'Expected the connection name to appear >=4 times, saw {ref_count} — wiring incomplete.')
+    # Each join key appears in the root datasource name, root relation connection,
+    # and view datasource name; the primary's also in datasource-dependencies.
+    for ds in datasources:
+        expected = 4 if ds is primary else 3
+        ref_count = wired.count(f"'{ds['connectionName']}'")
+        if ref_count < expected:
+            die(f"Expected connection name {ds['connectionName']} to appear >={expected} times, saw {ref_count} — wiring incomplete.")
 
     with open(twb_path, 'w', encoding='utf-8') as f:
         f.write(wired)
-    print(f"✓ Wired datasource '{caption}' ({connection_name}) with {len(fields)} field(s) into {twb_path}", file=sys.stderr)
+    for ds in datasources:
+        print(f"✓ Wired datasource '{ds['caption']}' ({ds['connectionName']}) with {len(ds['fields'])} field(s) into {twb_path}", file=sys.stderr)
     print(twb_path)
 
 

@@ -187,3 +187,122 @@ def test_view_anchor_already_wired_is_rejected(tmp_path):
 
     assert result.returncode == 1
     assert 'View "<datasources />" anchor not found inside <worksheets>' in result.stderr
+
+
+def datasource(n, **overrides):
+    ds = {
+        "caption": f"DS {n}",
+        "repositoryId": f"DS{n}",
+        "site": "mcp-test",
+        "server": "10ax.online.tableau.com",
+        "connectionName": f"sqlproxy.ds{n}",
+        "fields": [{"name": f"Field{n}", "datatype": "string", "role": "dimension"}],
+    }
+    ds.update(overrides)
+    return ds
+
+
+def view_of(wired):
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(wired)
+    return root, root.find('./worksheets/worksheet/table/view')
+
+
+def test_multiple_datasources_are_all_listed_on_the_host_sheet_primary_first(tmp_path):
+    twb_path = write_twb(tmp_path)
+    desc_path = write_descriptor(tmp_path, {"datasources": [datasource(n) for n in range(1, 6)]})
+    result = run_wire(twb_path, desc_path)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == twb_path
+    for n in range(1, 6):
+        assert f"✓ Wired datasource 'DS {n}' (sqlproxy.ds{n}) with 1 field(s)" in result.stderr
+
+    wired = open(twb_path).read()
+    root, view = view_of(wired)
+    names = [f'sqlproxy.ds{n}' for n in range(1, 6)]
+    assert [d.get('name') for d in root.findall('./datasources/datasource')] == names
+    assert [d.get('dbname') for d in root.findall('./datasources/datasource/connection')] == [f'DS{n}' for n in range(1, 6)]
+    assert [d.get('name') for d in view.findall('./datasources/datasource')] == names
+    # Only the primary carries datasource-dependencies.
+    assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == ['sqlproxy.ds1']
+    assert wired.count("'sqlproxy.ds1'") == 4
+    for name in names[1:]:
+        assert wired.count(f"'{name}'") == 3
+
+
+def test_single_entry_datasources_list_matches_legacy_descriptor(tmp_path):
+    legacy_dir = tmp_path / 'legacy'
+    listed_dir = tmp_path / 'listed'
+    legacy_dir.mkdir()
+    listed_dir.mkdir()
+    legacy_twb = write_twb(legacy_dir)
+    listed_twb = write_twb(listed_dir)
+    assert run_wire(legacy_twb, write_descriptor(legacy_dir, descriptor_happy())).returncode == 0
+    assert run_wire(listed_twb, write_descriptor(listed_dir, {"datasources": [descriptor_happy()]})).returncode == 0
+    assert open(legacy_twb).read() == open(listed_twb).read()
+
+
+def test_generated_connection_names_are_distinct_across_datasources(tmp_path):
+    entries = [datasource(n) for n in range(1, 9)]
+    for entry in entries:
+        del entry['connectionName']
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": entries}))
+
+    assert result.returncode == 0, result.stderr
+    root, view = view_of(open(twb_path).read())
+    names = [d.get('name') for d in root.findall('./datasources/datasource')]
+    assert len(set(names)) == 8
+    assert all(name.startswith('sqlproxy.') for name in names)
+    assert [d.get('name') for d in view.findall('./datasources/datasource')] == names
+
+
+def test_empty_datasources_list_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": []}))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ Descriptor "datasources" must list at least one datasource.'
+    assert open(twb_path).read() == TWB_TEMPLATE
+
+
+def test_invalid_entry_error_names_its_index(tmp_path):
+    bad = datasource(2)
+    del bad['site']
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": [datasource(1), bad]}))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ datasources[1]: Descriptor is missing required string "site".'
+    assert open(twb_path).read() == TWB_TEMPLATE
+
+
+def test_duplicate_repository_id_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    entries = [datasource(1), datasource(2, repositoryId='DS1')]
+    result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": entries}))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ datasources[1]: repositoryId "DS1" is listed more than once.'
+
+
+def test_duplicate_connection_name_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    entries = [datasource(1), datasource(2, connectionName='sqlproxy.ds1')]
+    result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": entries}))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ connectionName values must be unique across datasources.'
+
+
+def test_default_site_omits_site_path_and_attribute(tmp_path):
+    descriptor = descriptor_happy()
+    descriptor['site'] = ''
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, descriptor))
+
+    assert result.returncode == 0, result.stderr
+    wired = open(twb_path).read()
+    assert "<repository-location id='SuperstoreDatasource' path='/datasources' revision='1.0' />" in wired
+    assert 'site=' not in wired

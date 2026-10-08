@@ -142,6 +142,13 @@ datasource `name`, root `relation connection`, view `datasource name`,
 `sqlproxy.<hash>` join key. Use `scripts/wire_datasource.py`, which does all
 four edits atomically and hard-fails rather than emitting a half-wired workbook.
 
+**More than one datasource:** wire them all in **one run** — the script fills
+the empty anchors once, so it can't add another datasource to an already-wired
+`.twb` (re-scaffold instead). It lists every datasource on the app's sheet,
+which is required: the server only connects datasources listed there, so a
+datasource placed only on some other sheet fails at query time. Don't move
+datasources onto separate sheets afterward.
+
 1. **Get the datasource's identity** with `list-datasources` (LUID, name/caption,
    contentUrl, and the server host + site) and `get-datasource-metadata({ datasourceLuid })`
    (field names + datatypes). The published DS **contentUrl** is the
@@ -149,7 +156,7 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
    Reuse an existing workbook's datasource below — it gets you here, then
    continues at step 2.)
 2. **Write a descriptor** listing *only the fields the app will query* (name +
-   datatype + role), e.g.:
+   datatype + role). Use `"site": ""` for the Default site. One datasource:
 
    ```bash
    cat > "$WORK/descriptor.json" <<'DS_JSON'
@@ -167,6 +174,18 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
    DS_JSON
    ```
 
+   Several datasources (any number) go in a `datasources` array, **primary
+   first**; each entry has the same shape as the single-datasource object:
+
+   ```json
+   { "datasources": [ { "caption": "Orders", "...": "..." },
+                      { "caption": "People", "...": "..." } ] }
+   ```
+
+   The primary is the sheet's main datasource. The app reaches every one by
+   caption via `getAllDataSourcesAsync()` — look each up by `name`, never by
+   position (the list isn't returned in wiring order).
+
 3. **Run the wiring script** (it prints the wired `.twb` path, and generates a
    consistent `sqlproxy.<hash>` unless you supply `connectionName`):
 
@@ -175,7 +194,8 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
    ```
 
 The script hard-fails if an anchor is missing (already wired / template drifted),
-if any empty `<datasources />` survives, or if the join key isn't referenced ≥4×.
+if any empty `<datasources />` survives, if a join key isn't fully referenced, or
+if a `repositoryId` or `connectionName` repeats across datasources.
 Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
