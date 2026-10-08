@@ -13,11 +13,15 @@ assistant_name: Claude
 # a note tells the model to match on the suffix. Prose renders as `search-content`.
 mcp_prefix: ""
 
-# Host-provided tools. render_native is the in-app browser: Claude's built-in
-# browser pane, whose `navigate` tool opens the pane at a URL if it isn't open
-# yet. Listed by base name; the host may prefix it (e.g. mcp__Claude_Browser__).
-# VERIFY the tool name in Chat and Cowork. No node_repl or user-choice tool is
-# assumed; prose falls back to a numbered list.
+# Host-provided tools. render_native is a browser the model can drive, listed by
+# base name because the host prefixes it. Checked 2026-10-08:
+# - Chat and Code: Claude's built-in browser pane (mcp__Claude_Browser__*);
+#   `navigate` opens the pane at a URL if it isn't open yet.
+# - Cowork: no built-in pane, only Claude in Chrome (mcp__claude-in-chrome__*),
+#   which drives the user's real Chrome and needs `tabs_context_mcp` first.
+# Both share the base names navigate, computer, read_page, find,
+# javascript_tool and resize_window. claude.ai web: VERIFY (likely neither).
+# No node_repl or user-choice tool is assumed; prose falls back to a numbered list.
 tools:
   render_native:
     - name: navigate
