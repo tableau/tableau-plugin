@@ -281,8 +281,7 @@ at the top level with no wrapping folder and no `.DS_Store`/`__MACOSX` entries.
 
 ## Publish
 
-Uses the MCP publish tools (gated by the `authoring-tools` feature; not available
-to Slack clients).
+Uses the MCP publish tools (not available to Slack clients).
 
 1. **Default to the caller's Personal Space — omit `projectId`.**
    `publish-workbook` publishes there automatically when the site supports it
@@ -335,8 +334,7 @@ to Slack clients).
    was not verified; the publish itself still succeeded. When both
    `permissions` and `permissionsNote` are absent, show only the publish
    confirmation and link, with no access summary or parent-source reminder.
-   Personal Space publications omit these fields. Project permission disclosure
-   is independent of the `data-apps` feature flag.
+   Personal Space publications omit these fields.
 
    After an access summary, use existing parent-source context for the beta
    reminder. For a known published parent, say viewers also need API Access
