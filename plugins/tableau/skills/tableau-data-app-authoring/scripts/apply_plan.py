@@ -2,18 +2,14 @@
 """
 Finalize a scaffolded data-app workspace by applying the `postUnzip` plan from
 the `scaffold-data-app` MCP tool. Plan shape:
-  { edits: [{ file, replacements: [{ find, replace, occurrence }] }],
-    renames: [{ from, to }], wiresDatasource }
+  { instructions, edits: [{ file, replacements: [{ find, replace }] }],
+    renames: [{ from, to }] }
 Every path is relative to the unzip dir, incl. the template root prefix
 (e.g. "Data App Name/...").
 
 Order is why this is a script, not freehand edits: apply ALL edits first, THEN
 renames in the given order (deepest first, root last). Renaming before editing
 invalidates edit paths; reordering renames orphans a child under its parent.
-
-`occurrence: 'first'` replaces only the first remaining match — used to resolve
-two identical anchors to different values in sequence; 'all'/omitted replaces
-every match. `wiresDatasource` adds `<datasources />` to the residual-token check.
 
 Usage: python3 apply_plan.py <unzipDir> <planJsonPath>
 """
@@ -22,8 +18,7 @@ import json
 import os
 import sys
 
-PLACEHOLDER_TOKENS = ['TODO-MANIFEST-ID', 'TODO App Name', 'TODO Username via Tableau MCP']
-WIRING_ANCHOR_TOKEN = '<datasources />'
+PLACEHOLDER_TOKENS = ['TODO-MANIFEST-ID', 'TODO App Name', 'TODO Sheet Name']
 
 
 def die(message):
@@ -71,14 +66,9 @@ def main():
         for replacement in replacements:
             find = replacement.get('find')
             replace = replacement.get('replace')
-            occurrence = replacement.get('occurrence')
             if find not in content:
                 die(f'Placeholder "{find}" not found in {file} — template/plan out of sync.')
-            if occurrence == 'first':
-                idx = content.index(find)
-                content = content[:idx] + replace + content[idx + len(find):]
-            else:
-                content = content.replace(find, replace)
+            content = content.replace(find, replace)
         with open(abs_path, 'w', encoding='utf-8') as f:
             f.write(content)
         print(f'  edited  {file}', file=sys.stderr)
@@ -120,8 +110,7 @@ def main():
         except Exception as error:
             die(f'Finalized file missing for placeholder check: {final_rel} ({error})')
             return
-        tokens = (PLACEHOLDER_TOKENS + [WIRING_ANCHOR_TOKEN]) if plan.get('wiresDatasource') else PLACEHOLDER_TOKENS
-        for token in tokens:
+        for token in PLACEHOLDER_TOKENS:
             if token in content:
                 residual.append(f'{final_rel}: "{token}"')
     if len(residual) > 0:

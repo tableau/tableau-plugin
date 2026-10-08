@@ -43,23 +43,20 @@ Call the `scaffold-data-app` MCP tool with the app name:
 
 > scaffold-data-app({ datappName: "Sales Demo" })
 
-**Both transports return the same static, un-substituted template *zip* plus an
-identical `postUnzip` plan** — they differ only in how the zip gets onto disk:
+If `scaffold-data-app` is absent or errors, report that to the user — don't
+hand-build the template.
 
-- **local (stdio):** result has `filePath` + a `postUnzip` plan. `filePath`
-  points at the same static template **zip** the S3 path serves — it is *not* a
-  pre-finalized workspace directory. Unzip it to a temp dir, then apply the plan
-  there. No download needed, but unzip still is.
-- **remote (http):** result has `s3URL` + a `postUnzip` plan. Download the zip
-  from `s3URL` first, then unzip it to a temp dir and apply the plan there.
+The result carries an un-substituted template **zip** plus a `postUnzip` plan,
+and either `filePath` (the zip on local disk) or `s3URL` (download it first).
+Branch on whichever is present; past the fetch step the steps are identical.
+It also returns `allowedOrigins: string[]` — any external origin the app
+fetches from must be in that list.
 
-Past the fetch step the two are identical: same unzip, same plan, including the
-root-dir rename (`Data App Name` → `<displayName>`).
 Apply the plan deterministically with the bundled script — applying it freehand
-leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` tokens or interleaves
+leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` / `TODO Sheet Name` tokens or interleaves
 edits and renames in the wrong order.
 
-Finalize the plan (both transports — save, fetch, apply). Scripts referenced
+Finalize the plan (save, fetch, apply). Scripts referenced
 below live under `scripts/`, relative to this skill directory (`$SKILL_DIR`):
 
 1. Save the plan:
@@ -74,7 +71,7 @@ below live under `scripts/`, relative to this skill directory (`$SKILL_DIR`):
    PLAN_JSON
    ```
 
-2. Fetch the template — **remote (http)** downloads then unzips:
+2. Fetch the template — with `s3URL`, download then unzip:
 
    ```bash
    curl -fsSL "<s3URL>" -o "$WORK/template.zip"
@@ -82,16 +79,15 @@ below live under `scripts/`, relative to this skill directory (`$SKILL_DIR`):
    unzip -q "$WORK/template.zip" -d "$WORK/unzipped"
    ```
 
-   **Local (stdio)** unzips only, no download (`filePath` is already the same
-   template zip, just sitting on local disk instead of behind a presigned URL):
+   With `filePath`, unzip only:
 
    ```bash
    mkdir -p "$WORK/unzipped"
    unzip -q "<filePath>" -d "$WORK/unzipped"
    ```
 
-3. Apply the plan — identical for both transports (edits first, then renames;
-   verifies no placeholders survive):
+3. Apply the plan (edits first, then renames; verifies no placeholders
+   survive):
 
    ```bash
    python3 "$SKILL_DIR/scripts/apply_plan.py" "$WORK/unzipped" "$WORK/plan.json"
@@ -107,18 +103,17 @@ At the end of this stage you have a finalized workspace directory:
 <App Name>/
   <App Name>.twb
   Packages/com.tableau.mcp.<slug>/
-    manifest.json
     extensions/data-app.trex
     content/index.html
     content/src/app.js      ← the authoring surface
-    content/src/…
+    content/src/styles.css
+    content/src/tableau.extensions.1.latest.js
 ```
 
-**Sheet name:** the worksheet's name comes from the scaffold template's
-default and may not be what the user wants. It's a plain string with no
-hash/join-key involved, so it's freely hand-editable at any point before
-packaging — just edit all 3 matching locations in the `.twb` to the same new
-value: the `<worksheet name='...'>` tag, the `<window class='worksheet'
+**Sheet name:** the worksheet is named after the app's display name. It's a
+plain string with no hash/join-key involved, so it's freely hand-editable at
+any point before packaging — edit all 3 matching locations in the `.twb` to
+the same new value: the `<worksheet name='...'>` tag, the `<window class='worksheet'
 name='...'>` tag, and `<referenced-view ... viewId='...' />`.
 
 ## Wire a datasource in
@@ -196,38 +191,20 @@ have produced).
    if ambiguous), then call `get-workbook({ workbookId })` and read
    `upstreamDatasources[]` — ask which entry if it lists more than one.
 2. Check the matched entry's `datasourceType`:
+   - **`"embedded"`** — it can't be reused via this path; ask the user for a
+     published datasource instead.
    - **`"published"`** — still run the rest of Published datasource step 1
      (`list-datasources` filtered by this LUID, for `contentUrl`/site/server
      — `get-workbook` doesn't carry those — plus
-     `get-datasource-metadata({ datasourceLuid })` for fields), then
-     continue at step 2. Filter candidate fields to `columnClass: "COLUMN"`
+     `get-datasource-metadata({ datasourceLuid })` for fields, whose
+     top-level `datasourceType` should also read `"published"` when present),
+     then continue at step 2. Filter candidate fields to `columnClass: "COLUMN"`
      (drop `CALCULATION`/`TABLE_CALCULATION`/`BIN`/`GROUP` — those are
      Tableau-computed groupings with no matching raw column). This metadata
      response often includes an explicit `role` (`"DIMENSION"`/`"MEASURE"`)
      per field — when present, lowercase and use it directly instead of
      inferring from `defaultAggregation`; fall back to that heuristic when
-     `role` is absent (it isn't always populated). **Caveat, confirmed by
-     direct testing:** this dispatch branch — a workbook whose `get-workbook`
-     response actually reports `datasourceType: "published"` — could not be
-     produced or exercised end-to-end in this environment, and a targeted
-     sweep of real site content (multiple independently-authored workbooks,
-     different owners/projects) never observed it either — every workbook
-     checked, real or synthetic, came back `"embedded"` instead.
-     `get-workbook`'s "published" classification appears to require
-     server-side provenance from Tableau's own "connect to a published
-     datasource" flow, not just a structurally-correct `sqlproxy` connection:
-     wiring a fresh app directly at a real published datasource via
-     `wire_datasource.py` and publishing it came back from `get-workbook` as
-     `datasourceType: "embedded"` with a brand-new LUID (unrelated to the
-     original), even though the connection queried real live data correctly.
-     A real fixture
-     (`tableau-mcp/tests/e2e/fixtures/workbooks/superstore-datasource.twb`)
-     shows genuine published connections carry a `derived-from` provenance
-     attribute on `repository-location` that `wire_datasource.py` doesn't
-     emit; manually adding it to a fresh publish gets a hard `400` from
-     `publish-workbook`, confirming it's server-populated, not
-     client-authorable. Treat this branch as documented-but-unverified until
-     tested against a genuine Desktop/Web-Authoring-connected workbook.
+     `role` is absent.
 
 ## Author `app.js`
 
@@ -283,25 +260,29 @@ at the top level with no wrapping folder and no `.DS_Store`/`__MACOSX` entries.
 
 Uses the MCP publish tools (not available to Slack clients).
 
-1. **Default to the caller's Personal Space — omit `projectId`.**
-   `publish-workbook` publishes there automatically when the site supports it
-   (falls back to requiring `projectId` otherwise). `projectId` is optional:
-   only resolve one if the user names a specific project:
-   > list-projects({})
-   Pick the project the user wants (ask if ambiguous).
+1. **Pick the destination.** Omit `projectId` to publish to the caller's
+   Personal Space. Include it only if the user names a project, or if the
+   tool requires `projectId` or errors that Personal Space is unavailable or
+   read-only — then ask the user for a project from
+   > list-projects({ capability: "Write" })
+   and retry with its `projectId`. If the error says the workbook landed in a
+   project instead of Personal Space, tell the user where it went.
 
-2. **Publish.** Two paths — pick based on transport. Omit `projectId` entirely
-   for Personal Space; include it only for a specific project.
+2. **Publish.** Pass the `.twbx` path directly:
+   > publish-workbook({ workbookFilePath: "<abs path to .twbx>", name: "<App Name>", overwrite: false })
 
-   - **Local (stdio), simplest:** the `.twbx` is on the MCP server's own
-     filesystem, so pass it directly:
-     > publish-workbook({ workbookFilePath: "<abs path to .twbx>", name: "<App Name>", projectId: "<LUID or omit for Personal Space>", overwrite: false })
+   If the tool errors that `workbookFilePath` isn't supported (staged uploads
+   configured), stage the bytes and publish by id:
+   > request-workbook-upload({ fileName: "<App Name>.twbx" })   → { workbookUploadId, uploadUrl, requiredHeaders, maxSizeBytes, expiresAt }
 
-   - **Remote (http) / staged uploads configured:** stage the bytes first, then
-     publish by id:
-     > request-workbook-upload({ filename: "<App Name>.twbx" })   → returns an upload URL + workbookUploadId
-     > (upload the .twbx bytes to the returned URL — staged-workbook-upload)
-     > publish-workbook({ workbookUploadId: "<id>", name: "<App Name>", projectId: "<LUID or omit for Personal Space>", overwrite: false })
+   ```bash
+   # send every header in requiredHeaders
+   curl -fsS -X PUT -H 'Content-Type: <from requiredHeaders>' --data-binary @"<App Name>.twbx" "<uploadUrl>"
+   ```
+
+   > publish-workbook({ workbookUploadId: "<id>", name: "<App Name>", overwrite: false })
+
+   Add `projectId` to either call when publishing to a project.
 
 3. **Report the outcome.** On success `publish-workbook` returns
    `status: "published"` with the workbook `url` and any `warnings` — give the
@@ -350,6 +331,11 @@ Uses the MCP publish tools (not available to Slack clients).
    wiring, not packaging. Set `overwrite: true` only if the user wants to replace
    an existing workbook of the same name.
 
+4. **Promote (optional).** To move a published app into a shared project:
+   > move-workbook({ workbookId: "<publish result data.id>", projectId: "<LUID>" })   → { id, name, projectId }
+
+   If `move-workbook` isn't available, tell the user.
+
 ## Non-negotiable limits
 
 - Don't nest the workspace folder inside the `.twbx`. Zip the *contents*
@@ -361,11 +347,10 @@ Uses the MCP publish tools (not available to Slack clients).
 - Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire_datasource.py` —
   freehand edits mismatch the join key across its coordinated locations or
   leave an empty `<datasources />` anchor, and the app silently reaches no data.
-- Don't assume a local result's `filePath` is already substituted, or skip
-  unzip because it's local. `filePath` points at the same static,
-  un-substituted template **zip** the S3 path serves — not a finalized
-  workspace directory. Unzip it (no download needed, but unzip still is) and
-  apply the plan before authoring, exactly like the remote path.
+- Don't assume the scaffold result's zip is already substituted, or skip
+  unzip. Whether it arrives as `filePath` or `s3URL`, it's the same static,
+  un-substituted template **zip** — unzip it and apply the plan before
+  authoring.
 - Don't hand off `app.js` to the human unprompted. Authoring `app.js` yourself
   is the fixed default — always write it from the human's stated
   criteria/vibe. Only hand off when the human explicitly says they want to

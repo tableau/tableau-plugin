@@ -56,10 +56,10 @@ published datasource, so it always reflects current data. Two consequences:
    user wants this app published — publishing creates content on their Tableau site, and that is
    their decision. "Looks good" is not consent to publish; get a clear yes to publishing
    specifically. If there is no clear yes, stop.
-7. **Publish** on an explicit yes, with `publish-workbook` (via `list-projects` for the target
-   project LUID). Surface the returned canonical `url` verbatim and report any warnings.
-   `publish-workbook` surfaces any structural/extension errors at this point (it is where validation
-   effectively happens).
+7. **Publish** on an explicit yes, with `publish-workbook` (omit `projectId` for Personal Space
+   unless the user names a project). Surface the returned canonical `url` verbatim and report any
+   warnings. `publish-workbook` surfaces any structural/extension errors at this point (it is where
+   validation effectively happens).
 8. **Review the live app in Tableau** — see Review the live app in Tableau below.
 
 ## Author `app.js`
