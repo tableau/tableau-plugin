@@ -91,11 +91,13 @@ If the downloaded package looks incomplete or a dependency is missing, read [`re
 
 ## Validate and publish
 
-Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. A workbook produced by `instantiate`/`inject` is already validated by that command itself — re-running the standalone validator on it is redundant but harmless. For a hand-edited TWB, after the edit:
+Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. `instantiate`/`inject` check the sheet, field, and datasource references they write, but not the XSD schema. For a hand-edited TWB, after the edit:
 
 ```bash
-python3 "<skill-dir>/../../scripts/run_python.py" "<skill-dir>/scripts/validate_workbook.py" /absolute/path/to/workbook.twb
+python3 "<skill-dir>/../../scripts/run_python.py" "<skill-dir>/scripts/validate_workbook.py" /absolute/path/to/workbook.twb --baseline /absolute/path/to/original.twb
 ```
+
+Pass `--baseline` with an unedited copy of the workbook as downloaded (keep one before editing) so reference errors your edit introduced block, and ones already in the original are dropped. Without `--baseline`, for a workbook built from scratch, reference problems are only `reference check:` warnings: fix them in content you wrote, and leave them alone in content you didn't touch.
 
 The validator needs `lxml`, so always launch it through the plugin's shared `run_python.py` (two levels above `<skill-dir>`). It uses the running Python if that already has the plugin's requirements, otherwise a shared venv that the session-start hook normally prepares in advance; if the hook didn't run, the first call installs it once.
 

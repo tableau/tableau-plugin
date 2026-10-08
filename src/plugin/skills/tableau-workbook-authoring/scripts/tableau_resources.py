@@ -137,6 +137,11 @@ FIELD_REFERENCE_CONTAINERS = ("worksheets", "dashboards", "windows")
 # to land, in the order they are reported.
 REQUIRED_CONTAINERS = ("datasources", "worksheets", "windows")
 
+# Dashboard zone types whose `name` attribute points at a worksheet: the sheet
+# itself (no type) and the legends and filter cards bound to one. Layout, text,
+# web, and other zone types may carry a `name` that is only a caption.
+SHEET_ZONE_TYPES = frozenset({None, "filter", "color", "size", "shape", "highlighter", "map"})
+
 # Donor-only provenance metadata: attributes that name a donor column without
 # qualifying it with the datasource, so qualified-reference discovery cannot
 # see them. They record where a column's aggregate role came from rather than
@@ -1830,8 +1835,9 @@ def validate_workbook_text(text: str) -> list[str]:
     An empty list means the workbook is structurally sound: it has the three
     required containers, carries no unresolved template token or unresolved
     ``federated.`` placeholder, names each worksheet and its window once and
-    consistently, and references only datasources and fields the workbook
-    itself defines. Errors are reported in a fixed rule order so a caller can
+    consistently, points its dashboard zones and action sources only at sheets
+    it defines, and references only datasources and fields the workbook itself
+    defines. Errors are reported in a fixed rule order so a caller can
     compare two runs, and a malformed or non-workbook document reports only
     that, because every later rule would be guessing at its structure.
     """
@@ -1879,6 +1885,39 @@ def validate_workbook_text(text: str) -> list[str]:
     errors.extend(
         f"worksheet-window-name-mismatch: {name}"
         for name in sorted(set(worksheet_names) ^ worksheet_windows)
+    )
+
+    known_worksheets = set(worksheet_names)
+    known_dashboards = {
+        item.get("name") or "" for item in root.findall("dashboards/dashboard")
+    }
+    errors.extend(
+        f"unknown-zone-worksheet: {dashboard.get('name') or ''}/{name}"
+        for dashboard in root.findall("dashboards/dashboard")
+        for name in sorted({
+            zone.get("name")
+            for zone in dashboard.iter("zone")
+            if zone.get("name") is not None
+            and zone.get("type-v2", zone.get("type")) in SHEET_ZONE_TYPES
+            and zone.get("name") not in known_worksheets
+        })
+    )
+    # `<exclude-sheet>` entries are skipped: Tableau leaves them behind when a
+    # sheet is deleted and still opens the workbook.
+    unknown_sources: set[str] = set()
+    for action in root.findall("actions/action"):
+        source = action.find("source")
+        if source is None:
+            continue
+        label = action.get("caption") or action.get("name") or ""
+        for name, known in (
+            (source.get("worksheet"), known_worksheets),
+            (source.get("dashboard"), known_dashboards),
+        ):
+            if name is not None and name not in known:
+                unknown_sources.add(f"{label}/{name}")
+    errors.extend(
+        f"unknown-action-source: {name}" for name in sorted(unknown_sources)
     )
 
     unknown_datasources: set[str] = set()

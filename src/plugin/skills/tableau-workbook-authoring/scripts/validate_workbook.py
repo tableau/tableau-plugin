@@ -25,10 +25,14 @@ Pipeline, per workbook:
        bundled schema, reject it (no schema exists to validate against).
     4. Validate structure with libxml2 (via lxml), collecting line/element-
        tagged errors.
+    5. Check names and references the XSD can't express: dashboard zones and
+       action sources naming real sheets, and field/datasource references
+       resolving (shared with `tableau_resources.py validate`). Real workbooks
+       often fail these before any edit, so they block only against
+       `--baseline ORIGINAL`; without one they are warnings.
 
-IMPORTANT — scope. XSD validation is *structural* only. It does NOT reproduce
-Tableau's *semantic* validation (field/datasource resolution, calculated
-field parsing, cross-references between sheets, connection attributes). The
+IMPORTANT — scope. This does NOT reproduce all of Tableau's *semantic*
+validation (calculated field parsing, connection attributes, and more). The
 schemas explicitly mark those regions `processContents="skip"`. A green
 result here means "structurally well-formed against the schema", not
 "guaranteed to open in Tableau". See README.md.
@@ -54,6 +58,8 @@ except ImportError:  # pragma: no cover
         "    pip install lxml\n"
     )
     sys.exit(2)
+
+from tableau_resources import validate_workbook_text
 
 
 # Bundled schemas live at <repo_root>/resources/schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd.
@@ -648,12 +654,45 @@ def validate_xml(
     return issues, warnings
 
 
+def reference_issues(
+    xml_bytes: bytes, baseline_bytes: Optional[bytes] = None
+) -> list[Issue]:
+    """Run the name and reference checks the XSD can't express (dashboard
+    zones, action sources, field and datasource references).
+
+    Real workbooks often fail these checks before anyone edits them, so they
+    block only relative to a baseline: with `baseline_bytes` (the workbook as
+    downloaded), a problem the edit introduced is an error and an inherited
+    one is dropped. Without a baseline every problem is only a warning.
+    Malformed XML is left to the schema pass, which reports it with a line.
+    """
+    def check(data: bytes) -> list[str]:
+        return [
+            error
+            for error in validate_workbook_text(data.decode("utf-8", errors="replace"))
+            if error not in ("malformed-xml", "not-tableau-workbook")
+        ]
+
+    if baseline_bytes is None:
+        return [Issue(message=f"reference check: {e}", level="warning") for e in check(xml_bytes)]
+    inherited = set(check(baseline_bytes))
+    return [
+        Issue(message=f"reference check: {e}")
+        for e in check(xml_bytes)
+        if e not in inherited
+    ]
+
+
 def validate_workbook(
-    path: str, schemas_dir: str, ignore_known_gaps: bool = True
+    path: str,
+    schemas_dir: str,
+    ignore_known_gaps: bool = True,
+    baseline: Optional[str] = None,
 ) -> Result:
     """Top-level: read, sniff, select schema, validate. Never raises for a
     merely-invalid workbook — only for setup problems (handled by caller)."""
     result = Result(source=path)
+    baseline_bytes = read_workbook_xml(baseline)[0] if baseline else None
 
     xml_bytes, twb_entry = read_workbook_xml(path)
     result.twb_entry = twb_entry
@@ -668,6 +707,8 @@ def validate_workbook(
     issues, xml_warnings = validate_xml(xml_bytes, schema.path, ignore_known_gaps)
     result.issues = issues
     result.warnings.extend(xml_warnings)
+    for issue in reference_issues(xml_bytes, baseline_bytes):
+        (result.warnings if issue.level == "warning" else result.issues).append(issue)
     result.is_valid = not any(i.level in ("error", "fatal") for i in result.issues)
     return result
 
@@ -705,8 +746,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         description=(
             "Validate a Tableau workbook (.twb or .twbx) against the "
             "Tableau workbook XSD schemas bundled in this repository. "
-            "Structural validation only — see README.md for the "
-            "structural-vs-semantic caveat."
+            "Also checks sheet, field and datasource references (blocking "
+            "only with --baseline). Not a full semantic check — see "
+            "README.md for the structural-vs-semantic caveat."
         )
     )
     parser.add_argument(
@@ -718,6 +760,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="directory containing the XSD schemas, organized as "
              "<schemas-dir>/<YYYY_R>/twb_<YYYY.R.0>.xsd "
              "(default: the repo's top-level resources/schemas/ directory)",
+    )
+    parser.add_argument(
+        "--baseline", metavar="ORIGINAL",
+        help="the workbook as it was before editing (e.g. as downloaded). "
+             "Name and reference problems the edit introduced become blocking "
+             "errors and ones already in ORIGINAL are dropped; without it they "
+             "are only warnings",
     )
     parser.add_argument(
         "--json", action="store_true",
@@ -741,7 +790,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     for path in args.workbooks:
         try:
-            result = validate_workbook(path, args.schemas_dir, args.ignore_known_gaps)
+            result = validate_workbook(
+                path, args.schemas_dir, args.ignore_known_gaps, args.baseline
+            )
         except ValidationError as ex:
             any_error = True
             error_result = Result(
