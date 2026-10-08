@@ -105,9 +105,11 @@ def derive_field(field, ordinal, error_prefix=''):
     }
 
 
-def random_connection_name():
+# Desktop-style internal datasource name (`sqlproxy.` + 22 random chars). It's the join key
+# repeated across the four wiring locations, so it only needs to be unique within the workbook.
+def generate_connection_name():
     token = lambda: ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
-    return f'sqlproxy.{token()}{token()}'[:37]
+    return f'sqlproxy.{token()}{token()}'
 
 
 # Validate one datasource descriptor. `error_prefix` names the datasource in errors when wiring several.
@@ -164,9 +166,9 @@ def parse_descriptor(descriptor):
     used = set(explicit_names)
     for ds in datasources:
         if not ds['connectionName']:
-            name = random_connection_name()
+            name = generate_connection_name()
             while name in used:
-                name = random_connection_name()
+                name = generate_connection_name()
             ds['connectionName'] = name
             used.add(name)
     return datasources
