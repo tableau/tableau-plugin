@@ -30,6 +30,8 @@ Pipeline, per workbook:
        resolving (shared with `tableau_resources.py validate`). Real workbooks
        often fail these before any edit, so they block only against
        `--baseline ORIGINAL`; without one they are warnings.
+    6. With `--baseline ORIGINAL`, drop schema issues the original already
+       had, so a downloaded workbook isn't failed for content nobody edited.
 
 IMPORTANT — scope. This does NOT reproduce all of Tableau's *semantic*
 validation (calculated field parsing, connection attributes, and more). The
@@ -46,6 +48,7 @@ import os
 import re
 import sys
 import zipfile
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
@@ -177,8 +180,13 @@ _BUILD_COMMENT_RE = re.compile(rb"<!--\s*build\s+(\d{5})\.(\d{2})\.")
 #     whatever slots remain ahead of the stalled `explain-data` position —
 #     confirmed by every observed message listing `explain-data` as one of
 #     the "expected" options.
+#   - missing `simple-id`: `worksheet`, `dashboard` and `window` end their
+#     sequence with a required `simple-id`, but Tableau Cloud rejects
+#     `<simple-id>` in some workbooks it accepts without it, so its absence
+#     isn't worth reporting — a warning only pushed agents to add it.
 _IGNORED_ISSUE_PATTERNS = (
     re.compile(r"'_\.fcp\."),
+    re.compile(r"^Element '(worksheet|dashboard|window)': Missing child element\(s\)\. Expected is .*\bsimple-id\b.*\.$"),
     re.compile(r"^Element 'workbook': Missing child element\(s\)\. Expected is .*\bexplain-data\b.*\.$"),
     re.compile(r"^Element 'data-orientation': This element is not expected\. Expected is \( explain-data \)\.$"),
     re.compile(r"^Element 'accelerator-details': This element is not expected\. Expected is .*\bexplain-data\b.*\.$"),
@@ -197,17 +205,26 @@ def _is_ignored_issue(message: str) -> bool:
 # attribute, so this doesn't block validation from running — it's surfaced
 # as a warning rather than silently ignored, since a missing `source-build`
 # is unusual enough to be worth flagging.
-#
-#   - missing `simple-id`: `worksheet` and `dashboard` elements end their
-#     sequence with a required `simple-id` (a UUID Tableau's own authoring
-#     tools always stamp on save, used for cross-references elsewhere in the
-#     schema). Observed only in hand-built/tooling-generated files (e.g.
-#     `PublishToolTest`), not organically authored workbooks — treated as
-#     worth flagging but not blocking, since it doesn't reflect a schema bug.
 _WARNING_ISSUE_PATTERNS = (
     re.compile(r"^Element 'workbook': The attribute 'source-build' is required but missing\.$"),
-    re.compile(r"^Element '(worksheet|dashboard|window)': Missing child element\(s\)\. Expected is .*\bsimple-id\b.*\.$"),
 )
+
+
+# Tableau still writes the older `<sort class='computed' ...>` form (Cloud
+# saves and publishes it), but the bundled schemas only define the newer
+# `<computed-sort>`, `<manual-sort>`, `<natural-sort>` and `<alphabetic-sort>`
+# with the same attributes. Other `<sort>` elements never carry `class`.
+_LEGACY_SORT_CLASSES = frozenset({"computed", "manual", "natural", "alphabetic"})
+
+
+def _normalise_legacy_sorts(doc: "etree._Element") -> None:
+    """Rename legacy sorts to the schema's form in the parsed tree, in place.
+    Line numbers are kept; the file on disk is untouched."""
+    for el in list(doc.iter("sort")):
+        cls = el.get("class")
+        if cls in _LEGACY_SORT_CLASSES:
+            el.tag = f"{cls}-sort"
+            del el.attrib["class"]
 
 
 def _is_warning_issue(message: str) -> bool:
@@ -603,7 +620,9 @@ def validate_xml(
         world gaps that don't affect validity) are dropped entirely;
       - issues matching `_WARNING_ISSUE_PATTERNS` (confirmed gaps worth
         flagging, but that don't block validation from running) are moved
-        into the returned `warnings` list instead of `issues`.
+        into the returned `warnings` list instead of `issues`;
+      - legacy `<sort class='...'>` elements are checked as their newer
+        schema form (see `_normalise_legacy_sorts`).
     """
     # 1. UTF-8 sanity.
     utf8_issue = _check_utf8(xml_bytes)
@@ -631,6 +650,8 @@ def validate_xml(
         ], []
 
     # 4. Structural validation.
+    if ignore_known_gaps:
+        _normalise_legacy_sorts(doc)
     if schema.validate(doc):
         return [], []
 
@@ -683,6 +704,23 @@ def reference_issues(
     ]
 
 
+def _drop_inherited(
+    issues: list[Issue], baseline_issues: list[Issue]
+) -> tuple[list[Issue], int]:
+    """Drop schema issues the baseline already has, matched by message (line
+    numbers shift with an edit) and counted, so an edit that repeats an
+    inherited problem somewhere new is still reported. Returns the remaining
+    issues and how many were dropped."""
+    inherited = Counter(i.message for i in baseline_issues)
+    kept = []
+    for issue in issues:
+        if inherited[issue.message] > 0:
+            inherited[issue.message] -= 1
+        else:
+            kept.append(issue)
+    return kept, len(issues) - len(kept)
+
+
 def validate_workbook(
     path: str,
     schemas_dir: str,
@@ -705,6 +743,15 @@ def validate_workbook(
     result.warnings.extend(Issue(message=w, level="warning") for w in warnings)
 
     issues, xml_warnings = validate_xml(xml_bytes, schema.path, ignore_known_gaps)
+    if baseline_bytes is not None:
+        issues, inherited = _drop_inherited(
+            issues, validate_xml(baseline_bytes, schema.path, ignore_known_gaps)[0]
+        )
+        if inherited:
+            result.warnings.append(Issue(
+                message=f"{inherited} schema issue(s) already in the baseline were ignored",
+                level="warning",
+            ))
     result.issues = issues
     result.warnings.extend(xml_warnings)
     for issue in reference_issues(xml_bytes, baseline_bytes):
@@ -766,7 +813,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="the workbook as it was before editing (e.g. as downloaded). "
              "Name and reference problems the edit introduced become blocking "
              "errors and ones already in ORIGINAL are dropped; without it they "
-             "are only warnings",
+             "are only warnings. Schema errors already in ORIGINAL are dropped "
+             "too",
     )
     parser.add_argument(
         "--json", action="store_true",

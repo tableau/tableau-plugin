@@ -97,7 +97,7 @@ Skip local validation for unmodified content (plain copy/republish/move) — it'
 python3 "<skill-dir>/../../scripts/run_python.py" "<skill-dir>/scripts/validate_workbook.py" /absolute/path/to/workbook.twb --baseline /absolute/path/to/original.twb
 ```
 
-Pass `--baseline` with an unedited copy of the workbook as downloaded (keep one before editing) so reference errors your edit introduced block, and ones already in the original are dropped. Without `--baseline`, for a workbook built from scratch, reference problems are only `reference check:` warnings: fix them in content you wrote, and leave them alone in content you didn't touch.
+Pass `--baseline` with an unedited copy of the workbook as downloaded (keep one before editing) so schema and reference errors your edit introduced block, and ones already in the original are dropped. Don't "fix" content you didn't edit to satisfy the validator: Tableau may reject the newer form. Without `--baseline`, for a workbook built from scratch, reference problems are only `reference check:` warnings: fix them in content you wrote, and leave them alone in content you didn't touch.
 
 The validator needs `lxml`, so always launch it through the plugin's shared `run_python.py` (two levels above `<skill-dir>`). It uses the running Python if that already has the plugin's requirements, otherwise a shared venv that the session-start hook normally prepares in advance; if the hook didn't run, the first call installs it once.
 
