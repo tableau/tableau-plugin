@@ -37,3 +37,6 @@ capabilities:
   native_render_guaranteed: true      # render_native[0] is always present
   shell_guaranteed: true              # a local shell is always available
   shell_download_only: false          # no fetch-tool URL limit to steer around
+  # VERIFY whether open_in_codex can be clicked through by the model; Codex's
+  # Computer Use is screen-level only (no page reading or JavaScript).
+  browser_verify: false

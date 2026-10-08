@@ -143,7 +143,103 @@ than one specific view.
    above.
 
 {% endif %}
-## Failure handling
+{% if capabilities.browser_verify %}
+## Check added interactivity
+
+A static render can't show actions, and web zones render blank in it. After
+publishing an edit that **added** interactivity, click through the new pieces
+once in a browser you can drive. This is a check, not a render path: do it
+after the view has been shown by the steps above, whichever path worked.
+
+### When to run it
+
+Run it only when this task's edit added at least one of these. Interactivity
+the workbook already had before the edit doesn't count, and neither do
+tooltips, legends, drill-down, sort buttons, map pan/zoom, group actions,
+pages controls, or extensions on their own.
+
+| Added | Markup to look for in the edit |
+|---|---|
+| Filter action | `<action>` with `command='tsc:tsl-filter'` |
+| Highlight action | `<action>` with `command='tsc:brush'` |
+| URL action | `<action>` with a `<link expression=...>` |
+| Go to sheet action | `<action>` navigating to another sheet |
+| Parameter action | `<action>` with `<edit-parameter-action>` |
+| Set action | `<action>` changing set membership |
+| Filter card | zone with `type-v2='filter'` |
+| Parameter control | zone with `type-v2='paramctrl'` |
+| Web page zone | zone with `type-v2='web'` |
+| Navigation or show/hide button | zone with `type-v2='dashboard-object'` |
+| Highlighter | zone with `type-v2='highlighter'` |
+| Viz in tooltip | a sheet embedded in a worksheet's tooltip |
+| Story points | `<story-points>` or zone with `type-v2='flipboard'` |
+
+### Browser tools
+
+Use whichever browser is available; the tools share base names and may carry
+a host prefix:
+
+- **Claude's built-in browser** (Chat, Code): `navigate` opens the pane.
+- **Claude in Chrome** (Cowork): this is the user's own Chrome. Call
+  `tabs_context_mcp` first, open a new tab with `tabs_create_mcp`, and work
+  only in that tab; leave the user's other tabs alone.
+
+Both provide `computer` (screenshot, click, hover, scroll, wait), `read_page`,
+`find`, `javascript_tool`, and `resize_window`. If no browser is available, or
+it can't open an arbitrary URL and click by screen coordinates (some app
+versions only offer selector-based `preview_*` tools, which can't reach marks
+drawn on Tableau's canvas), skip the check and say interactivity wasn't
+verified and why.
+
+### Steps
+
+1. **Open the view.** Navigate to the direct `/t/SITE/views/...` URL (see
+   [Build a direct view URL](#build-a-direct-view-url)) and take a screenshot.
+2. **Sign-in.** If the page is a Tableau or identity-provider sign-in page,
+   ask the user to sign in in that browser and wait for them. Never type
+   credentials. If the host asks for permission to use the site, let the user
+   answer it.
+3. **Size the viewport.** If the dashboard's `<size>` has a fixed width and
+   height (`sizing-mode='fixed'`, or equal `minwidth`/`maxwidth` and
+   `minheight`/`maxheight`), resize to that size plus about 40 px each way so
+   nothing is cut off. In Claude in Chrome this resizes the user's real
+   window, so first record its size with
+   `javascript_tool` (`[window.outerWidth, window.outerHeight]`).
+4. **Wait for web zones.** Web zones and other iframes take a few seconds to
+   load. Wait up to about 10 s, screenshot, then read each iframe's address
+   with `javascript_tool`
+   (`[...document.querySelectorAll('iframe')].map(f => f.src)`). Don't report
+   a web zone as blank until you've waited.
+5. **Exercise each added piece once.** Screenshot, act, wait 2–3 s,
+   screenshot again, and compare:
+   - **Actions:** Tableau draws marks on a canvas, so they aren't in the page
+     structure. Pick the mark's coordinates from the screenshot and click it
+     (hover for hover-activated actions). Confirm the target sheet filtered,
+     highlighted, changed sheet, or (URL action) the web zone's address or a
+     new tab's URL matches the expected link. Click the same mark again or an
+     empty area to clear the selection.
+   - **Filter cards, parameter controls, highlighters:** these are regular
+     page elements. Locate them with `find` or `read_page`, change one value,
+     confirm the affected sheets change, then set it back.
+   - **Buttons and story points:** click once and confirm the sheet, container,
+     or story point changes; navigate back if needed.
+   - **Viz in tooltip:** hover a mark and confirm the embedded sheet appears
+     in the tooltip.
+   Interaction state isn't saved to the workbook. Never click Save, Edit,
+   Share, Subscribe, Download, Alerts, Comments, or custom-view controls. If a
+   URL action opened a new tab, close it.
+6. **Clean up.** Restore the viewport (the built-in browser's `desktop`
+   preset, or the recorded size in Claude in Chrome) and, in Claude in
+   Chrome, close the tab you opened.
+7. **Report.** List each added piece as verified, not working (with what you
+   saw), or not checked (with why). A piece that doesn't work is a bug in the
+   edit: diagnose it in the TWB, fix, republish once, and re-check only that
+   piece.
+
+Spend at most one interaction per added piece; this is a smoke test, not
+exhaustive testing.
+
+{% endif %}## Failure handling
 
 - Attempt each available render path at most once.
 - Use this fallback order:

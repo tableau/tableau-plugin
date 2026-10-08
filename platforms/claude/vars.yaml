@@ -59,6 +59,11 @@ capabilities:
   # Download presigned render URLs only via shell curl/Python. Cowork's web
   # fetch rejects them (cowork_web_fetch_url_too_long). VERIFY on claude.ai web.
   shell_download_only: true
+  # After publishing an edit that added interactivity, click through it in a
+  # browser the model can drive (built-in pane in Chat/Code, Claude in Chrome in
+  # Cowork). Both expose computer, read_page, find, javascript_tool and
+  # resize_window by those base names.
+  browser_verify: true
 
 # Payload paths (globs relative to src/plugin/) not shipped on this platform.
 exclude:

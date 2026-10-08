@@ -106,7 +106,9 @@ For TWBX, run `unzip -t` after rebuilding it. Publish with `{{ mcp_prefix }}publ
 
 If validation fails, fix the reported lines/elements and retry once; stop after 10 cycles and report the remaining errors.
 
-Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up can use the fast path.
+{% if capabilities.browser_verify %}After rendering, if this task's edit added interactivity (actions, filter cards, parameter controls, web zones, buttons, a highlighter, viz in tooltip, or story points), click through it once in the browser — see [Check added interactivity](../../references/rendering.md#check-added-interactivity). Skip it otherwise.
+
+{% endif %}Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up can use the fast path.
 
 # Requirements
 
