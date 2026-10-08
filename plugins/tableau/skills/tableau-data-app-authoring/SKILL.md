@@ -284,21 +284,25 @@ at the top level with no wrapping folder and no `.DS_Store`/`__MACOSX` entries.
 Uses the MCP publish tools (gated by the `authoring-tools` feature; not available
 to Slack clients).
 
-1. **Find the target project LUID:**
+1. **Default to the caller's Personal Space — omit `projectId`.**
+   `publish-workbook` publishes there automatically when the site supports it
+   (falls back to requiring `projectId` otherwise). `projectId` is optional:
+   only resolve one if the user names a specific project:
    > list-projects({})
    Pick the project the user wants (ask if ambiguous).
 
-2. **Publish.** Two paths — pick based on transport:
+2. **Publish.** Two paths — pick based on transport. Omit `projectId` entirely
+   for Personal Space; include it only for a specific project.
 
    - **Local (stdio), simplest:** the `.twbx` is on the MCP server's own
      filesystem, so pass it directly:
-     > publish-workbook({ workbookFilePath: "<abs path to .twbx>", name: "<App Name>", projectId: "<LUID>", overwrite: false })
+     > publish-workbook({ workbookFilePath: "<abs path to .twbx>", name: "<App Name>", projectId: "<LUID or omit for Personal Space>", overwrite: false })
 
    - **Remote (http) / staged uploads configured:** stage the bytes first, then
      publish by id:
      > request-workbook-upload({ filename: "<App Name>.twbx" })   → returns an upload URL + workbookUploadId
      > (upload the .twbx bytes to the returned URL — staged-workbook-upload)
-     > publish-workbook({ workbookUploadId: "<id>", name: "<App Name>", projectId: "<LUID>", overwrite: false })
+     > publish-workbook({ workbookUploadId: "<id>", name: "<App Name>", projectId: "<LUID or omit for Personal Space>", overwrite: false })
 
 3. **Report the outcome.** On success `publish-workbook` returns
    `status: "published"` with the workbook `url` and any `warnings` — give the
@@ -331,7 +335,8 @@ to Slack clients).
    was not verified; the publish itself still succeeded. When both
    `permissions` and `permissionsNote` are absent, show only the publish
    confirmation and link, with no access summary or parent-source reminder.
-   This covers disabled permission disclosure and Personal Space publications.
+   Personal Space publications omit these fields. Project permission disclosure
+   is independent of the `data-apps` feature flag.
 
    After an access summary, use existing parent-source context for the beta
    reminder. For a known published parent, say viewers also need API Access
