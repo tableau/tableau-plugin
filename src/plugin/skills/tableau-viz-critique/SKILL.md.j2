@@ -65,10 +65,10 @@ Record the seven base scores, documented adjustments, and applicable caps in a J
 
 The assessment JSON and the scoring helper's raw JSON output are internal scratch data, not user deliverables. Store scratch files only in an OS-managed temporary directory, never in the workspace or current directory. Do not create them with an artifact-producing file-edit tool. Do not attach, open, link, render, mention, or otherwise surface them to the user. Remove these scratch files after scoring. This doesn't apply to the downloaded render, which the user sees. Return only the formatted review unless the user explicitly requests JSON.
 
-Resolve `skill_dir` as the absolute directory containing this `SKILL.md`; do not assume the skill is the current working directory. Then use the bundled helper for deterministic weighting, validation, half-even rounding, safety status, and tier assignment:
+Resolve `<skill-dir>` as the absolute directory containing this loaded `SKILL.md`, and don't assume it is the current working directory. If `python3` isn't on the PATH (common on Windows), use `py -3` or `python` instead. Then use the bundled helper for deterministic weighting, validation, half-even rounding, safety status, and tier assignment:
 
 ```bash
-python3 "$skill_dir/scripts/score_viz.py" "/absolute/os-temp/path/assessment.json"
+python3 "<skill-dir>/scripts/score_viz.py" "/absolute/os-temp/path/assessment.json"
 ```
 
 If local execution is unavailable, apply the weights, caps, half-even rounding, and tiers from [rubric.md](references/rubric.md) manually and label the overall score `manually calculated`.

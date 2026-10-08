@@ -48,10 +48,10 @@ If no trustworthy baseline is available, run a current scan or ask the user to s
 
 ## Deterministic scoring
 
-Represent findings using the JSON contract in [Scoring contract](references/scoring-contract.md). Resolve the absolute directory containing this loaded `SKILL.md`, then run:
+Represent findings using the JSON contract in [Scoring contract](references/scoring-contract.md). Resolve `<skill-dir>` as the absolute directory containing this loaded `SKILL.md`, and don't assume it is the current working directory. If `python3` isn't on the PATH (common on Windows), use `py -3` or `python` instead. Then run:
 
 ```text
-python <resolved-skill-dir>/scripts/score_findings.py findings.json --pretty
+python3 <skill-dir>/scripts/score_findings.py findings.json --pretty
 ```
 
 The scoring JSON is internal scratch data, not a user artifact. Write it only to an OS-managed temporary location, never to the workspace or current directory, and remove it after scoring. Do not attach, open, link, render, or otherwise surface the raw input or output JSON to the user. Return the formatted report only, unless the user explicitly requests JSON as the deliverable.

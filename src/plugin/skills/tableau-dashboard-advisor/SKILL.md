@@ -71,10 +71,10 @@ Infer the simplest useful output unless the user requests a format:
 - **Visual wireframe:** render a nonfunctional, self-contained HTML planning mockup from the structured contract in [Wireframe contract](references/wireframe-contract.md). It illustrates a recommended layout; it is not a Tableau dashboard.
 - **Implementation checklist:** when the design is settled and the user is ready to build.
 
-For a wireframe, resolve the absolute directory containing this loaded `SKILL.md`, create a JSON spec using the documented contract, and run:
+For a wireframe, resolve `<skill-dir>` as the absolute directory containing this loaded `SKILL.md`, and don't assume it is the current working directory. If `python3` isn't on the PATH (common on Windows), use `py -3` or `python` instead. Create a JSON spec using the documented contract, and run:
 
 ```text
-python <resolved-skill-dir>/scripts/render_wireframe.py <absolute-spec.json> <absolute-output.html>
+python3 <skill-dir>/scripts/render_wireframe.py <absolute-spec.json> <absolute-output.html>
 ```
 
 The renderer validates the spec and escapes user-controlled text. It writes only the requested local HTML file, refuses to replace an existing file by default, and never contacts Tableau. Use `--force` only after the user has authorized replacing that exact output. If execution is unavailable, provide a compact Markdown table describing zones; do not substitute ASCII art.
