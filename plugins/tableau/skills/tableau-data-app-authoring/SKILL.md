@@ -284,49 +284,24 @@ Uses the MCP publish tools (not available to Slack clients).
 
    Add `projectId` to either call when publishing to a project.
 
-3. **Report the outcome.** On success `publish-workbook` returns
-   `status: "published"` with the workbook `url` and any `warnings` — give the
-   user the confirmation and URL, and surface any warnings. The tool returns
-   facts; interpret its permission output here rather than expecting a
-   prewritten access message.
+3. **Report the outcome.** On `status: "published"`, save the result JSON
+   verbatim to `$WORK/publish.json` and run:
 
-   For a project publication with `permissions`, summarize the rules using
-   workbook terminology. The relevant capabilities are `Read` (View),
-   `Connect` (Full Data Query), and `VizqlDataApiAccess` (API Access):
+   ```bash
+   cat > "$WORK/publish.json" <<'PUBLISH_JSON'
+   { …paste the publish-workbook result here… }
+   PUBLISH_JSON
 
-   - Only when the array is nonempty and **every returned user/group rule**
-     explicitly allows all three capabilities, summarize that the returned
-     rules grant those workbook permissions. A conflicting entry for any of
-     the three capabilities prevents this conclusion.
-   - Otherwise, explain that some intended viewers may not be able to view
-     the workbook by default, and identify View, Full Data Query, and API
-     Access on the published workbook as the permissions to check. Treat a
-     missing capability or `Unspecified` as unconfirmed, not as an explicit
-     denial. `AIAccess` does not substitute for API Access.
+   python3 "$SKILL_DIR/scripts/summarize_publish_access.py" "$WORK/publish.json" [--published-datasource ["<name>"]]
+   ```
 
-   These are configured rules, not a determination of everyone's effective
-   access. Do not infer group membership, guarantee access for every project
-   member, or enumerate raw grantee IDs and unrelated capabilities. Empty
-   rules do not prove that nobody has access; empty warnings do not prove
-   restricted access. Use the publish output and existing task context only;
-   do not perform additional permission lookups.
+   Pass `--published-datasource` when the app is wired to a published data
+   source (the normal case after `wire_datasource.py`, or when reusing one),
+   with the descriptor's caption/name as `<name>`. Omit it when no data source
+   was wired. Do no extra permission lookups. Relay its stdout to the user
+   verbatim.
 
-   If `permissionsNote` is returned, surface it and explain that viewer access
-   was not verified; the publish itself still succeeded. When both
-   `permissions` and `permissionsNote` are absent, show only the publish
-   confirmation and link, with no access summary or parent-source reminder.
-   Personal Space publications omit these fields.
-
-   After an access summary, use existing parent-source context for the beta
-   reminder. For a known published parent, say viewers also need API Access
-   on that published data source, naming it when known. If there is no
-   published parent, omit the reminder. If parent usage is unknown, qualify
-   it: "If this workbook is backed by a published data source, viewers also
-   need API Access on that source." Do not look up parent permissions or claim
-   they were checked; a successful query by the publisher does not establish
-   other viewers' access.
-
-   If it returns `status: "invalid"` (or an error), surface the
+   If `publish-workbook` returns `status: "invalid"` (or an error), surface the
    `errors`/`warnings` verbatim; common causes trace back to `.twb`/`.trex`
    wiring, not packaging. Set `overwrite: true` only if the user wants to replace
    an existing workbook of the same name.
@@ -347,6 +322,8 @@ Uses the MCP publish tools (not available to Slack clients).
 - Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire_datasource.py` —
   freehand edits mismatch the join key across its coordinated locations or
   leave an empty `<datasources />` anchor, and the app silently reaches no data.
+- Don't interpret `publish-workbook` permissions freehand. Use
+  `scripts/summarize_publish_access.py` and relay its stdout verbatim.
 - Don't assume the scaffold result's zip is already substituted, or skip
   unzip. Whether it arrives as `filePath` or `s3URL`, it's the same static,
   un-substituted template **zip** — unzip it and apply the plan before
