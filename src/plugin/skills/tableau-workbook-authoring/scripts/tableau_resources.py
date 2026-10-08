@@ -152,10 +152,10 @@ DONOR_METADATA_ATTRIBUTES = (("column", "aggregate-role-from"),)
 # other type has no usable contract and is rejected rather than guessed.
 PARAMETER_TYPES = frozenset({"date", "enum", "number", "string"})
 
-FRAGMENT_UUID_NAMESPACE = uuid.uuid5(
-    uuid.NAMESPACE_URL, "https://tableau.com/plugin-codex/bookmark-fragment"
-)
-WRAPPER_TAG = "codex-fragment-wrapper"
+# Fixed so fragment IDs stay stable across releases; changing it would give
+# already-inserted fragments different IDs on re-insertion.
+FRAGMENT_UUID_NAMESPACE = uuid.UUID("c16081ca-f13c-5767-82f3-c40f79a9f810")
+WRAPPER_TAG = "tableau-fragment-wrapper"
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 STARTER_RELATIVE_PATH = "starters/minimal-workbook.twb"
