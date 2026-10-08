@@ -33,7 +33,8 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS = PLUGIN_ROOT / "requirements.txt"
 STAMP_NAME = ".requirements-sha256"
-REQUIREMENT_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:(>=|==)\s*([0-9][0-9.]*))?$")
+REQUIREMENT_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(.*)$")
+SPECIFIER = re.compile(r"^(>=|==|<)\s*([0-9][0-9.]*)$")
 
 
 def cache_dir() -> Path:
@@ -67,15 +68,22 @@ def current_satisfies(reqs: list[str]) -> bool:
         match = REQUIREMENT_LINE.match(req)
         if not match:
             return False  # unsupported specifier: let the venv's pip handle it
-        name, op, wanted = match.groups()
+        name, rest = match.groups()
+        specs = [SPECIFIER.match(s.strip()) for s in rest.split(",")] if rest else []
+        if not all(specs):
+            return False  # unsupported specifier: let the venv's pip handle it
         try:
-            installed = metadata.version(name)
+            installed = version_tuple(metadata.version(name))
         except metadata.PackageNotFoundError:
             return False
-        if op == ">=" and version_tuple(installed) < version_tuple(wanted):
-            return False
-        if op == "==" and version_tuple(installed) != version_tuple(wanted):
-            return False
+        for op, wanted in (s.groups() for s in specs):
+            wanted_tuple = version_tuple(wanted)
+            if op == ">=" and installed < wanted_tuple:
+                return False
+            if op == "==" and installed != wanted_tuple:
+                return False
+            if op == "<" and installed >= wanted_tuple:
+                return False
     return True
 
 
