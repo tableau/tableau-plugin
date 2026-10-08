@@ -200,7 +200,8 @@ datasources onto separate sheets afterward.
    ```
 
 The script hard-fails if an anchor is missing (already wired / template drifted),
-if any empty `<datasources />` survives, if a join key isn't fully referenced, or
+if any empty `<datasources />` survives, if a join key is missing from where the server
+reads it (including the host sheet's view listing every datasource), or
 if a `repositoryId`, `caption`, or `connectionName` repeats across datasources.
 Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else

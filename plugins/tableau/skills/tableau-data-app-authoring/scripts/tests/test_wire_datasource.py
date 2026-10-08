@@ -280,11 +280,13 @@ def test_invalid_entry_error_names_its_index(tmp_path):
 
 def test_duplicate_repository_id_is_rejected(tmp_path):
     twb_path = write_twb(tmp_path)
+    before = open(twb_path).read()
     entries = [datasource(1), datasource(2, repositoryId='DS1')]
     result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": entries}))
 
     assert result.returncode == 1
     assert result.stderr.strip() == '✗ datasources[1]: repositoryId "DS1" is listed more than once.'
+    assert open(twb_path).read() == before
 
 
 def test_duplicate_caption_is_rejected(tmp_path):
@@ -303,11 +305,42 @@ def test_duplicate_caption_is_rejected(tmp_path):
 
 def test_duplicate_connection_name_is_rejected(tmp_path):
     twb_path = write_twb(tmp_path)
+    before = open(twb_path).read()
     entries = [datasource(1), datasource(2, connectionName='sqlproxy.ds1')]
     result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": entries}))
 
     assert result.returncode == 1
     assert result.stderr.strip() == '✗ connectionName values must be unique across datasources.'
+    assert open(twb_path).read() == before
+
+
+def test_explicit_and_generated_connection_names_mix(tmp_path):
+    twb_path = write_twb(tmp_path)
+    entries = [datasource(1), datasource(2, connectionName=None), datasource(3)]
+    result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": entries}))
+
+    assert result.returncode == 0, result.stderr
+    _, view = view_of(open(twb_path).read())
+    names = [d.get('name') for d in view.findall('./datasources/datasource')]
+    assert names[0] == 'sqlproxy.ds1' and names[2] == 'sqlproxy.ds3'
+    assert re.fullmatch(r'sqlproxy\.[a-z0-9]{22}', names[1])
+    assert len(set(names)) == 3
+
+
+def test_anchor_outside_the_view_is_rejected(tmp_path):
+    # The first empty <datasources /> after <worksheets> isn't in a view, so the
+    # datasources would be listed somewhere the server doesn't read.
+    content = TWB_TEMPLATE.replace(
+        "<worksheet name='Sheet 1'>\n      <table>\n        <view>\n          <datasources />\n        </view>",
+        "<worksheet name='Sheet 1'>\n      <datasources />\n      <table>\n        <view>\n        </view>",
+    )
+    assert content != TWB_TEMPLATE
+    twb_path = write_twb(tmp_path, content)
+    result = run_wire(twb_path, write_descriptor(tmp_path, descriptor_happy()))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ No worksheet view lists the primary datasource sqlproxy.abc123 — wiring incomplete.'
+    assert open(twb_path).read() == content
 
 
 def test_default_site_omits_site_path_and_attribute(tmp_path):

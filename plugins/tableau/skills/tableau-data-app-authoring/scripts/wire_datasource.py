@@ -45,6 +45,7 @@ import os
 import random
 import string
 import sys
+import xml.etree.ElementTree as ET
 
 # The exact empty anchor emitted by the scaffold template. Matched literally.
 EMPTY_ANCHOR = '<datasources />'
@@ -235,6 +236,39 @@ def view_dependencies_xml(ds):
           </datasource-dependencies>"""
 
 
+# Check each join key sits where the server reads it, not just that it appears often enough.
+def verify_wiring(wired, datasources):
+    try:
+        root = ET.fromstring(wired)
+    except ET.ParseError as error:
+        die(f'Wired .twb is not valid XML ({error}) — refusing to write it.')
+    primary_name = datasources[0]['connectionName']
+
+    root_datasources = {d.get('name'): d for d in root.findall('./datasources/datasource')}
+    for ds in datasources:
+        name = ds['connectionName']
+        root_ds = root_datasources.get(name)
+        if root_ds is None:
+            die(f'Root <datasources> is missing {name} — wiring incomplete.')
+        if root_ds.find(f".//relation[@connection='{name}']") is None:
+            die(f'Root datasource {name} has no relation connection to itself — wiring incomplete.')
+
+    # The server only connects datasources listed on the host sheet's view.
+    host_view = next(
+        (v for v in root.iter('view')
+         if any(d.get('name') == primary_name for d in v.findall('./datasources/datasource'))),
+        None,
+    )
+    if host_view is None:
+        die(f'No worksheet view lists the primary datasource {primary_name} — wiring incomplete.')
+    listed = {d.get('name') for d in host_view.findall('./datasources/datasource')}
+    missing = [ds['connectionName'] for ds in datasources if ds['connectionName'] not in listed]
+    if missing:
+        die(f'Host sheet view does not list {", ".join(missing)} — the server would not connect them.')
+    if host_view.find(f"./datasource-dependencies[@datasource='{primary_name}']") is None:
+        die(f'Host sheet view has no datasource-dependencies for the primary {primary_name} — wiring incomplete.')
+
+
 def main():
     argv = sys.argv
     if len(argv) < 3:
@@ -296,13 +330,7 @@ def main():
 
     if EMPTY_ANCHOR in wired:
         die('An empty <datasources /> anchor survived wiring — refusing to write a half-wired workbook.')
-    # Each join key appears in the root datasource name, root relation connection,
-    # and view datasource name; the primary's also in datasource-dependencies.
-    for ds in datasources:
-        expected = 4 if ds is primary else 3
-        ref_count = wired.count(f"'{ds['connectionName']}'")
-        if ref_count < expected:
-            die(f"Expected connection name {ds['connectionName']} to appear >={expected} times, saw {ref_count} — wiring incomplete.")
+    verify_wiring(wired, datasources)
 
     with open(twb_path, 'w', encoding='utf-8') as f:
         f.write(wired)
