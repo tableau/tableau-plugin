@@ -491,8 +491,9 @@ def select_schema(
 
     if not version_str:
         raise ValidationError(
-            "could not determine the workbook's version: no `version` attribute "
-            "found on the root <workbook> element"
+            "could not determine the workbook's version: no `source-build` or "
+            "`version` attribute on the root <workbook> element and no "
+            "`<!-- build ... -->` comment"
         )
 
     parsed = parse_version(version_str)
