@@ -42,11 +42,12 @@ call the listed tool whose name ends in the name given here.
 - Workbook download:
   `{{ mcp_prefix }}download-workbook`
   with `{ workbookId, includeExtract: true }`
+- Staged upload (call first, before publishing):
+  `{{ mcp_prefix }}request-workbook-upload`
 - Workbook publish:
   `{{ mcp_prefix }}publish-workbook`
-  with `{ name, projectId, workbookFilePath, overwrite }`
-- Staged-upload fallback:
-  `{{ mcp_prefix }}request-workbook-upload`
+  with `{ name, projectId, workbookUploadId, overwrite }`, or
+  `workbookFilePath` in place of `workbookUploadId` if staged upload is disabled
 - Workbook metadata:
   `{{ mcp_prefix }}get-workbook`
 - View metadata:
@@ -121,6 +122,6 @@ Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up 
 - [`references/catalog-templates.md`](references/catalog-templates.md) — chart catalog: discover, inspect, and render bundled templates via `scripts/tableau_resources.py`.
 - [`references/field-edits.md`](references/field-edits.md) — add a breakdown/color split or a filter to an existing worksheet via `inspect-workbook`/`add-encoding`/`add-filter`.
 - [`references/new-workbook.md`](references/new-workbook.md) — brand-new workbook, no starting point, no catalog match.
-- [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package or staged-upload fallback.
+- [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package, or staged-upload steps and errors.
 - [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md) — new XML construct or validation failure.
 - [`../../references/rendering.md`](../../references/rendering.md) — render the published/target view.
