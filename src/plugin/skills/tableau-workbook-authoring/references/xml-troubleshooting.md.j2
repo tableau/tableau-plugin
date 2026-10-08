@@ -21,9 +21,12 @@ the packaged extract during publish itself, so a failure surfaces as a
 publish error rather than a structured findings list; rely on the local XSD
 validator and the package-completeness checks before publishing.
 
-When schema inspection is required, select the schema matching the workbook's
-declared version and search for the failing element. Do not read unrelated XSD
-sections or upgrade the workbook version solely to use a newer schema.
+When schema inspection is required, use the schema the validator reported (it
+is chosen from `source-build`, then the `<!-- build -->` comment, then the
+`version` attribute, which Tableau leaves at `18.1`) and search for the failing
+element. Do not read unrelated XSD sections, use a schema newer than the target
+server's Tableau version, or change the workbook's build stamp solely to use a
+newer schema.
 
 ### Filter-reference integrity
 

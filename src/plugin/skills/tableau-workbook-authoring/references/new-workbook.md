@@ -23,7 +23,11 @@ worksheet per requested chart, and the requested dashboard zones. Keep all
 names unique and all datasource, worksheet, and zone references consistent.
 
 Use an existing nearby Tableau XML pattern when available. For a genuinely new
-construct, consult the newest compatible schema under `resources/schemas/`; do not load
-the entire XSD when a targeted element lookup is enough.
+construct, check `resources/schemas/`, but pick the schema by the workbook's
+build, not its `version` attribute (Tableau leaves that at `18.1`):
+`validate_workbook.py` reports the schema it chose from `source-build`, and a
+workbook built from the starter uses `2026_2`.
+Don't use a schema newer than the target server's Tableau version, and look up
+only the element you need rather than loading the entire XSD.
 
 Return to `SKILL.md` for local validation, direct publish, and rendering.
