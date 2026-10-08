@@ -302,7 +302,47 @@ to Slack clients).
 
 3. **Report the outcome.** On success `publish-workbook` returns
    `status: "published"` with the workbook `url` and any `warnings` — give the
-   user the URL. If it returns `status: "invalid"` (or an error), surface the
+   user the confirmation and URL, and surface any warnings. The tool returns
+   facts; interpret its permission output here rather than expecting a
+   prewritten access message.
+
+   For a project publication with `permissions`, summarize the rules using
+   workbook terminology. The relevant capabilities are `Read` (View),
+   `Connect` (Full Data Query), and `VizqlDataApiAccess` (API Access):
+
+   - Only when the array is nonempty and **every returned user/group rule**
+     explicitly allows all three capabilities, summarize that the returned
+     rules grant those workbook permissions. A conflicting entry for any of
+     the three capabilities prevents this conclusion.
+   - Otherwise, explain that some intended viewers may not be able to view
+     the workbook by default, and identify View, Full Data Query, and API
+     Access on the published workbook as the permissions to check. Treat a
+     missing capability or `Unspecified` as unconfirmed, not as an explicit
+     denial. `AIAccess` does not substitute for API Access.
+
+   These are configured rules, not a determination of everyone's effective
+   access. Do not infer group membership, guarantee access for every project
+   member, or enumerate raw grantee IDs and unrelated capabilities. Empty
+   rules do not prove that nobody has access; empty warnings do not prove
+   restricted access. Use the publish output and existing task context only;
+   do not perform additional permission lookups.
+
+   If `permissionsNote` is returned, surface it and explain that viewer access
+   was not verified; the publish itself still succeeded. When both
+   `permissions` and `permissionsNote` are absent, show only the publish
+   confirmation and link, with no access summary or parent-source reminder.
+   This covers disabled permission disclosure and Personal Space publications.
+
+   After an access summary, use existing parent-source context for the beta
+   reminder. For a known published parent, say viewers also need API Access
+   on that published data source, naming it when known. If there is no
+   published parent, omit the reminder. If parent usage is unknown, qualify
+   it: "If this workbook is backed by a published data source, viewers also
+   need API Access on that source." Do not look up parent permissions or claim
+   they were checked; a successful query by the publisher does not establish
+   other viewers' access.
+
+   If it returns `status: "invalid"` (or an error), surface the
    `errors`/`warnings` verbatim; common causes trace back to `.twb`/`.trex`
    wiring, not packaging. Set `overwrite: true` only if the user wants to replace
    an existing workbook of the same name.
