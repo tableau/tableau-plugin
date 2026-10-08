@@ -157,6 +157,14 @@ def parse_descriptor(descriptor):
             die(f'datasources[{i}]: repositoryId "{ds["repositoryId"]}" is listed more than once.')
         seen_repository_ids.add(ds['repositoryId'])
 
+    # app.js finds each datasource by caption, so captions must be distinct.
+    caption_owner = {}
+    for i, ds in enumerate(datasources):
+        if ds['caption'] in caption_owner:
+            die(f'datasources[{i}]: caption "{ds["caption"]}" is already used by datasources[{caption_owner[ds["caption"]]}]. '
+                'Give each datasource a distinct caption (e.g. "Sales Orders" / "Finance Orders") so app.js can find it by name.')
+        caption_owner[ds['caption']] = i
+
     # Single source of truth for each join key; they must be distinct across datasources.
     explicit_names = [ds['connectionName'] for ds in datasources if ds['connectionName']]
     if len(set(explicit_names)) != len(explicit_names):

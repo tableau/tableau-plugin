@@ -287,6 +287,20 @@ def test_duplicate_repository_id_is_rejected(tmp_path):
     assert result.stderr.strip() == '✗ datasources[1]: repositoryId "DS1" is listed more than once.'
 
 
+def test_duplicate_caption_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    before = open(twb_path).read()
+    entries = [datasource(1, caption='Orders'), datasource(2, caption='Orders')]
+    result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": entries}))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        '✗ datasources[1]: caption "Orders" is already used by datasources[0]. '
+        'Give each datasource a distinct caption (e.g. "Sales Orders" / "Finance Orders") so app.js can find it by name.'
+    )
+    assert open(twb_path).read() == before
+
+
 def test_duplicate_connection_name_is_rejected(tmp_path):
     twb_path = write_twb(tmp_path)
     entries = [datasource(1), datasource(2, connectionName='sqlproxy.ds1')]

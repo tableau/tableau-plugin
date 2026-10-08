@@ -186,6 +186,12 @@ datasources onto separate sheets afterward.
    caption via `getAllDataSourcesAsync()` — look each up by `name`, never by
    position (the list isn't returned in wiring order).
 
+   Captions must be distinct. A caption is only this workbook's display name;
+   the server matches the published datasource by `repositoryId`, so if two
+   published datasources share a name, give them different captions here
+   (e.g. "Sales Orders" / "Finance Orders") rather than renaming them on the
+   server.
+
 3. **Run the wiring script** (it prints the wired `.twb` path, and generates a
    consistent `sqlproxy.<hash>` unless you supply `connectionName`):
 
@@ -195,7 +201,7 @@ datasources onto separate sheets afterward.
 
 The script hard-fails if an anchor is missing (already wired / template drifted),
 if any empty `<datasources />` survives, if a join key isn't fully referenced, or
-if a `repositoryId` or `connectionName` repeats across datasources.
+if a `repositoryId`, `caption`, or `connectionName` repeats across datasources.
 Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
