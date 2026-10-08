@@ -79,10 +79,10 @@ def type_of(datatype):
 
 # Derive a field's attributes once, reused across the root metadata-record, view
 # column, and column-instance so all three agree.
-def derive_field(field, ordinal, label=''):
+def derive_field(field, ordinal, error_prefix=''):
     name = field.get('name') if isinstance(field, dict) else None
     if not name or not isinstance(name, str):
-        die(f'{label}Every field needs a string "name" (field #{ordinal} was {json.dumps(field, separators=(",", ":"))}).')
+        die(f'{error_prefix}Every field needs a string "name" (field #{ordinal} was {json.dumps(field, separators=(",", ":"))}).')
     datatype = str(field.get('datatype') or 'string').lower()
     role = 'measure' if field.get('role') == 'measure' else 'dimension'
     is_measure = role == 'measure'
@@ -110,25 +110,25 @@ def random_connection_name():
     return f'sqlproxy.{token()}{token()}'[:37]
 
 
-# Validate one datasource descriptor. `label` prefixes errors when wiring several.
-def parse_datasource(descriptor, label=''):
+# Validate one datasource descriptor. `error_prefix` names the datasource in errors when wiring several.
+def parse_datasource(descriptor, error_prefix=''):
     if not isinstance(descriptor, dict):
-        die(f'{label}Descriptor must be a JSON object.')
+        die(f'{error_prefix}Descriptor must be a JSON object.')
     for key in ('caption', 'repositoryId', 'site', 'server'):
         value = descriptor.get(key)
         # site may be "" (the Default site); everything else must be non-empty.
         if not isinstance(value, str) or (not value and key != 'site'):
-            die(f'{label}Descriptor is missing required string "{key}".')
+            die(f'{error_prefix}Descriptor is missing required string "{key}".')
     channel = descriptor.get('channel') or 'https'
     port = descriptor.get('port') if descriptor.get('port') is not None else (443 if channel == 'https' else 80)
 
     fields_in = descriptor.get('fields') if isinstance(descriptor.get('fields'), list) else []
     if len(fields_in) == 0:
-        die(f'{label}Descriptor "fields" must list at least one field the app will query.')
+        die(f'{error_prefix}Descriptor "fields" must list at least one field the app will query.')
 
     connection_name = descriptor.get('connectionName')
     if connection_name and not connection_name.startswith('sqlproxy.'):
-        die(f'{label}connectionName must start with "sqlproxy." (got "{connection_name}").')
+        die(f'{error_prefix}connectionName must start with "sqlproxy." (got "{connection_name}").')
 
     return {
         'caption': descriptor['caption'],
@@ -137,7 +137,7 @@ def parse_datasource(descriptor, label=''):
         'server': descriptor['server'],
         'channel': channel,
         'port': port,
-        'fields': [derive_field(f, i, label) for i, f in enumerate(fields_in)],
+        'fields': [derive_field(f, i, error_prefix) for i, f in enumerate(fields_in)],
         'connectionName': connection_name,
     }
 
