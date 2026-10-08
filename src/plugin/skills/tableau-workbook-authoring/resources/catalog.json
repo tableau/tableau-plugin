@@ -2537,6 +2537,25 @@
       "sha256": "77c7d39de7fadc51d08556bbfa20ec5eec88f5afbe78bc35318ac951df839a1b"
     },
     {
+      "id": "dashboard-filter-action",
+      "type": "example",
+      "family": null,
+      "intent": "dashboard filter action",
+      "path": "./examples/dashboard-filter-action.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "action",
+        "dashboard",
+        "example",
+        "filter"
+      ],
+      "sha256": "756609dbc4721b872697462a926a02c3d83527874c646788477969d01fcdaca9"
+    },
+    {
       "id": "dashboard-tiled",
       "type": "example",
       "family": null,
@@ -2552,7 +2571,7 @@
         "example",
         "tiled"
       ],
-      "sha256": "d5f3fc60900eadddd6e72c5dd18c4f3981955498cb10296edc268e40cb2c4551"
+      "sha256": "ca2b8b7cc1468c809f754b1738694d42c6d67054b3e984c652575fc549a484d2"
     },
     {
       "id": "dashboard-validation-grid",
@@ -9143,6 +9162,25 @@
       "sha256": "9c625b4787cc394ffb340320ab20349a3936d777fff9ff52108ccc55b6060029"
     },
     {
+      "id": "topn-context-filter",
+      "type": "example",
+      "family": null,
+      "intent": "topn context filter",
+      "path": "./examples/topn-context-filter.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "context",
+        "example",
+        "filter",
+        "topn"
+      ],
+      "sha256": "693ae5c09ec3f4230181812f23013d79d26dcbe3899c09bc1170e70e77cae5e0"
+    },
+    {
       "id": "topn-table-calc-filter",
       "type": "example",
       "family": null,
@@ -9221,6 +9259,42 @@
         "twb"
       ],
       "sha256": "1d17348d9d8ad3bc1b42ba0a0d964e168e6495528cf60b9abcc55c902a8e6cfe"
+    },
+    {
+      "id": "url-action",
+      "type": "example",
+      "family": null,
+      "intent": "url action",
+      "path": "./examples/url-action.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "action",
+        "example",
+        "url"
+      ],
+      "sha256": "3ef6d1b404c472db1200efd910b7f2d9725229881d68f6d16a595e7ce56f67a9"
+    },
+    {
+      "id": "web-zone",
+      "type": "example",
+      "family": null,
+      "intent": "web zone",
+      "path": "./examples/web-zone.json",
+      "tier": "reference",
+      "classificationReasons": [],
+      "datasources": [],
+      "fields": [],
+      "parameters": [],
+      "keywords": [
+        "example",
+        "web",
+        "zone"
+      ],
+      "sha256": "cee712ad03ad6f889f923449f33aa5b66168d050a9e3452b19029d2351877435"
     },
     {
       "id": "workbook-schema-reference",
