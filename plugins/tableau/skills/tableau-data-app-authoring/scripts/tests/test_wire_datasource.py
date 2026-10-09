@@ -314,6 +314,22 @@ def test_duplicate_connection_name_is_rejected(tmp_path):
     assert open(twb_path).read() == before
 
 
+def test_rewiring_an_already_wired_twb_says_how_to_recover(tmp_path):
+    twb_path = write_twb(tmp_path)
+    desc_path = write_descriptor(tmp_path, descriptor_happy())
+    assert run_wire(twb_path, desc_path).returncode == 0
+    wired = open(twb_path).read()
+
+    result = run_wire(twb_path, desc_path)
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        '✗ This .twb is already wired. To change its datasources, re-scaffold, copy content/src/app.js '
+        'into the new workspace, and wire every datasource in one run.'
+    )
+    assert open(twb_path).read() == wired
+
+
 def test_explicit_and_generated_connection_names_mix(tmp_path):
     twb_path = write_twb(tmp_path)
     entries = [datasource(1), datasource(2, connectionName=None), datasource(3)]

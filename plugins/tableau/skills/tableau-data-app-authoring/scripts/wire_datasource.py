@@ -314,14 +314,18 @@ def main():
     head = content[:split_idx]
     tail = content[split_idx:]
 
+    if "class='sqlproxy'" in head:
+        die('This .twb is already wired. To change its datasources, re-scaffold, copy content/src/app.js '
+            'into the new workspace, and wire every datasource in one run.')
+
     # Root anchor lives in the head (before <worksheets>).
     if EMPTY_ANCHOR not in head:
-        die(f'Root "{EMPTY_ANCHOR}" anchor not found before <worksheets> — already wired or template drifted.')
+        die(f'Root "{EMPTY_ANCHOR}" anchor not found before <worksheets> — template drifted.')
     head = head.replace(EMPTY_ANCHOR, root_datasources, 1)
 
     # View anchor is the first empty <datasources /> inside the worksheets section.
     if EMPTY_ANCHOR not in tail:
-        die(f'View "{EMPTY_ANCHOR}" anchor not found inside <worksheets> — already wired or template drifted.')
+        die(f'View "{EMPTY_ANCHOR}" anchor not found inside <worksheets> — template drifted.')
     tail = tail.replace(EMPTY_ANCHOR, view_datasources, 1)
 
     wired = head + tail

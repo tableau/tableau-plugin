@@ -125,7 +125,9 @@ in the workbook."** To query live data the workbook must have a real datasource
 wired in — this stage is a prerequisite for a working app.
 
 Do this once the user has told you what to connect to; it is skippable if the
-user only wants to publish the starter to prove packaging.
+user only wants to publish the starter to prove packaging. Only add, remove, or
+swap datasources the user asked for; if you think a different or extra
+datasource would help, ask first.
 
 The app queries a datasource that already exists on the server (a `sqlproxy`
 connection, resolved live by VDS). Its identity can come straight from the
@@ -199,7 +201,8 @@ datasources onto separate sheets afterward.
    python3 "$SKILL_DIR/scripts/wire_datasource.py" "<App Name>/<App Name>.twb" "$WORK/descriptor.json"
    ```
 
-The script hard-fails if an anchor is missing (already wired / template drifted),
+The script hard-fails if the `.twb` is already wired (re-scaffold, keep your `app.js`),
+if an anchor is missing (template drifted),
 if any empty `<datasources />` survives, if a join key is missing from where the server
 reads it (including the host sheet's view listing every datasource), or
 if a `repositoryId`, `caption`, or `connectionName` repeats across datasources.
