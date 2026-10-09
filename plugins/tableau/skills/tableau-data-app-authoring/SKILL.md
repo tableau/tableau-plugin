@@ -237,20 +237,16 @@ is the #1 cause of `NativeException: An unexpected error occurred opening the
 packaged workbook` and `PackageValidationException: Package directory contains no
 extension .trex files under extensions/`.
 
-Package with the proven two-step zip (run from *inside* the workspace dir so
-paths are root-relative), excluding OS cruft:
+Package with `scripts/package_twbx.py`. It hard-fails with a `✗` message if
+the workspace isn't packageable; fix what it reports rather than zipping by
+hand:
 
 ```bash
-cd "<App Name>"                      # the finalized workspace dir
-OUT="../<App Name>.twbx"
-rm -f "$OUT"
-zip -X    "$OUT" "<App Name>.twb"                                    # .twb at root, first
-zip -rX   "$OUT" Packages -x '*.DS_Store' '*/.DS_Store' '__MACOSX*'  # package tree, no cruft
-unzip -l "$OUT"                      # sanity: .twb + Packages/… at top level, no <App Name>/ prefix
+python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized workspace dir
 ```
 
-The listing must show `<App Name>.twb` and `Packages/com.tableau.mcp.<slug>/…`
-at the top level with no wrapping folder and no `.DS_Store`/`__MACOSX` entries.
+It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
+override), overwriting any existing file, and prints the path for Publish.
 
 > The template these workspaces come from is already publish-valid (`.twb`
 > extension wired into a pane, `.trex` with `author email`, `<resources>` block,
@@ -313,9 +309,8 @@ Uses the MCP publish tools (not available to Slack clients).
 
 ## Non-negotiable limits
 
-- Don't nest the workspace folder inside the `.twbx`. Zip the *contents*
-  (`.twb` + `Packages/` at root), not the `<App Name>/` directory — always
-  `unzip -l` to confirm.
+- Don't zip the `.twbx` freehand. Use `scripts/package_twbx.py` — it keeps
+  `.twb` + `Packages/` at the archive root, never nested under `<App Name>/`.
 - Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.
@@ -332,4 +327,3 @@ Uses the MCP publish tools (not available to Slack clients).
   is the fixed default — always write it from the human's stated
   criteria/vibe. Only hand off when the human explicitly says they want to
   write it themselves.
-- Don't ship OS cruft. Exclude `.DS_Store` / `__MACOSX` from the `.twbx`.

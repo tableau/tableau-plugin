@@ -48,8 +48,8 @@ published datasource, so it always reflects current data. Two consequences:
      so you can sanity-check the exact query the app will run before you commit to a chart. Match
      columns by field caption/name, not by position.
 4. **Author `content/src/app.js`** — see Author `app.js` below.
-5. **Package** the workspace into a flat `.twbx` per the SKILL's 'Package into a .twbx' stage
-   (`.twb` + `Packages/` at the archive root; `unzip -l` to confirm; no `.DS_Store`/`__MACOSX`).
+5. **Package** the workspace into a flat `.twbx` with `scripts/package_twbx.py` per the SKILL's
+   'Package into a .twbx' stage.
    There is **no separate validation tool and no local preview** — a `.twbx` cannot be pre-validated;
    Tableau validates at publish time.
 6. **Ask explicitly before publishing.** Never auto-publish. Ask, in plain language, whether the
