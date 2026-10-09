@@ -139,6 +139,22 @@ def test_permissions_note_reports_unverified_without_raw_note(tmp_path, extra):
     assert NOTE not in result.stdout
 
 
+def test_repeated_source_lists_each_distinct_name(tmp_path):
+    result = run_summary(
+        tmp_path,
+        published(permissions=[group_rule(ALL_ALLOWED)]),
+        '--published-datasource', 'Superstore',
+        '--published-datasource', 'People',
+        '--published-datasource', 'Superstore',
+        '--published-datasource',
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == (
+        f'{CONFIRMATION}\n{NAMED_SOURCE}\nViewers also need API Access on the published data source "People".\n'
+    )
+
+
 def test_personal_space_prints_confirmation_only(tmp_path):
     result = run_summary(tmp_path, published(), '--published-datasource', 'Superstore')
 

@@ -38,9 +38,11 @@ published datasource, so it always reflects current data. Two consequences:
    interest in a reusable visual — then the starter handoff (the SKILL's 'Author `app.js`' default)
    is enough.
 2. **Identify the datasource(s).** Find the target published datasource and its LUID with
-   `list-datasources` (ask the user which one if ambiguous). You can wire more than one if the app
-   genuinely needs it. This LUID drives both the 'Wire a datasource in' `.twb` wiring and your
-   introspection queries.
+   `list-datasources` (ask the user which one if ambiguous). You can wire any number if the app
+   genuinely needs them — all in one 'Wire a datasource in' run, primary first. Each LUID drives
+   both the `.twb` wiring and your introspection queries. In `app.js`, find each datasource by
+   `name` (its caption) in `getAllDataSourcesAsync()`, not by position. Query each separately and
+   combine results in `app.js` — Tableau data blending doesn't apply, so don't add blend XML.
 3. **Introspect the datasource before writing `app.js`.**
    - `get-datasource-metadata({ datasourceLuid })` → fields, data model, parameters. This is the
      field list the app will match by name.

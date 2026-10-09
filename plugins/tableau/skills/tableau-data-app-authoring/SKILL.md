@@ -125,7 +125,9 @@ in the workbook."** To query live data the workbook must have a real datasource
 wired in — this stage is a prerequisite for a working app.
 
 Do this once the user has told you what to connect to; it is skippable if the
-user only wants to publish the starter to prove packaging.
+user only wants to publish the starter to prove packaging. Only add, remove, or
+swap datasources the user asked for; if you think a different or extra
+datasource would help, ask first.
 
 The app queries a datasource that already exists on the server (a `sqlproxy`
 connection, resolved live by VDS). Its identity can come straight from the
@@ -142,6 +144,13 @@ datasource `name`, root `relation connection`, view `datasource name`,
 `sqlproxy.<hash>` join key. Use `scripts/wire_datasource.py`, which does all
 four edits atomically and hard-fails rather than emitting a half-wired workbook.
 
+**More than one datasource:** wire them all in **one run** — the script fills
+the empty anchors once, so it can't add another datasource to an already-wired
+`.twb` (re-scaffold instead). It lists every datasource on the app's sheet,
+which is required: the server only connects datasources listed there, so a
+datasource placed only on some other sheet fails at query time. Don't move
+datasources onto separate sheets afterward.
+
 1. **Get the datasource's identity** with `list-datasources` (LUID, name/caption,
    contentUrl, and the server host + site) and `get-datasource-metadata({ datasourceLuid })`
    (field names + datatypes). The published DS **contentUrl** is the
@@ -149,7 +158,7 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
    Reuse an existing workbook's datasource below — it gets you here, then
    continues at step 2.)
 2. **Write a descriptor** listing *only the fields the app will query* (name +
-   datatype + role), e.g.:
+   datatype + role). Use `"site": ""` for the Default site. One datasource:
 
    ```bash
    cat > "$WORK/descriptor.json" <<'DS_JSON'
@@ -167,6 +176,25 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
    DS_JSON
    ```
 
+   Several datasources (any number) go in a `datasources` array, **primary
+   first**, with nothing else at the top level; each entry has the same shape
+   as the single-datasource object:
+
+   ```json
+   { "datasources": [ { "caption": "Orders", "...": "..." },
+                      { "caption": "People", "...": "..." } ] }
+   ```
+
+   The primary is the sheet's main datasource. The app reaches every one by
+   caption via `getAllDataSourcesAsync()` — look each up by `name`, never by
+   position (the list isn't returned in wiring order).
+
+   Captions must be distinct. A caption is only this workbook's display name;
+   the server matches the published datasource by `repositoryId`, so if two
+   published datasources share a name, give them different captions here
+   (e.g. "Sales Orders" / "Finance Orders") rather than renaming them on the
+   server.
+
 3. **Run the wiring script** (it prints the wired `.twb` path, and generates a
    consistent `sqlproxy.<hash>` unless you supply `connectionName`):
 
@@ -174,8 +202,11 @@ four edits atomically and hard-fails rather than emitting a half-wired workbook.
    python3 "$SKILL_DIR/scripts/wire_datasource.py" "<App Name>/<App Name>.twb" "$WORK/descriptor.json"
    ```
 
-The script hard-fails if an anchor is missing (already wired / template drifted),
-if any empty `<datasources />` survives, or if the join key isn't referenced ≥4×.
+The script hard-fails if the `.twb` is already wired (re-scaffold, keep your `app.js`),
+if an anchor is missing (template drifted),
+if any empty `<datasources />` survives, if a join key is missing from where the server
+reads it (including the host sheet's view listing every datasource), or
+if a `repositoryId`, `caption`, or `connectionName` repeats across datasources.
 Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
@@ -288,13 +319,14 @@ Uses the MCP publish tools (not available to Slack clients).
    { …paste the publish-workbook result here… }
    PUBLISH_JSON
 
-   python3 "$SKILL_DIR/scripts/summarize_publish_access.py" "$WORK/publish.json" [--published-datasource ["<name>"]]
+   python3 "$SKILL_DIR/scripts/summarize_publish_access.py" "$WORK/publish.json" [--published-datasource ["<name>"]]...
    ```
 
    Pass `--published-datasource` when the app is wired to a published data
    source (the normal case after `wire_datasource.py`, or when reusing one),
-   with the descriptor's caption/name as `<name>`. Omit it when no data source
-   was wired. Do no extra permission lookups. Relay its stdout to the user
+   with its published name from `list-datasources` as `<name>` (not the
+   descriptor's caption, which can differ). Repeat it once per wired data
+   source. Omit it when no data source was wired. Do no extra permission lookups. Relay its stdout to the user
    verbatim.
 
    If `publish-workbook` returns `status: "invalid"` (or an error), surface the
