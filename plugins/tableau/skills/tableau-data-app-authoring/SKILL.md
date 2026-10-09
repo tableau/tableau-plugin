@@ -33,6 +33,11 @@ skill's local tools). Only skip authoring `app.js` if the human explicitly says
 they want to write it themselves for this app (rare) — see the exception at
 the end of Author `app.js` below.
 
+**External APIs can come up at any point.** If the user asks for a
+third-party API, remote images, or any other outside host, whether at the
+start or after the app is already published, run Add external origins
+below, then re-package and republish. Read Security best practices first.
+
 There's no separate validation stage — `publish-workbook` is where errors
 surface. Get package *layout* right (see Package into a .twbx) or the
 workbook won't open at all.
@@ -49,8 +54,9 @@ hand-build the template.
 The result carries an un-substituted template **zip** plus a `postUnzip` plan,
 and either `filePath` (the zip on local disk) or `s3URL` (download it first).
 Branch on whichever is present; past the fetch step the steps are identical.
-It also returns `allowedOrigins: string[]` — any external origin the app
-fetches from must be in that list.
+It also returns `allowedOrigins: string[]`, the site's allow-list for
+external origins. Being on that list isn't enough on its own; see Add external
+origins below.
 
 Apply the plan deterministically with the bundled script — applying it freehand
 leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` / `TODO Sheet Name` tokens or interleaves
@@ -260,6 +266,48 @@ tell them the workspace path
 [Build a data app](references/build-data-app.md) as their own reference.
 Resume at Package into a .twbx once they say it's authored.
 
+## Add external origins (any time)
+
+Run this whenever the app needs to reach a host outside its package: the user
+asks for an external API (at the start of the session or after the app is
+published), or `app.js` calls one. Without it, Tableau's CSP blocks every
+external request, image, script, and style, and the failure is silent. Full
+rules: [Calling external APIs](references/external-apis.md).
+
+1. **Get a fresh site allow-list.** Call `scaffold-data-app` again with the
+   app's name and use only its `allowedOrigins`; ignore the zip and plan. The
+   list from the start of the session may be stale. Save it:
+
+   ```bash
+   cat > "$WORK/allowed.json" <<'ALLOWED_JSON'
+   [ …paste the allowedOrigins array here… ]
+   ALLOWED_JSON
+   ```
+
+2. **Check every origin you need is on it.** If one isn't, stop and tell the
+   user: a site admin has to add it under Settings > Extensions > Extension
+   Package Allowed Origins. Don't work around it.
+
+3. **Declare the origins in the package:**
+
+   ```bash
+   python3 "$SKILL_DIR/scripts/declare_origins.py" "<App Name>" --allowed "$WORK/allowed.json" \
+     --add https://api.example.com https://auth.example.com
+   ```
+
+   It writes `requestedOrigins` into `Packages/<package id>/manifest.json`
+   (creating the file from the `.trex` if needed), merges with origins already
+   declared, and fails if an origin isn't on the allow-list. Use `--list` to
+   see what's declared and `--remove` to drop an origin the app no longer uses.
+   An origin is scheme + host only: `https://api.example.com`.
+
+4. **Re-package and republish** (Package into a .twbx, then Publish with
+   `overwrite: true` if the app is already published). The new policy takes
+   effect only after republishing.
+
+The API must also allow cross-origin requests from origin `null`
+(`Access-Control-Allow-Origin: *`); allowlisting can't fix an API that doesn't.
+
 ## Package into a .twbx
 
 A `.twbx` is a zip of the workspace **contents** with the `.twb` and `Packages/`
@@ -278,6 +326,10 @@ python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized work
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
+It also prints `⚠` warnings for problems that only show up at runtime:
+undeclared external origins, dotfiles, package-relative `fetch()`, and
+secret-looking keys. They don't stop packaging, but fix them or tell the user
+about them before publishing.
 
 > The template these workspaces come from is already publish-valid (`.twb`
 > extension wired into a pane, `.trex` with `author email`, `<resources>` block,
@@ -339,6 +391,80 @@ Uses the MCP publish tools (not available to Slack clients).
 
    If `move-workbook` isn't available, tell the user.
 
+## Limitations and gotchas
+
+### Multiple datasources
+
+`wire_datasource.py` wires any number of published datasources, with these
+constraints:
+
+- **One run, all at once.** List every datasource in the descriptor's
+  `datasources` array, primary first. The script refuses an already-wired
+  `.twb`, so adding a datasource later means re-scaffolding, copying
+  `content/src/app.js` into the new workspace, and wiring the full set again.
+- **What gets wired.** Each datasource gets its own root `<datasource>` and its
+  own `sqlproxy.<hash>` join key (unique across the set), and all of them are
+  listed on the host sheet's `<view>` — the server only connects datasources
+  listed there. Only the primary gets `datasource-dependencies`; the others are
+  reached through `getAllDataSourcesAsync()`.
+- **Distinct identities.** `caption`, `repositoryId`, and `connectionName` must
+  each be unique across the set, or the script hard-fails. Captions matter
+  most: they are how `app.js` finds each datasource.
+- **Find by name in `app.js`, never by position.** `getAllDataSourcesAsync()`
+  doesn't return datasources in wiring order. The starter's `pickDataSource()`
+  takes `list[0]`, so a multi-datasource app must replace it with a lookup by
+  `ds.name` (the caption).
+- **No blending or joins.** Query each datasource separately with its own
+  `queryAsync()` and combine the rows in `app.js`. Don't add blend or
+  relationship XML.
+
+### External origins
+
+- **The site setting alone does nothing.** An origin must be on the site
+  allow-list *and* in the package's `requestedOrigins`, as one space-separated
+  string. An array or an `allowedOrigins` key is silently ignored and every
+  external call stays blocked. Use `declare_origins.py`.
+- **Some things stay blocked regardless.** `frame-src 'none'` rules out
+  iframes and embeds, and pop-ups aren't available, so interactive OAuth
+  sign-in inside the app doesn't work.
+- **The API must allow origin `null`.** The extension's origin is `null`, so
+  the API has to send `Access-Control-Allow-Origin: *`.
+- **When a call fails, read the live policy** rather than guessing; see
+  [Calling external APIs](references/external-apis.md).
+- `package_twbx.py` warns about origins referenced in `content/` that aren't
+  declared.
+
+### Package hosting
+
+- **Only `content/` is served**, and only web asset types. Files at the
+  package root, dotfiles, and other file types return 404.
+- **`fetch()` of the package's own files fails** (origin `null`, no CORS
+  headers). Ship static data or config as a `.js` file that sets a global and
+  load it with `<script src>`.
+- `package_twbx.py` warns about dotfiles and package-relative `fetch()` calls.
+  Details: [Build a data app](references/build-data-app.md), Sandbox and
+  lifecycle rules.
+
+## Security best practices
+
+- **Prefer network-isolated apps.** Build the app so it talks only to Tableau
+  through the Extensions API. Every external origin needs a site admin's
+  approval and gives data a path out of Tableau. Before adding one, ask whether
+  the feature needs it, and tell the user what data would leave Tableau.
+- **Keep secrets and credentials out of the package.** Anything in `content/`
+  (API keys, client secrets, refresh tokens) can be read by anyone who can
+  open or download the workbook. If the user still wants one embedded (e.g. a
+  personal demo), tell them that first, keep the workbook out of shared
+  projects, and keep the secret out of git. Expect the agent's safety checks
+  to ask for explicit approval before publishing or downloading a workbook
+  that contains credentials. `package_twbx.py` warns about secret-looking keys.
+- **Avoid hardcoding data where possible.** Query the datasource live with
+  `queryAsync()` instead of copying rows into `app.js` or a bundled file. If
+  data must be hardcoded, tell the user the implications first: it's a
+  snapshot that won't refresh, and Tableau's query-time protections, such as
+  row-level security policies and user filters, don't apply to it, so every
+  viewer sees all of it.
+
 ## Non-negotiable limits
 
 - Don't zip the `.twbx` freehand. Use `scripts/package_twbx.py` — it keeps
@@ -349,6 +475,9 @@ Uses the MCP publish tools (not available to Slack clients).
 - Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire_datasource.py` —
   freehand edits mismatch the join key across its coordinated locations or
   leave an empty `<datasources />` anchor, and the app silently reaches no data.
+- Don't hand-edit `manifest.json` to allow external origins. Use
+  `scripts/declare_origins.py` — Tableau ignores an array or an
+  `allowedOrigins` key without any error, and the app stays blocked.
 - Don't interpret `publish-workbook` permissions freehand. Use
   `scripts/summarize_publish_access.py` and relay its stdout verbatim.
 - Don't assume the scaffold result's zip is already substituted, or skip
