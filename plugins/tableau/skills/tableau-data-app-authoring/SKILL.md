@@ -107,7 +107,7 @@ At the end of this stage you have a finalized workspace directory:
     content/index.html
     content/src/app.js      ← the authoring surface
     content/src/styles.css
-    content/src/tableau.extensions.1.latest.js
+    content/src/tableau.extensions.1.latest.min.js
 ```
 
 **Sheet name:** the worksheet is named after the app's display name. It's a

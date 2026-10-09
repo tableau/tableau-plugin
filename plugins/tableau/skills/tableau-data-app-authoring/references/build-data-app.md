@@ -89,7 +89,7 @@ The published app runs inside the Tableau viz-extension sandbox, not a browser. 
 rules live in the `AUTHOR YOUR APP HERE` comment in the scaffolded `app.js` and are **not restated
 here** to avoid drift. In brief, that comment requires: surface every error on-screen (no visible
 console — use the starter's `renderError`); render first / initialize second; **vendor libraries
-locally, no CDN** (mirroring how `tableau.extensions.1.latest.js` is already vendored and loaded
+locally, no CDN** (mirroring how `tableau.extensions.1.latest.min.js` is already vendored and loaded
 before `app.js`) — but keep the vendored payload small; a ~830KB Vega/Vega-Lite/Vega-Embed vendor
 broke live loading (see Author `app.js` above), so prefer hand-rolled SVG/Canvas over pulling in a
 large charting library; prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
