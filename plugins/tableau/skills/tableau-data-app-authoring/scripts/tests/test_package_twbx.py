@@ -3,6 +3,7 @@ Regression coverage for package_twbx.py's CLI contract (stdout, stderr, exit cod
 resulting archive), invoked via subprocess the way SKILL.md runs it.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -124,3 +125,47 @@ def test_fails_without_trex(tmp_path):
     assert '✗ No .trex under Packages/*/extensions/' in result.stderr
     assert 'Package directory contains no extension .trex files under extensions/' in result.stderr
     assert not (tmp_path / 'Sales Demo.twbx').exists()
+
+
+def write_manifest(workspace, manifest):
+    (workspace / PACKAGE / 'manifest.json').write_text(json.dumps(manifest))
+
+
+def test_fails_on_array_requested_origins(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, {'id': 'x', 'requestedOrigins': ['https://api.example.com']})
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'ONE space-separated string' in result.stderr
+
+
+def test_packages_manifest_and_stays_quiet_when_origins_declared(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, {'id': 'x', 'requestedOrigins': 'https://api.example.com'})
+    (workspace / PACKAGE / 'content' / 'src' / 'app.js').write_text(
+        "var NS = 'http://www.w3.org/2000/svg';\nfetch('https://api.example.com/v1/x');\nvar token = null;\n")
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert f'{PACKAGE}/manifest.json' in names(result.stdout.strip())
+    assert '⚠' not in result.stderr
+
+
+def test_warns_about_runtime_problems(tmp_path):
+    workspace = make_workspace(tmp_path)
+    src = workspace / PACKAGE / 'content' / 'src'
+    (src / 'app.js').write_text("fetch('https://api.example.com/v1/x');\nfetch('data/rows.json');\n")
+    (src / 'config.js').write_text('window.ENV = { "SPOTIFY_CLIENT_SECRET": "abcdef0123456789" };\n')
+    (workspace / PACKAGE / 'content' / '.env').write_text('X=1')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert 'not in requestedOrigins: https://api.example.com' in result.stderr
+    assert 'dotfiles in content/' in result.stderr
+    assert 'package-relative path' in result.stderr
+    assert 'secret-looking keys in com.tableau.mcp.sales-demo/content/src/config.js' in result.stderr
+    assert 'abcdef0123456789' not in result.stderr

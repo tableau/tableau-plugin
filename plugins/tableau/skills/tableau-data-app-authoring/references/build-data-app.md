@@ -95,6 +95,19 @@ broke live loading (see Author `app.js` above), so prefer hand-rolled SVG/Canvas
 large charting library; prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
 (`textContent` / `createElement`), never `innerHTML` with live values.
 
+**Package hosting.** Tableau serves only the package's `content/` folder, and only web asset
+types; files at the package root, dotfiles (`.env`), and other file types (e.g. `config.env`)
+return 404. The extension runs with origin `null`, so `fetch()` of the package's own files is
+cross-origin and fails (the host sends no CORS headers), even for files that exist. `<script src>`
+and `<link>` still load. To ship static data or config in the package, make it a `.js` file that
+sets a global (`window.APP_CONFIG = {...}`) and load it with a `<script>` tag before `app.js`.
+`package_twbx.py` warns about dotfiles and relative `fetch()` calls.
+
+**External origins.** By default the CSP allows only the package itself: no external `fetch()`,
+images, scripts, styles, or embeds. To reach an outside API, declare the origin with
+`scripts/declare_origins.py` (SKILL.md, Add external origins). See
+[external-apis.md](external-apis.md) for the full rules.
+
 ## Review the live app in Tableau
 
 There is **no local preview** — the live query only runs inside Tableau. Open the published workbook
