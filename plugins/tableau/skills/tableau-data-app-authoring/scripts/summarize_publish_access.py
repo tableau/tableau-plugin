@@ -13,8 +13,9 @@ Viewers need Read (View), Connect (Full Data Query) and VizqlDataApiAccess
 (API Access), each with mode exactly Allow and no Deny. Each rule lacking any of
 them is listed by grantee name (never id) with its missing capabilities.
 
-Usage: python3 summarize_publish_access.py <result.json> [--published-datasource [NAME]]
-  Pass --published-datasource only when the app uses a published data source.
+Usage: python3 summarize_publish_access.py <result.json> [--published-datasource [NAME]]...
+  Pass --published-datasource only when the app uses a published data source;
+  repeat it once per data source when the app uses several.
 Exits nonzero unless status is "published"; surface errors/warnings verbatim then.
 """
 
@@ -35,7 +36,7 @@ NO_RULES = (
 NOT_VERIFIED = (
     'Viewer access was not verified. Viewers need View, Full Data Query, and API Access on the workbook.'
 )
-USAGE = 'Usage: python3 summarize_publish_access.py <result.json> [--published-datasource [NAME]]'
+USAGE = 'Usage: python3 summarize_publish_access.py <result.json> [--published-datasource [NAME]]...'
 
 
 def die(message):
@@ -45,17 +46,17 @@ def die(message):
 
 def parse_args(argv):
     path = None
-    source = None  # None = option absent, '' = unnamed, str = named
+    sources = None  # None = option absent, [] = unnamed only, else the distinct names
     i = 0
     while i < len(argv):
         arg = argv[i]
         if arg == '--published-datasource':
-            if source is not None:
-                die('--published-datasource given more than once')
-            source = ''
+            if sources is None:
+                sources = []
             if i + 1 < len(argv) and not argv[i + 1].startswith('--'):
                 i += 1
-                source = argv[i]
+                if argv[i] and argv[i] not in sources:
+                    sources.append(argv[i])
         elif path is None and not arg.startswith('--'):
             path = arg
         else:
@@ -63,7 +64,7 @@ def parse_args(argv):
         i += 1
     if path is None:
         die(USAGE)
-    return path, source
+    return path, sources
 
 
 def load_result(path):
@@ -107,7 +108,7 @@ def missing_capabilities(rule):
 
 
 def main():
-    path, source = parse_args(sys.argv[1:])
+    path, sources = parse_args(sys.argv[1:])
     result = load_result(path)
 
     status = result.get('status')
@@ -152,9 +153,9 @@ def main():
         print('\n'.join(lines))
         return
 
-    if source:
-        lines.append(f'Viewers also need API Access on the published data source {quoted(source)}.')
-    elif source is not None:
+    if sources:
+        lines.extend(f'Viewers also need API Access on the published data source {quoted(s)}.' for s in sources)
+    elif sources is not None:
         lines.append('Viewers also need API Access on the published data source.')
 
     print('\n'.join(lines))

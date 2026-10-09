@@ -267,6 +267,19 @@ def test_empty_datasources_list_is_rejected(tmp_path):
     assert open(twb_path).read() == TWB_TEMPLATE
 
 
+def test_datasources_mixed_with_top_level_keys_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    descriptor = {"caption": "Orders", "datasources": [datasource(1)], "fields": []}
+    result = run_wire(twb_path, write_descriptor(tmp_path, descriptor))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        '✗ Descriptor mixes "datasources" with top-level "caption", "fields". '
+        "Put every datasource's settings inside its datasources[] entry."
+    )
+    assert open(twb_path).read() == TWB_TEMPLATE
+
+
 def test_invalid_entry_error_names_its_index(tmp_path):
     bad = datasource(2)
     del bad['site']

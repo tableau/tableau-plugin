@@ -145,6 +145,10 @@ def parse_datasource(descriptor, error_prefix=''):
 
 def parse_descriptor(descriptor):
     if isinstance(descriptor, dict) and 'datasources' in descriptor:
+        extra_keys = [key for key in descriptor if key != 'datasources']
+        if extra_keys:
+            die(f'Descriptor mixes "datasources" with top-level {", ".join(json.dumps(k) for k in extra_keys)}. '
+                'Put every datasource\'s settings inside its datasources[] entry.')
         entries = descriptor['datasources']
         if not isinstance(entries, list) or len(entries) == 0:
             die('Descriptor "datasources" must list at least one datasource.')

@@ -177,7 +177,8 @@ datasources onto separate sheets afterward.
    ```
 
    Several datasources (any number) go in a `datasources` array, **primary
-   first**; each entry has the same shape as the single-datasource object:
+   first**, with nothing else at the top level; each entry has the same shape
+   as the single-datasource object:
 
    ```json
    { "datasources": [ { "caption": "Orders", "...": "..." },
@@ -318,13 +319,14 @@ Uses the MCP publish tools (not available to Slack clients).
    { …paste the publish-workbook result here… }
    PUBLISH_JSON
 
-   python3 "$SKILL_DIR/scripts/summarize_publish_access.py" "$WORK/publish.json" [--published-datasource ["<name>"]]
+   python3 "$SKILL_DIR/scripts/summarize_publish_access.py" "$WORK/publish.json" [--published-datasource ["<name>"]]...
    ```
 
    Pass `--published-datasource` when the app is wired to a published data
    source (the normal case after `wire_datasource.py`, or when reusing one),
-   with the descriptor's caption/name as `<name>`. Omit it when no data source
-   was wired. Do no extra permission lookups. Relay its stdout to the user
+   with its published name from `list-datasources` as `<name>` (not the
+   descriptor's caption, which can differ). Repeat it once per wired data
+   source. Omit it when no data source was wired. Do no extra permission lookups. Relay its stdout to the user
    verbatim.
 
    If `publish-workbook` returns `status: "invalid"` (or an error), surface the
