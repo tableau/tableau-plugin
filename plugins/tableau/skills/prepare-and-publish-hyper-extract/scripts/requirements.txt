@@ -1,0 +1,4 @@
+# 0.0.26479 is the newest tableauhyperapi with wheels for macOS (arm64 + x86_64),
+# Linux x86_64 and Windows x64; later releases dropped macOS. No arm64 Linux/Windows build exists.
+tableauhyperapi==0.0.26479
+pyarrow>=14

@@ -156,7 +156,10 @@ datasources onto separate sheets afterward.
    (field names + datatypes). The published DS **contentUrl** is the
    `repositoryId`. (To reuse an existing workbook's datasource instead, see
    Reuse an existing workbook's datasource below — it gets you here, then
-   continues at step 2.)
+   continues at step 2.) **Just published by `prepare-and-publish-hyper-extract`?**
+   Take the identity from its publish result and the fields from its
+   `fields.json` instead — `get-datasource-metadata` can lag a new data source
+   by minutes.
 2. **Write a descriptor** listing *only the fields the app will query* (name +
    datatype + role). Use `"site": ""` for the Default site. One datasource:
 

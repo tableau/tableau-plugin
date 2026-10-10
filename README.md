@@ -19,6 +19,7 @@ plugins/tableau/
   skills/tableau-content-viewer/               # find a view/workbook and render it, no data querying or editing
   skills/tableau-workbook-authoring/           # generate/modify workbooks by editing TWB XML
   skills/tableau-data-app-authoring/           # scaffold, wire, author, package, and publish a Tableau data app (viz extension)
+  skills/prepare-and-publish-hyper-extract/   # build a related multi-table .hyper from files/warehouse, publish as a data source
   skills/tableau-dashboard-advisor/            # advise on dashboard design from business questions + schema, no publishing
   skills/tableau-data-quality-sentinel/        # profile published datasource metadata for schema/field hygiene
   skills/tableau-viz-critique/                 # review and score an existing dashboard/view against a design rubric

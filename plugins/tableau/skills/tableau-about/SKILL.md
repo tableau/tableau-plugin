@@ -90,11 +90,12 @@ Use the focused Tableau skill that best matches the requested outcome:
 - Use `tableau-content-viewer` to find, open, or show existing Tableau content.
 - Use `tableau-dashboard-advisor` for advice on how to design and build a dashboard, including a nonfunctional planning wireframe. It does not create the Tableau dashboard.
 - Use `tableau-data-app-authoring` to scaffold, wire, author, package, and publish a live-querying data app (viz extension).
+- Use `prepare-and-publish-hyper-extract` to turn local files or a Snowflake/Databricks/Trino query into a modeled, multi-table extract and publish it as a data source (often before data app authoring).
 - Use `tableau-data-quality-sentinel` to review published datasource metadata.
 - Use `tableau-viz-critique` to evaluate an existing dashboard or view.
 - Use `tableau-workbook-authoring` to create, edit, copy, or publish a workbook.
 
-For requests spanning multiple workflows, sequence them explicitly. For example, critique an existing dashboard before handing approved recommendations to workbook authoring.
+For requests spanning multiple workflows, sequence them explicitly. For example, critique an existing dashboard before handing approved recommendations to workbook authoring, or prepare and publish an extract before building a data app on it.
 
 ## Representative requests
 
