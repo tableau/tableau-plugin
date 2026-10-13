@@ -1,0 +1,32 @@
+---
+name: tableau-content-viewer
+description: Show, open, or render an existing Tableau view, dashboard, or workbook live via {% if capabilities.native_render and capabilities.native_render_guaranteed %}{{ tools.render_native[0].name }}{% else %}{{ mcp_prefix }}render-interactive-viz{% endif %}, by name or keyword — for "show me/open/pull up this dashboard/view" requests. Do not use to query or analyze the data behind it or to create/edit/publish a workbook (tableau-workbook-authoring).
+---
+
+# Purpose
+
+Find a specific Tableau view (or workbook) and render it live via `{% if capabilities.native_render and capabilities.native_render_guaranteed %}{{ tools.render_native[0].name }}{% else %}{{ mcp_prefix }}render-interactive-viz{% endif %}`. Never touches a `.twb` file.
+{% if not mcp_prefix %}
+
+Tool names here are the Tableau MCP server's own names. The host may list them
+with a server prefix (e.g. `mcp__<server>__search-content`); call the listed
+tool whose name ends in the name given here.
+{% endif %}
+
+# Routing
+
+- Find the content → `{{ mcp_prefix }}search-content` — see [`../../references/search.md`](../../references/search.md) for the call shape and how to disambiguate multiple matches. Reuse an already-resolved LUID/URL instead of searching again for the same content.
+- Get a render-ready URL → `{{ mcp_prefix }}get-view` (resolved `luid` as `viewId`) or `{{ mcp_prefix }}get-workbook` (as `workbookId`, only when no specific view matched). `{{ mcp_prefix }}search-content` never returns a URL — this call is required.
+- Render → `{{ mcp_prefix }}render-interactive-viz` with the resolved `luid` and matching `objectType`. If unavailable, {% if capabilities.native_render %}open the direct `/t/SITE/views/...` URL in the in-app browser (`{{ tools.render_native[0].name }}`{% if tools.render_native | length > 1 %}, or the next available fallback{% endif %}); failing that, give the URL as a hyperlink and show a `{{ mcp_prefix }}get-view-image` PNG inline{% else %}give the direct URL as a hyperlink and show a `{{ mcp_prefix }}get-view-image` PNG inline{% endif %} — see [`../../references/rendering.md`](../../references/rendering.md).
+
+# Requirements
+
+- Prefer a view result when the user asked for a view; a workbook-only match is fine only when the user asked for the workbook as a whole.
+- Don't fabricate a view/workbook name or URL the search tools didn't surface.
+- A missing `{{ mcp_prefix }}render-interactive-viz`/search/content tool usually means a site admin disabled its group (`mcp-apps`/`EXCLUDE_TOOLS`) — that's site config, not a bug.
+- If the `{{ mcp_prefix }}download-workbook` tool returns a temporary URL, download the file locally
+
+# References
+
+- [`../../references/search.md`](../../references/search.md) — resolving a name/keyword to content and disambiguating multiple matches.
+- [`../../references/rendering.md`](../../references/rendering.md) — exact render call sequence and URL construction.
