@@ -72,12 +72,7 @@ the `renderStarter(...)` call with the real flow:
 - Build a VDS query (fields + optional filters/aggregations) and call `ds.queryAsync(query)`.
 - Read rows with the provided `extractData()` helper (returns `result.data`); match columns by field
   name.
-- Render with **hand-rolled inline SVG/Canvas** (`document.createElementNS`, manual mark
-  positioning) — no vendored charting library. Confirmed 2026-09-28: vendoring the
-  Vega/Vega-Lite/Vega-Embed stack (~830KB across 3 files) broke live extension loading
-  ("Extensions API not loaded"); a sibling app with zero vendored library loaded fine.
-  Mechanism unconfirmed — treat vendoring a large third-party charting library as a known
-  way to break the live load.
+- Render the rows with the charting library named in the `AUTHOR YOUR APP HERE` block.
 
 Prefer to derive new fields / change data shapes **at query time** rather than in JS. There is no
 required file layout, chart count, or palette — a good app clearly addresses the user's objective.
@@ -90,9 +85,7 @@ rules live in the `AUTHOR YOUR APP HERE` comment in the scaffolded `app.js` and 
 here** to avoid drift. In brief, that comment requires: surface every error on-screen (no visible
 console — use the starter's `renderError`); render first / initialize second; **vendor libraries
 locally, no CDN** (mirroring how `tableau.extensions.1.latest.min.js` is already vendored and loaded
-before `app.js`) — but keep the vendored payload small; a ~830KB Vega/Vega-Lite/Vega-Embed vendor
-broke live loading (see Author `app.js` above), so prefer hand-rolled SVG/Canvas over pulling in a
-large charting library; prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
+before `app.js`); prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
 (`textContent` / `createElement`), never `innerHTML` with live values.
 
 ## Review the live app in Tableau
