@@ -31,25 +31,16 @@ tools:
 
 elicit_max_options: 4
 
-# How to show the user an image file (e.g. a downloaded Tableau render) inline
-# in the chat. Markdown images of local paths render only as links in Claude
-# Desktop/Cowork, and the visualize widget's CSP blocks remote image hosts
-# (including Tableau's presigned URLs), but it does render `data:` images.
-# Verified in Claude Desktop/Cowork. VERIFY on claude.ai web.
+# How to show the user an image file (e.g. a downloaded Tableau render).
+# Chat and Cowork both preview a presented PNG file in the side panel; in
+# Cowork the preview opens only once the user clicks the file card. A Markdown
+# image of a local path shows only as a link (opening it prompts for a
+# third-party app).
+# Verified in Claude Desktop Chat and Cowork. VERIFY on claude.ai web.
 show_image: >-
-  render it in a visualize widget (the host's `show_widget` tool; it may be
-  listed with a prefix such as `mcp__visualize__show_widget`, and its
-  `read_me` must be called once first) as an HTML `<img>` whose `src` is a
-  base64 `data:image/png;base64,...` URI of the file (get the text with
-  `base64 < "<file>" | tr -d '\n'`, or Python's `base64` module), with the view
-  name as `alt` and `style="max-width:100%;height:auto"`. Keep the file under
-  about 200 KB: if it's larger, call `get-view-image` once more for a display
-  copy with `width` of at most 1000 that preserves the aspect ratio, and embed
-  that. A Markdown image or link to the local path, a file attachment, or a side
-  panel only shows a link in this host, so it doesn't count as showing the
-  image. If no `show_widget` tool is available, embed it with Markdown
-  (`![<view name>](/absolute/path/to/render.png)`) and tell the user the
-  render couldn't be displayed inline here
+  present the downloaded PNG to the user as a file, so it opens in the
+  side-panel preview, and tell them to click the file card if the preview
+  doesn't open on its own
 
 capabilities:
   native_render: true                 # render_native tools may exist on this host

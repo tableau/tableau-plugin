@@ -75,12 +75,11 @@ so any delay between receiving it and fetching it can lose the render.
   path as failed instead of trying a fetch tool.
 {% endif %}
 - **After downloading**, check the file is a non-empty image, then show it
-  inline in the chat: {{ show_image }}.
+  to the user: {{ show_image }}.
 - **If the download fails because the URL expired**, call
   `{{ mcp_prefix }}get-view-image` once more and download the new URL
-  straight away. This and a smaller display copy requested while showing the
-  image are the only exceptions to calling it once. If that also fails, treat
-  the PNG path as failed.
+  straight away. This is the only exception to calling it once. If that also
+  fails, treat the PNG path as failed.
 
 ## Resolve the target view
 
@@ -261,7 +260,7 @@ Rendering is complete when one of the following is true:
 {% if capabilities.native_render %}
 - the direct view URL is open in the in-app browser;
 {% endif %}
-- the user has the direct URL as a hyperlink and a PNG of the view inline in
+- the user has the direct URL as a hyperlink and a PNG of the view shown in
   the chat; or
 - every render path failed and the user has the direct URL hyperlink with a
   concise explanation.
