@@ -28,6 +28,18 @@ element. Do not read unrelated XSD sections, use a schema newer than the target
 server's Tableau version, or change the workbook's build stamp solely to use a
 newer schema.
 
+### Manifest-gated elements
+
+Tableau accepts `<computed-sort>`, `<manual-sort>`, `<natural-sort>`, and
+`<alphabetic-sort>` only when `<document-format-change-manifest>` has
+`<SortTagCleanup />`, and `<simple-id>` only with `<SheetIdentifierTracking />`.
+With that flag, every worksheet (after `<table>`) and window needs its own
+`<simple-id uuid='{…}' />` with a fresh uppercase GUID.
+In a workbook without those flags, write the form its other sheets use:
+`<sort class='computed' ...>` (same attributes and children) and no
+`<simple-id>`. Don't add the flag to someone else's workbook to make your
+element pass.
+
 ### Filter-reference integrity
 
 When adding or changing a filter, never infer the `groupfilter level` from

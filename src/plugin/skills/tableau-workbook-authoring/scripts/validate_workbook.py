@@ -182,8 +182,9 @@ _BUILD_COMMENT_RE = re.compile(rb"<!--\s*build\s+(\d{5})\.(\d{2})\.")
 #     the "expected" options.
 #   - missing `simple-id`: `worksheet`, `dashboard` and `window` end their
 #     sequence with a required `simple-id`, but Tableau Cloud rejects
-#     `<simple-id>` in some workbooks it accepts without it, so its absence
-#     isn't worth reporting — a warning only pushed agents to add it.
+#     `<simple-id>` unless the manifest has `<SheetIdentifierTracking />`
+#     (see `manifest_issues`), so its absence is reported there, only for
+#     workbooks with that flag, rather than as a schema error.
 _IGNORED_ISSUE_PATTERNS = (
     re.compile(r"'_\.fcp\."),
     re.compile(r"^Element '(worksheet|dashboard|window)': Missing child element\(s\)\. Expected is .*\bsimple-id\b.*\.$"),
@@ -225,6 +226,57 @@ def _normalise_legacy_sorts(doc: "etree._Element") -> None:
         if cls in _LEGACY_SORT_CLASSES:
             el.tag = f"{cls}-sort"
             del el.attrib["class"]
+
+
+# Tableau Cloud accepts some newer elements only when the workbook's
+# <document-format-change-manifest> declares the flag for them, a rule the
+# XSD doesn't express (the manifest is `xs:any`). Confirmed by publishing
+# variants of one workbook: each form below was rejected without its flag,
+# accepted with it, and the `source-build` stamp made no difference.
+_MANIFEST_GATED = (
+    (("computed-sort", "manual-sort", "natural-sort", "alphabetic-sort"), "SortTagCleanup",
+     "use <sort class='{kind}'> instead"),
+    (("simple-id",), "SheetIdentifierTracking", "remove it"),
+)
+
+
+def manifest_issues(doc: "etree._Element") -> list[Issue]:
+    """Report elements Tableau Cloud rejects because the manifest lacks the
+    flag that allows them, or lack the identifier that flag makes mandatory.
+    Messages carry no line so baselines match them."""
+    manifest = doc.find("document-format-change-manifest")
+    flags = set() if manifest is None else {c.tag for c in manifest if isinstance(c.tag, str)}
+    issues = []
+    for tags, flag, fix in _MANIFEST_GATED:
+        if flag in flags:
+            continue
+        for el in doc.iter(*tags):
+            issues.append(Issue(
+                message=f"Element '{el.tag}': Tableau rejects it unless "
+                        f"<document-format-change-manifest> has <{flag} />; "
+                        + fix.format(kind=el.tag.removesuffix("-sort")),
+                line=el.sourceline,
+            ))
+    # The flag also makes the identifier mandatory: Cloud rejects a worksheet
+    # or window without one, although the XSD leaves it optional.
+    if "SheetIdentifierTracking" in flags:
+        for el in doc.iterfind("worksheets/worksheet"):
+            if el.find("simple-id") is None:
+                issues.append(Issue(
+                    message=f"Element 'worksheet' ('{el.get('name')}'): Tableau requires a "
+                            "<simple-id uuid='{...}' /> after <table> when the manifest has "
+                            "<SheetIdentifierTracking />",
+                    line=el.sourceline,
+                ))
+        for el in doc.iterfind("windows/window"):
+            if el.find("simple-id") is None:
+                issues.append(Issue(
+                    message=f"Element 'window' ('{el.get('name')}'): Tableau requires a "
+                            "<simple-id uuid='{...}' /> as its last child when the manifest has "
+                            "<SheetIdentifierTracking />",
+                    line=el.sourceline,
+                ))
+    return issues
 
 
 def _is_warning_issue(message: str) -> bool:
@@ -624,6 +676,9 @@ def validate_xml(
         into the returned `warnings` list instead of `issues`;
       - legacy `<sort class='...'>` elements are checked as their newer
         schema form (see `_normalise_legacy_sorts`).
+
+    Elements the manifest doesn't allow (see `manifest_issues`) are always
+    reported.
     """
     # 1. UTF-8 sanity.
     utf8_issue = _check_utf8(xml_bytes)
@@ -650,14 +705,16 @@ def validate_xml(
             )
         ], []
 
-    # 4. Structural validation.
+    # 4. Manifest-gated elements, checked before legacy sorts are renamed.
+    issues: list[Issue] = manifest_issues(doc)
+    warnings: list[Issue] = []
+
+    # 5. Structural validation.
     if ignore_known_gaps:
         _normalise_legacy_sorts(doc)
     if schema.validate(doc):
-        return [], []
+        return issues, warnings
 
-    issues: list[Issue] = []
-    warnings: list[Issue] = []
     for err in schema.error_log:
         if ignore_known_gaps and _is_ignored_issue(err.message):
             continue

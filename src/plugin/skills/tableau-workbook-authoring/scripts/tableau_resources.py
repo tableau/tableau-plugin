@@ -1129,6 +1129,34 @@ def _replace_simple_ids(fragment: str, kind: str, identifier: str) -> str:
     )
 
 
+MODERN_SORT_RE = re.compile(r"<(/?)(computed|manual|natural|alphabetic)-sort\b")
+SIMPLE_ID_LINE_RE = re.compile(r"\n?[ \t]*<simple-id\b[^>]*/>")
+
+
+def _manifest_flags(root: ET.Element) -> set[str]:
+    manifest = root.find("document-format-change-manifest")
+    return set() if manifest is None else {child.tag for child in manifest}
+
+
+def _match_manifest(fragment: str, flags: set[str]) -> str:
+    """Write a fragment in the forms the target workbook's manifest declares.
+
+    Tableau Cloud rejects ``<computed-sort>`` (and the other ``*-sort``
+    elements) unless the manifest has ``<SortTagCleanup />``, and rejects
+    ``<simple-id>`` unless it has ``<SheetIdentifierTracking />``. Without
+    those flags Tableau itself writes ``<sort class='computed'>`` and no
+    ``simple-id``, so the fragment is rewritten to match.
+    """
+    if "SortTagCleanup" not in flags:
+        fragment = MODERN_SORT_RE.sub(
+            lambda m: "</sort" if m.group(1) else f"<sort class='{m.group(2)}'",
+            fragment,
+        )
+    if "SheetIdentifierTracking" not in flags:
+        fragment = SIMPLE_ID_LINE_RE.sub("", fragment)
+    return fragment
+
+
 def _set_window_identity(window: str, worksheet_name: str) -> str:
     """Force the window's class and name to the output worksheet name."""
     data = window.encode("utf-8")
@@ -1379,6 +1407,13 @@ def render_bookmark(
         )
         rendered[kind] = fragment
 
+    # Under <SheetIdentifierTracking /> Tableau requires a <simple-id> after
+    # the worksheet's <table>; templates only carry the window's.
+    # _match_manifest drops it again for a workbook without that flag.
+    if not SIMPLE_ID_RE.search(rendered["worksheet"]):
+        rendered["worksheet"] += (
+            f"\n  <simple-id uuid='{_fragment_uuid(resource_id, worksheet_name, 'worksheet')}' />"
+        )
     rendered["worksheet"] = (
         f"<worksheet name='{escape_attribute(worksheet_name)}'>\n"
         f"{rendered['worksheet']}\n"
@@ -2054,7 +2089,10 @@ def _apply_resource(
         datasource_caption=target.caption,
         target_fields=target.fields,
     )
-    output = inject_fragments(twb_text, worksheet, window)
+    flags = _manifest_flags(_parse_workbook(twb_text))
+    output = inject_fragments(
+        twb_text, _match_manifest(worksheet, flags), _match_manifest(window, flags)
+    )
     _reject_introduced_errors(
         twb_text if baseline_text is None else baseline_text, output
     )
