@@ -233,3 +233,7 @@ bench/tableau/*.json
 .build-venv/
 # Local clone of the Claude marketplace repo used by reload-plugin.sh.
 .claude-marketplace/
+
+# Real Tableau site workbooks used by test_cloud_fixtures.py; never commit them.
+src/fixtures/**/*.twb
+src/fixtures/**/*.twbx
