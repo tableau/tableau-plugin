@@ -70,7 +70,7 @@ Tableau permissions — the server doesn't store Tableau data itself.
    codex plugin marketplace add .
   ```
    This adds a marketplace source named after the repo directory (e.g.
-   `plugin-codex`) pointing at your local checkout. Run
+   `tableau-plugin`) pointing at your local checkout. Run
    `codex plugin marketplace list` if you want to confirm the name it picked.
 2. **Install the plugin from the Plugins tab.** Open Codex Desktop → **Plugins**,
   find the "Tableau MCP Skills" marketplace, and install the **tableau**

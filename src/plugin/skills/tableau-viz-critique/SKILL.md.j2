@@ -39,7 +39,7 @@ Scoring needs an image you can inspect. An interactive{% if capabilities.native_
 - If the render path already ended with the `{{ mcp_prefix }}get-view-image` fallback, score that PNG. Don't fetch another.
 - Otherwise call `{{ mcp_prefix }}get-view-image` once with `viewId`, `format: "PNG"`, and the largest practical `width`/`height` that preserves the dashboard's aspect ratio. Handle the result exactly as [rendering.md](../../references/rendering.md#download-the-png-immediately) describes: pick the OS-temp path before calling, download a `resource_link` as the very next action with a direct HTTP client{% if capabilities.shell_download_only %} run in the shell (never a web fetch tool){% endif %}, and retry once if the URL expires.
 - Verify the file is a non-empty image, then inspect it with the available image-viewing tool.
-- Show the user the image you scored, inline in the response, before the score: {{ show_image }}. A link or file path alone doesn't count. Skip this only when that image is already visible in the chat: an inline image returned by the tool, a PNG already shown by rendering.md's fallback, or a screenshot the user supplied.
+- Show the user the image you scored, before the score: {{ show_image }}. A link or file path alone doesn't count. Skip this only when that image is already visible in the chat: an inline image returned by the tool, a PNG already shown by rendering.md's fallback, or a screenshot the user supplied.
 
 Do not conclude that a render is inaccessible merely because a browser blocks the image-host domain. Browser access and direct retrieval of an MCP-returned resource are separate paths; exhaust the connector's supported resource-delivery path first. Only ask the user for a screenshot after the PNG is unavailable or fails.
 
@@ -102,5 +102,3 @@ Keep humor light and never use it when discussing misleading presentation, acces
 - Visual design review does not validate source data, calculation correctness, business conclusions, or performance unless the user supplies separate evidence and requests that analysis.
 - Treat visible personal or sensitive data as evidence to minimize in the report, not content to reproduce.
 - When only a static image is available, label interaction and accessibility limitations explicitly.
-
-For implementation changes, run `python -m unittest discover -s scripts/tests -v` and the active skill validator.

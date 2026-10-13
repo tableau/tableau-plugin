@@ -44,7 +44,7 @@ DIST_DIR = ROOT / "dist"
 # Never copied into a distribution.
 EXCLUDE_NAMES = {".DS_Store"}
 # Any path containing one of these components (or matching a suffix) is skipped.
-EXCLUDE_DIRS = {"__pycache__"}
+EXCLUDE_DIRS = {"__pycache__", "tests"}
 EXCLUDE_SUFFIXES = (".pyc",)
 
 TEMPLATE_SUFFIX = ".j2"
