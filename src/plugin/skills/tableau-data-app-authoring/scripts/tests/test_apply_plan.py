@@ -149,3 +149,21 @@ def test_residual_placeholder_fails_finalize(tmp_path):
     assert result.returncode == 1
     assert 'Residual placeholders after finalize' in result.stderr
     assert 'App/App.twb: "TODO Sheet Name"' in result.stderr
+
+
+def test_residual_version_and_author_placeholders_fail_finalize(tmp_path):
+    package = tmp_path / 'App' / 'Packages' / 'TODO-MANIFEST-ID'
+    package.mkdir(parents=True)
+    (package / 'manifest.json').write_text(
+        '{"id": "TODO-MANIFEST-ID", "version": "TODO-MANIFEST-VERSION", "author": "TODO Author Name"}'
+    )
+    plan_path = write_plan(tmp_path, {
+        "edits": [{"file": "App/Packages/TODO-MANIFEST-ID/manifest.json",
+                   "replacements": [{"find": "TODO-MANIFEST-ID", "replace": "com.tableau.mcp.app"}]}],
+        "renames": [{"from": "App/Packages/TODO-MANIFEST-ID", "to": "App/Packages/com.tableau.mcp.app"}]
+    })
+    result = run_apply_plan(str(tmp_path), plan_path)
+
+    assert result.returncode == 1
+    assert 'App/Packages/com.tableau.mcp.app/manifest.json: "TODO-MANIFEST-VERSION"' in result.stderr
+    assert 'App/Packages/com.tableau.mcp.app/manifest.json: "TODO Author Name"' in result.stderr

@@ -88,6 +88,9 @@ locally, no CDN** (mirroring how `tableau.extensions.1.latest.min.js` is already
 before `app.js`); prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
 (`textContent` / `createElement`), never `innerHTML` with live values.
 
+External origins (an API, images, fonts) are blocked unless declared; see Declare external origins
+in [SKILL.md](../SKILL.md).
+
 ## Review the live app in Tableau
 
 There is **no local preview** — the live query only runs inside Tableau. Open the published workbook

@@ -18,7 +18,9 @@ import json
 import os
 import sys
 
-PLACEHOLDER_TOKENS = ['TODO-MANIFEST-ID', 'TODO App Name', 'TODO Sheet Name']
+# Every placeholder the scaffold template carries (.twb, data-app.trex, manifest.json).
+PLACEHOLDER_TOKENS = ['TODO-MANIFEST-ID', 'TODO App Name', 'TODO Sheet Name', 'TODO-MANIFEST-VERSION',
+                      'TODO Author Name']
 
 
 def die(message):

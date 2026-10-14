@@ -49,11 +49,14 @@ hand-build the template.
 The result carries an un-substituted template **zip** plus a `postUnzip` plan,
 and either `filePath` (the zip on local disk) or `s3URL` (download it first).
 Branch on whichever is present; past the fetch step the steps are identical.
-It also returns `allowedOrigins: string[]` — any external origin the app
-fetches from must be in that list.
+It also returns `allowedOrigins: string[]` (the site's external-origin
+allow-list) and `requestedOrigins: { file, instructions }` (where the app
+declares the origins it calls). Both matter only if the app calls an external
+origin; see Declare external origins below.
 
 Apply the plan deterministically with the bundled script — applying it freehand
-leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` / `TODO Sheet Name` tokens or interleaves
+leaves half-replaced `TODO-…` placeholder tokens (`TODO-MANIFEST-ID`, `TODO App Name`,
+`TODO Sheet Name`, `TODO-MANIFEST-VERSION`, `TODO Author Name`) or interleaves
 edits and renames in the wrong order.
 
 Finalize the plan (save, fetch, apply). Scripts referenced
@@ -103,6 +106,7 @@ At the end of this stage you have a finalized workspace directory:
 <App Name>/
   <App Name>.twb
   Packages/com.tableau.mcp.<slug>/
+    manifest.json
     extensions/data-app.trex
     content/index.html
     content/src/app.js      ← the authoring surface
@@ -260,6 +264,32 @@ tell them the workspace path
 [Build a data app](references/build-data-app.md) as their own reference.
 Resume at Package into a .twbx once they say it's authored.
 
+## Declare external origins
+
+Skip this unless the app calls an external origin (`fetch`, an image, script,
+or stylesheet from another host). The sandbox's Content-Security-Policy blocks
+every external origin unless it is on **both** lists:
+
+- **`allowedOrigins`**: the site's allow-list, set by a site admin. Read-only
+  for you; `scaffold-data-app` returns the current list.
+- **`requestedOrigins`**: the app's own declaration, in the package
+  `manifest.json` at the scaffold result's `requestedOrigins.file` (the
+  finalized path, `<App Name>/Packages/com.tableau.mcp.<slug>/manifest.json`).
+  Scaffolded as `""`.
+
+To declare origins, set `requestedOrigins` to **one space-separated string** of
+bare origins (scheme + host, optional port; no path or trailing slash), and
+leave the manifest's other keys alone:
+
+```json
+"requestedOrigins": "https://api.example.com https://cdn.example.com"
+```
+
+Request only origins the app calls. One that isn't in `allowedOrigins`
+(re-run `scaffold-data-app` for a fresh list) stays blocked whatever the
+manifest says: tell the user a site admin must add it to the site's allowed
+origins; don't work around it.
+
 ## Package into a .twbx
 
 A `.twbx` is a zip of the workspace **contents** with the `.twb` and `Packages/`
@@ -269,8 +299,8 @@ packaged workbook` and `PackageValidationException: Package directory contains n
 extension .trex files under extensions/`.
 
 Package with `scripts/package_twbx.py`. It hard-fails with a `✗` message if
-the workspace isn't packageable; fix what it reports rather than zipping by
-hand:
+the workspace isn't packageable (including a malformed `requestedOrigins` in
+`manifest.json`); fix what it reports rather than zipping by hand:
 
 ```bash
 python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized workspace dir
@@ -349,6 +379,9 @@ Uses the MCP publish tools (not available to Slack clients).
 - Don't hand-edit the `<datasources/>` wiring. Use `scripts/wire_datasource.py` —
   freehand edits mismatch the join key across its coordinated locations or
   leave an empty `<datasources />` anchor, and the app silently reaches no data.
+- Don't write `requestedOrigins` as an array or comma-separated list, or
+  request an origin that isn't in `allowedOrigins`. See Declare external
+  origins.
 - Don't interpret `publish-workbook` permissions freehand. Use
   `scripts/summarize_publish_access.py` and relay its stdout verbatim.
 - Don't assume the scaffold result's zip is already substituted, or skip

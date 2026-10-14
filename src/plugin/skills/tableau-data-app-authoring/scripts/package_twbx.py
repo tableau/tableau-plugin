@@ -11,7 +11,10 @@ nested under `<App Name>/` — nesting fails to open on publish with
 files under extensions/`. OS cruft (`.DS_Store`, `__MACOSX`) is skipped.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
-and at least one `.trex` under `Packages/*/extensions/`.
+and at least one `.trex` under `Packages/*/extensions/`. Also hard-fails if a
+package `manifest.json`'s `requestedOrigins` isn't one space-separated string of
+bare origins; Tableau silently ignores any other shape. A missing
+`manifest.json` (older scaffold) is fine.
 
 Output defaults to `<App Name>.twbx` next to the workspace dir; an existing
 file is overwritten. Prints the output path on stdout.
@@ -20,14 +23,38 @@ Usage: python3 package_twbx.py <workspaceDir> [outputPath]
 """
 
 import glob
+import json
 import os
+import re
 import sys
 import zipfile
+
+# Scheme + host + optional port: no path, query, or trailing slash.
+ORIGIN_RE = re.compile(r'^https?://[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?::\d{1,5})?$')
 
 
 def die(message):
     print(f'✗ {message}', file=sys.stderr)
     sys.exit(1)
+
+
+def check_manifest(path):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
+    except Exception as error:
+        die(f'Could not read/parse {path}: {error}')
+    if not isinstance(manifest, dict):
+        die(f'{path} must be a JSON object.')
+    value = manifest.get('requestedOrigins', '')
+    if not isinstance(value, str):
+        die(f'{path}: requestedOrigins must be ONE space-separated string, e.g. '
+            f'"https://api.example.com https://cdn.example.com" (got a {type(value).__name__}). '
+            'Tableau ignores any other shape and blocks every external origin.')
+    bad = [origin for origin in value.split() if not ORIGIN_RE.match(origin)]
+    if bad:
+        die(f'{path}: requestedOrigins entries must be bare origins (scheme + host, optional port; no '
+            f'path, query, trailing slash, or commas), separated by spaces: {", ".join(bad)}')
 
 
 def is_cruft(rel_path):
@@ -56,6 +83,9 @@ def main():
     if not glob.glob(os.path.join(packages, '*', 'extensions', '*.trex')):
         die('No .trex under Packages/*/extensions/ — publish would fail with '
             '"Package directory contains no extension .trex files under extensions/".')
+
+    for manifest in sorted(glob.glob(os.path.join(packages, '*', 'manifest.json'))):
+        check_manifest(manifest)
 
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')

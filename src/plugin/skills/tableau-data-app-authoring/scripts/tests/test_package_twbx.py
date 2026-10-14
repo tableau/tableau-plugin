@@ -124,3 +124,60 @@ def test_fails_without_trex(tmp_path):
     assert '✗ No .trex under Packages/*/extensions/' in result.stderr
     assert 'Package directory contains no extension .trex files under extensions/' in result.stderr
     assert not (tmp_path / 'Sales Demo.twbx').exists()
+
+
+def write_manifest(workspace, text):
+    (workspace / PACKAGE / 'manifest.json').write_text(text)
+
+
+def test_packages_manifest_with_space_separated_requested_origins(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, '{"id": "com.tableau.mcp.sales-demo", '
+                              '"requestedOrigins": "https://api.example.com https://cdn.example.com:8443"}')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert f'{PACKAGE}/manifest.json' in names(result.stdout.strip())
+
+
+def test_packages_manifest_with_empty_requested_origins(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, '{"id": "com.tableau.mcp.sales-demo", "requestedOrigins": ""}')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_fails_when_requested_origins_is_an_array(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, '{"requestedOrigins": ["https://api.example.com"]}')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'requestedOrigins must be ONE space-separated string' in result.stderr
+    assert '(got a list)' in result.stderr
+    assert not (tmp_path / 'Sales Demo.twbx').exists()
+
+
+def test_fails_when_requested_origins_are_comma_separated_or_not_bare(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, '{"requestedOrigins": "https://a.example.com,https://b.example.com https://c.example.com/"}')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'requestedOrigins entries must be bare origins' in result.stderr
+    assert 'https://a.example.com,https://b.example.com, https://c.example.com/' in result.stderr
+
+
+def test_fails_when_manifest_is_not_valid_json(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, '{"requestedOrigins": ')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'Could not read/parse' in result.stderr
