@@ -38,12 +38,12 @@ unconfirmed.
 Before beginning substantive work, verify that the Tableau MCP capabilities
 needed by the requested workflow are callable:
 
-- `mcp__Tableau__publish-workbook`;
-- either `mcp__Tableau__request-workbook-upload` or support for publishing
+- `{{ mcp_prefix }}publish-workbook`;
+- either `{{ mcp_prefix }}request-workbook-upload` or support for publishing
   through `workbookFilePath`;
-- `mcp__Tableau__get-view-image` for post-publish verification; and
-- for an existing workbook, `mcp__Tableau__search-content` and
-  `mcp__Tableau__download-workbook`.
+- `{{ mcp_prefix }}get-view-image` for post-publish verification; and
+- for an existing workbook, `{{ mcp_prefix }}search-content` and
+  `{{ mcp_prefix }}download-workbook`.
 
 Interactive rendering must also be available for the required post-publish
 verification.

@@ -1,6 +1,6 @@
 ---
 name: tableau-data-app-authoring
-description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, wire in a published datasource, author the extension's query and visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Requires Tableau Creator or Explorer (can publish), permission to publish to the target project, and access to the Tableau MCP scaffold-data-app capability.  Use for requests to create, build, vibe-code, or publish a Tableau data app or custom viz-extension web app that queries a datasource live. Do not use for a standard native Tableau workbook or dashboard built from marks, Show Me, or the chart catalog — see tableau-workbook-authoring — or to open, show, or render an already-published data app or other existing Tableau content — see tableau-content-viewer.  In order to use this skill, you need to ensure the user has a tableau creator or explorer license as well as the have access to the scaffold-data-app tool from Tableau MCP
+description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, wire in a published datasource, author the extension's query and visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. This skill relies on tools that a user may not have access to: scaffold-data-app. The user may not have access to this tool based on their user role, their tableau site settings, or their tableau server version. Don't invoke this skill unless the underlying tool requirements are available for the user. Use for requests to create, build, vibe-code, or publish a Tableau data app or custom viz-extension web app that queries a datasource live. Do not use for a standard native Tableau workbook or dashboard built from marks, Show Me, or the chart catalog — see tableau-workbook-authoring — or to open, show, or render an already-published data app or other existing Tableau content — see tableau-content-viewer.
 ---
 
 # Tableau Data App Authoring
@@ -67,8 +67,8 @@ Before beginning substantive work, verify that all of the following are
 callable:
 
 - `scaffold-data-app`;
-- `mcp__Tableau__publish-workbook`;
-- `mcp__Tableau__request-workbook-upload`
+- `publish-workbook`;
+- `request-workbook-upload`
 
 Interactive rendering must also be available for the required post-publish
 verification.
