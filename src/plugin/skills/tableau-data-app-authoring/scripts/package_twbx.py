@@ -3,7 +3,7 @@
 Package a finalized data-app workspace into a `.twbx`. Workspace shape:
   <App Name>/
     <App Name>.twb
-    Packages/<package id>/extensions/*.trex, content/...
+    Packages/<package id>/manifest.json, extensions/*.trex, content/...
 
 The archive holds the `.twb` (written first) and `Packages/` at its ROOT, never
 nested under `<App Name>/` — nesting fails to open on publish with
@@ -12,9 +12,9 @@ files under extensions/`. OS cruft (`.DS_Store`, `__MACOSX`) is skipped.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 and at least one `.trex` under `Packages/*/extensions/`. Also hard-fails if a
-package `manifest.json`'s `requestedOrigins` isn't one space-separated string of
-bare origins; Tableau silently ignores any other shape. A missing
-`manifest.json` (older scaffold) is fine.
+package with a `.trex` has no `manifest.json`, or if its `requestedOrigins` isn't
+one space-separated string of bare origins; Tableau silently ignores any other
+shape.
 
 Output defaults to `<App Name>.twbx` next to the workspace dir; an existing
 file is overwritten. Prints the output path on stdout.
@@ -80,11 +80,16 @@ def main():
     if not os.path.isdir(packages):
         die(f'Missing Packages/ directory in {workspace}')
 
-    if not glob.glob(os.path.join(packages, '*', 'extensions', '*.trex')):
+    trexes = glob.glob(os.path.join(packages, '*', 'extensions', '*.trex'))
+    if not trexes:
         die('No .trex under Packages/*/extensions/ — publish would fail with '
             '"Package directory contains no extension .trex files under extensions/".')
 
-    for manifest in sorted(glob.glob(os.path.join(packages, '*', 'manifest.json'))):
+    for package in sorted({os.path.dirname(os.path.dirname(trex)) for trex in trexes}):
+        manifest = os.path.join(package, 'manifest.json')
+        if not os.path.isfile(manifest):
+            die(f'Missing manifest.json in {package}. Every data app package needs one; '
+                're-scaffold with scaffold-data-app rather than writing it by hand.')
         check_manifest(manifest)
 
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(

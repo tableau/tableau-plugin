@@ -299,8 +299,9 @@ packaged workbook` and `PackageValidationException: Package directory contains n
 extension .trex files under extensions/`.
 
 Package with `scripts/package_twbx.py`. It hard-fails with a `✗` message if
-the workspace isn't packageable (including a malformed `requestedOrigins` in
-`manifest.json`); fix what it reports rather than zipping by hand:
+the workspace isn't packageable (including a missing `manifest.json` or a
+malformed `requestedOrigins` in it); fix what it reports rather than zipping by
+hand:
 
 ```bash
 python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized workspace dir

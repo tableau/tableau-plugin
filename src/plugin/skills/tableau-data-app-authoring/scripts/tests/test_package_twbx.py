@@ -16,7 +16,7 @@ def run_package(*args):
     return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True)
 
 
-def make_workspace(tmp_path, with_trex=True):
+def make_workspace(tmp_path, with_trex=True, with_manifest=True):
     workspace = tmp_path / 'Sales Demo'
     ext_dir = workspace / PACKAGE / 'extensions'
     src_dir = workspace / PACKAGE / 'content' / 'src'
@@ -25,6 +25,9 @@ def make_workspace(tmp_path, with_trex=True):
     (workspace / 'Sales Demo.twb').write_text('<workbook/>')
     if with_trex:
         (ext_dir / 'data-app.trex').write_text('<manifest/>')
+    if with_manifest:
+        (workspace / PACKAGE / 'manifest.json').write_text(
+            '{"id": "com.tableau.mcp.sales-demo", "requestedOrigins": ""}')
     (workspace / PACKAGE / 'content' / 'index.html').write_text('<html/>')
     (src_dir / 'app.js').write_text('// app')
     return workspace
@@ -47,6 +50,7 @@ def test_packages_twb_first_and_packages_at_root(tmp_path):
     assert entries[0] == 'Sales Demo.twb'
     assert not any(entry.startswith('Sales Demo/') for entry in entries)
     assert f'{PACKAGE}/extensions/data-app.trex' in entries
+    assert f'{PACKAGE}/manifest.json' in entries
     assert f'{PACKAGE}/content/index.html' in entries
     assert f'{PACKAGE}/content/src/app.js' in entries
     assert '✓ Packaged Sales Demo.twb + Packages/' in result.stderr
@@ -126,6 +130,17 @@ def test_fails_without_trex(tmp_path):
     assert not (tmp_path / 'Sales Demo.twbx').exists()
 
 
+def test_fails_without_manifest(tmp_path):
+    workspace = make_workspace(tmp_path, with_manifest=False)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert '✗ Missing manifest.json in' in result.stderr
+    assert 'com.tableau.mcp.sales-demo' in result.stderr
+    assert not (tmp_path / 'Sales Demo.twbx').exists()
+
+
 def write_manifest(workspace, text):
     (workspace / PACKAGE / 'manifest.json').write_text(text)
 
@@ -139,15 +154,6 @@ def test_packages_manifest_with_space_separated_requested_origins(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert f'{PACKAGE}/manifest.json' in names(result.stdout.strip())
-
-
-def test_packages_manifest_with_empty_requested_origins(tmp_path):
-    workspace = make_workspace(tmp_path)
-    write_manifest(workspace, '{"id": "com.tableau.mcp.sales-demo", "requestedOrigins": ""}')
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 0, result.stderr
 
 
 def test_fails_when_requested_origins_is_an_array(tmp_path):
