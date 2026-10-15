@@ -1,6 +1,6 @@
 ---
 name: tableau-workbook-authoring
-description: Create, edit, copy, or republish a Tableau workbook by editing TWB XML and publishing it through Tableau MCP. Use for create, build, edit, modify, copy, republish, or add-chart requests. Do not use for read-only analysis or for just opening/showing an existing view (tableau-content-viewer).
+description: Create, edit, copy, or republish a Tableau workbook by editing TWB XML and publishing it through Tableau MCP. Requires Tableau Creator or Explorer (can publish), plus permission to publish to the target project. Use for create, build, edit, modify, copy, republish, or add-chart requests. Do not use for read-only analysis or for just opening/showing an existing view (tableau-content-viewer).
 ---
 
 # Purpose
@@ -8,6 +8,53 @@ description: Create, edit, copy, or republish a Tableau workbook by editing TWB 
 Build or edit a Tableau workbook — from the bundled chart catalog when the request matches it, otherwise by hand-editing TWB XML — validate, publish through Tableau MCP, and render the result.
 
 Script paths below are written relative to `<skill-dir>`: resolve it as the absolute directory containing this loaded `SKILL.md`, and don't assume it is the current working directory. If `python3` isn't on the PATH (common on Windows), use `py -3` or `python` instead.
+
+## Preflight requirements
+
+Complete this preflight before downloading, editing, scaffolding, or creating
+workbook files.
+
+### Publishing access
+
+This workflow requires the connected Tableau user to have:
+
+- a Creator or Explorer (can publish) site role; and
+- permission to publish to the target project.
+
+Do not treat a generic Explorer license as sufficient: the user must have the
+Explorer (can publish) site role or equivalent publishing capability.
+
+Use Tableau metadata or permission information already available in the task
+when it conclusively establishes publishing access. If the user's site role or
+publishing access cannot be determined through the available Tableau tools,
+ask the user to confirm that they have Creator or Explorer (can publish) and
+permission to publish to the target project.
+
+Do not begin substantive workbook authoring while this prerequisite remains
+unconfirmed.
+
+### Required Tableau MCP capabilities
+
+Before beginning substantive work, verify that the Tableau MCP capabilities
+needed by the requested workflow are callable:
+
+- `{{ mcp_prefix }}publish-workbook`;
+- either `{{ mcp_prefix }}request-workbook-upload` or support for publishing
+  through `workbookFilePath`;
+- `{{ mcp_prefix }}get-view-image` for post-publish verification; and
+- for an existing workbook, `{{ mcp_prefix }}search-content` and
+  `{{ mcp_prefix }}download-workbook`.
+
+Interactive rendering must also be available for the required post-publish
+verification.
+
+Check only the capabilities relevant to the current request. A capability is
+not unavailable merely because it has not yet been loaded; perform one focused
+availability lookup when necessary.
+
+If a required capability is unavailable, stop before authoring and tell the
+user exactly which capability is missing and why it prevents completion. Do
+not create an unpublished workbook while presenting it as completion.
 
 ## Resolve the requested Tableau object
 

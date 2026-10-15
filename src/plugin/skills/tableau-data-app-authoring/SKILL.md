@@ -1,6 +1,6 @@
 ---
 name: tableau-data-app-authoring
-description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, wire in a published datasource, author the extension's query and visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. Use for requests to create, build, vibe-code, or publish a Tableau data app or custom viz-extension web app that queries a datasource live. Do not use for a standard native Tableau workbook or dashboard built from marks, Show Me, or the chart catalog — see tableau-workbook-authoring — or to open, show, or render an already-published data app or other existing Tableau content — see tableau-content-viewer.
+description: End-to-end workflow for building a Tableau data app — scaffold a new app with the scaffold-data-app MCP tool and finalize its returned postUnzip plan, wire in a published datasource, author the extension's query and visualization yourself from the human's stated criteria/vibe, then package the workspace into a .twbx and publish it with the MCP publish-workbook flow. This skill relies on tools that a user may not have access to: scaffold-data-app. The user may not have access to this tool based on their user role, their tableau site settings, or their tableau server version. Don't invoke this skill unless the underlying tool requirements are available for the user. Use for requests to create, build, vibe-code, or publish a Tableau data app or custom viz-extension web app that queries a datasource live. Do not use for a standard native Tableau workbook or dashboard built from marks, Show Me, or the chart catalog — see tableau-workbook-authoring — or to open, show, or render an already-published data app or other existing Tableau content — see tableau-content-viewer.
 ---
 
 # Tableau Data App Authoring
@@ -37,14 +37,66 @@ There's no separate validation stage — `publish-workbook` is where errors
 surface. Get package *layout* right (see Package into a .twbx) or the
 workbook won't open at all.
 
+## Preflight requirements
+
+Complete this preflight before designing, scaffolding, coding, or creating
+application files.
+
+### Publishing access
+
+This workflow requires the connected Tableau user to have:
+
+- a Creator or Explorer (can publish) site role; and
+- permission to publish to the target project.
+
+Do not treat a generic Explorer license as sufficient: the user must have the
+Explorer (can publish) site role or equivalent publishing capability.
+
+Use Tableau metadata or permission information already available in the task
+when it conclusively establishes publishing access. If the user's site role or
+publishing access cannot be determined through the available Tableau tools,
+ask the user to confirm that they have Creator or Explorer (can publish) and
+permission to publish to the target project.
+
+Do not begin substantive data-app work while this prerequisite remains
+unconfirmed.
+
+### Required Tableau MCP capabilities
+
+Before beginning substantive work, verify that all of the following are
+callable:
+
+- `scaffold-data-app`;
+- `publish-workbook`;
+- `request-workbook-upload`
+
+Interactive rendering must also be available for the required post-publish
+verification.
+
+When the app will use a published datasource, also verify that the tools needed
+to resolve that datasource and inspect its metadata are callable.
+
+A capability is not unavailable merely because it has not yet been loaded.
+Perform one focused availability lookup for a missing capability when
+necessary.
+
+If `scaffold-data-app` is unavailable, stop and report the missing capability.
+Do not hand-build or substitute for its scaffold.
+
+If any other required capability is unavailable, stop before scaffolding or
+authoring and tell the user exactly which capability is missing and why it
+prevents completion. Do not create an unpublished data app while presenting
+it as completion.
+
 ## Scaffold and finalize the workspace
 
 Call the `scaffold-data-app` MCP tool with the app name:
 
 > scaffold-data-app({ datappName: "Sales Demo" })
 
-If `scaffold-data-app` is absent or errors, report that to the user — don't
-hand-build the template.
+The preflight must establish that `scaffold-data-app` is callable. If the tool
+is present but the scaffold call fails, report the error and stop. Do not
+hand-build the template or substitute another scaffold.
 
 The result carries an un-substituted template **zip** plus a `postUnzip` plan,
 and either `filePath` (the zip on local disk) or `s3URL` (download it first).
