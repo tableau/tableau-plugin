@@ -18,17 +18,28 @@ the build runs with the Python standard library alone.
 A platform's vars.yaml may list `exclude:` globs (relative to src/plugin/) for
 payload files that platform doesn't ship.
 
+`--variant` builds a renamed copy for local development that can be installed
+next to the published plugin without colliding with it (see VARIANTS):
+
+  prod  what ships: hosted mcp.tableau.com            -> dist/<platform>/
+  test  hosted test.mcp.tableau.com                   -> dist/<platform>-test/
+  stage hosted stage.mcp.tableau.com                  -> dist/<platform>-stage/
+  dev   a local tableau-mcp checkout over stdio       -> dist/<platform>-dev/
+        (TABLEAU_MCP_DIR from this repo's .env, overridable in the host env)
+
 Usage:
     python3 build/build.py                 # build every platform under platforms/
     python3 build/build.py openai          # build only the named platform(s)
     python3 build/build.py --zip claude    # also write dist/claude-tableau.zip
     python3 build/build.py --check openai  # fail if dist/ is stale vs a fresh build
+    python3 build/build.py --variant dev openai
 """
 
 from __future__ import annotations
 
 import argparse
 import filecmp
+import json
 import shutil
 import sys
 import tempfile
@@ -48,6 +59,55 @@ EXCLUDE_DIRS = {"__pycache__", "tests"}
 EXCLUDE_SUFFIXES = (".pyc",)
 
 TEMPLATE_SUFFIX = ".j2"
+
+# Local-development variants. Each gets its own plugin name and MCP server key:
+# hosts key MCP servers by name (Codex skips a second plugin server with the
+# same name), so a variant sharing the published names would shadow, or be
+# shadowed by, the marketplace install.
+VARIANTS = {
+    "prod": None,
+    "test": {"label": "Test", "url": "https://test.mcp.tableau.com"},
+    "stage": {"label": "Stage", "url": "https://stage.mcp.tableau.com"},
+    "dev": {"label": "Dev", "stdio": True},
+}
+MCP_CONFIG_NAMES = (".mcp.json", "mcp.json")
+# Per-developer settings (git-ignored). TABLEAU_MCP_DIR there becomes the dev
+# variant's default checkout.
+DOTENV = ROOT / ".env"
+
+
+def load_dotenv(path: Path) -> dict:
+    """Parse KEY=VALUE lines; blank lines and # comments are skipped."""
+    values = {}
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.removeprefix("export ").partition("=")
+                values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
+def dev_server_command() -> str:
+    """Shell command for the dev variant's stdio server.
+
+    The host plugin cache, not this repo, is where the server runs, so the
+    checkout comes from TABLEAU_MCP_DIR in the host's environment, falling back
+    to the one in .env baked in at build time. dotenv only looks in the cwd,
+    which the host picks, so node loads the checkout's .env; variables already
+    set (TRANSPORT) win over it.
+    """
+    default = load_dotenv(DOTENV).get("TABLEAU_MCP_DIR")
+    if default:
+        default = str(Path(default).expanduser())
+        if any(c in default for c in '"$`\\}'):
+            sys.exit(f"error: TABLEAU_MCP_DIR in {DOTENV} has characters the shell would expand")
+        if not (Path(default) / "build" / "index.js").exists():
+            log(f"warning: {default}/build/index.js not found; run `npm run build` there")
+        checkout = f'${{TABLEAU_MCP_DIR:-{default}}}'
+    else:
+        checkout = '${TABLEAU_MCP_DIR:?set TABLEAU_MCP_DIR (in .env or the environment)}'
+    return f'dir="{checkout}"; exec node --env-file="$dir/.env" "$dir/build/index.js"'
 
 
 def log(msg: str) -> None:
@@ -127,7 +187,72 @@ def copy_tree(src_root: Path, dest_root: Path, variables: dict,
     return copied, rendered
 
 
-def build_platform(platform: str, out_root: Path = DIST_DIR) -> Path:
+def mcp_server_config(variant: dict, original: dict, env_passthrough: bool) -> dict:
+    """The MCP server definition a variant uses in place of the published one."""
+    if not variant.get("stdio"):
+        return {**original, "url": variant["url"]}
+    config = {
+        "command": "sh",
+        "args": ["-c", dev_server_command()],
+        "env": {"TRANSPORT": "stdio"},
+    }
+    if env_passthrough:
+        config["env_vars"] = ["TABLEAU_MCP_DIR"]
+    return {"type": "stdio", **config} if original.get("type") == "streamable-http" else config
+
+
+def rewrite_json(path: Path, edit) -> None:
+    data = json.loads(path.read_text())
+    edit(data)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+def apply_variant(dist: Path, name: str, variant: dict, server_key: str,
+                  env_passthrough: bool) -> None:
+    """Rename the built plugin, its marketplace and MCP server, and repoint the server."""
+    suffix, label = f"-{name}", f" ({variant['label']})"
+
+    def relabel(node) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "displayName" and isinstance(value, str):
+                    node[key] = value + label
+                else:
+                    relabel(value)
+        elif isinstance(node, list):
+            for item in node:
+                relabel(item)
+
+    def edit_marketplace(data: dict) -> None:
+        data["name"] += suffix
+        for plugin in data["plugins"]:
+            plugin["name"] += suffix
+        relabel(data)
+
+    def edit_manifest(data: dict) -> None:
+        data["name"] += suffix
+        relabel(data)
+
+    def edit_mcp(data: dict) -> None:
+        (original,) = data["mcpServers"].values()
+        data["mcpServers"] = {server_key: mcp_server_config(variant, original, env_passthrough)}
+
+    plugin_dir = dist / PAYLOAD_DEST_SUBPATH
+    for path in (dist / ".agents/plugins/marketplace.json",
+                 dist / ".claude-plugin/marketplace.json"):
+        if path.exists():
+            rewrite_json(path, edit_marketplace)
+    for path in (plugin_dir / "plugin.json",
+                 plugin_dir / ".codex-plugin/plugin.json",
+                 plugin_dir / ".claude-plugin/plugin.json"):
+        if path.exists():
+            rewrite_json(path, edit_manifest)
+    for config_name in MCP_CONFIG_NAMES:
+        if (plugin_dir / config_name).exists():
+            rewrite_json(plugin_dir / config_name, edit_mcp)
+
+
+def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "prod") -> Path:
     platform_dir = PLATFORMS_DIR / platform
     if not platform_dir.is_dir():
         sys.exit(f"error: unknown platform '{platform}' (no {platform_dir})")
@@ -135,7 +260,13 @@ def build_platform(platform: str, out_root: Path = DIST_DIR) -> Path:
     variables = load_vars(platform_dir)
     variables.setdefault("platform", platform)
 
-    dist = out_root / platform
+    spec = VARIANTS[variant]
+    server_key = "Tableau" + (spec["label"] if spec else "")
+    if spec and variables.get("mcp_prefix"):
+        # Skills address tools by server key on hosts with a fixed prefix.
+        variables["mcp_prefix"] = f"mcp__{server_key}__"
+
+    dist = out_root / (platform if not spec else f"{platform}-{variant}")
     if dist.exists():
         shutil.rmtree(dist)
 
@@ -149,19 +280,23 @@ def build_platform(platform: str, out_root: Path = DIST_DIR) -> Path:
     if overlay.is_dir():
         c2, r2 = copy_tree(overlay, dist, variables)
 
+    if spec:
+        apply_variant(dist, variant, spec, server_key,
+                      bool(variables.get("mcp_env_passthrough")))
+
     shown = dist.relative_to(ROOT) if dist.is_relative_to(ROOT) else dist
-    log(f"[{platform}] payload: {c1} copied, {r1} rendered | "
+    log(f"[{dist.name}] payload: {c1} copied, {r1} rendered | "
         f"overlay: {c2} copied, {r2} rendered -> {shown}")
     return dist
 
 
-def zip_plugin(platform: str, dist: Path) -> Path:
+def zip_plugin(dist: Path) -> Path:
     """Zip the built plugin dir (manifest at the zip root) for upload/submission.
 
     Entries are sorted with a fixed timestamp so the zip is reproducible.
     """
     plugin_dir = dist / PAYLOAD_DEST_SUBPATH
-    out = dist.parent / f"{platform}-{PAYLOAD_DEST_SUBPATH.name}.zip"
+    out = dist.parent / f"{dist.name}-{PAYLOAD_DEST_SUBPATH.name}.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(p for p in plugin_dir.rglob("*") if p.is_file()):
             info = zipfile.ZipInfo(path.relative_to(plugin_dir).as_posix(),
@@ -170,7 +305,7 @@ def zip_plugin(platform: str, dist: Path) -> Path:
             info.compress_type = zipfile.ZIP_DEFLATED
             zf.writestr(info, path.read_bytes())
     shown = out.relative_to(ROOT) if out.is_relative_to(ROOT) else out
-    log(f"[{platform}] zip -> {shown}")
+    log(f"[{dist.name}] zip -> {shown}")
     return out
 
 
@@ -195,6 +330,8 @@ def main() -> None:
                     help="build to a temp dir and fail if dist/ differs from it")
     ap.add_argument("--zip", action="store_true",
                     help="also zip each built plugin to dist/<platform>-tableau.zip")
+    ap.add_argument("--variant", choices=VARIANTS, default="prod",
+                    help="local-development variant to build (default: prod)")
     args = ap.parse_args()
 
     targets = args.platforms or discover_platforms()
@@ -206,17 +343,17 @@ def main() -> None:
         for platform in targets:
             with tempfile.TemporaryDirectory() as tmp:
                 # Build into a scratch dir, leaving dist/ untouched, and compare.
-                fresh = build_platform(platform, out_root=Path(tmp))
-                staged = DIST_DIR / platform
+                fresh = build_platform(platform, out_root=Path(tmp), variant=args.variant)
+                staged = DIST_DIR / fresh.name
                 if not (staged.exists() and dirs_equal(staged, fresh)):
                     log(f"[{platform}] CHECK FAILED: dist is stale")
                     ok = False
         sys.exit(0 if ok else 1)
 
     for platform in targets:
-        dist = build_platform(platform)
+        dist = build_platform(platform, variant=args.variant)
         if args.zip:
-            zip_plugin(platform, dist)
+            zip_plugin(dist)
 
 
 if __name__ == "__main__":

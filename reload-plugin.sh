@@ -10,7 +10,19 @@ case "${1:-}" in
   claude|claude-desktop)
     TARGET=claude ;;
   *)
-    echo "usage: $0 {openai|claude}" >&2
+    echo "usage: $0 {openai|claude} [test|stage|dev|prod]" >&2
+    exit 1 ;;
+esac
+
+# Pick the variant (see VARIANTS in build/build.py). test, stage and dev install
+# under their own plugin, marketplace and MCP server names, so they sit beside
+# the published plugin instead of colliding with it. prod is the shipping build.
+VARIANT="${2:-test}"
+case "$VARIANT" in
+  test|stage|dev) SUFFIX="-$VARIANT" ;;
+  prod) SUFFIX="" ;;
+  *)
+    echo "usage: $0 {openai|claude} [test|stage|dev|prod]" >&2
     exit 1 ;;
 esac
 
@@ -22,18 +34,19 @@ if [ ! -x "$VENV/bin/python" ]; then
   "$VENV/bin/python" -m pip install -q -r "$DIR/build/requirements.txt"
 fi
 
-# Build the distribution from src/ + platforms/$TARGET/ into dist/$TARGET/,
-# plus an uploadable dist/$TARGET-tableau.zip.
-"$VENV/bin/python" "$DIR/build/build.py" --zip "$TARGET"
-DIST="$DIR/dist/$TARGET"
+# Build the distribution from src/ + platforms/$TARGET/ into
+# dist/$TARGET$SUFFIX/, plus an uploadable dist/$TARGET$SUFFIX-tableau.zip.
+"$VENV/bin/python" "$DIR/build/build.py" --zip --variant "$VARIANT" "$TARGET"
+DIST="$DIR/dist/$TARGET$SUFFIX"
 
 # Reinstall the freshly built plugin into the chosen host.
 if [ "$TARGET" = "openai" ]; then
   # Codex CLI and the ChatGPT/Codex desktop apps share ~/.codex.
-  codex plugin remove Tableau@tableau-plugin || true
-  codex plugin marketplace remove tableau-plugin || true
+  PLUGIN="Tableau$SUFFIX@tableau-plugin$SUFFIX"
+  codex plugin remove "$PLUGIN" || true
+  codex plugin marketplace remove "tableau-plugin$SUFFIX" || true
   codex plugin marketplace add "$DIST"
-  codex plugin add Tableau@tableau-plugin
+  codex plugin add "$PLUGIN"
   echo "Built and installed. Restart the ChatGPT/Codex desktop app to load the changes."
   exit 0
 fi
@@ -47,7 +60,7 @@ fi
 #   - Upload plugin: a .zip with .claude-plugin/plugin.json at its root.
 # If CLAUDE_MARKETPLACE_REPO names a git remote, publish the build there for the
 # first route; otherwise hand over the zip for the second.
-ZIP="$DIR/dist/$TARGET-tableau.zip"
+ZIP="$DIR/dist/$TARGET$SUFFIX-tableau.zip"
 
 open_claude() {
   if [ "$(uname)" = "Darwin" ] && open -Ra Claude 2>/dev/null; then
