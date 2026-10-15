@@ -31,7 +31,8 @@ jobs:
       - name: Build
         run: |
           pip install -r build/requirements.txt
-          python3 build/build.py claude
+          # Pin prod: test/stage/dev variants rename the plugin and repoint its MCP server.
+          python3 build/build.py --variant prod claude
           cp LICENSE.txt dist/claude/plugins/tableau/LICENSE.txt
 
       - name: Commit to dist/claude
