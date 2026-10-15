@@ -1,0 +1,248 @@
+# Render published Tableau content
+
+Render the published or target Tableau view using the least expensive path
+that satisfies the user’s intent. Reuse workbook IDs, view IDs, and URLs
+already resolved during the current task.
+
+## Choose the render path
+
+Use one render attempt per available path and reuse workbook IDs, view IDs,
+and URLs already resolved during the current task.
+
+1. If `render-interactive-viz` is callable, call it once:
+   - use the resolved view LUID with `objectType: "view"` when a specific
+     view is known;
+   - use the workbook LUID with `objectType: "workbook"` only when no
+     specific view can be resolved.
+
+   Return a successful interactive render as-is.
+2. If the interactive-render tool is missing, unknown, disabled, or fails,
+   open the direct `/t/SITE/views/...` URL (see
+   [Build a direct view URL](#build-a-direct-view-url)) in the in-app browser.
+   Use the first available tool, in this order. Don't call a later one once
+   an earlier one succeeds, and skip any that report unknown, unavailable, or
+   disabled:
+   - `navigate`: Claude's built-in (in-app) browser
+
+   Return a successful in-app render as-is. If the page asks the user to sign
+   in to Tableau, tell them to sign in there; that still counts as success.
+3. If no in-app browser is available or it fails, fall back to a static
+   image:
+   - give the user the full direct `/t/SITE/views/...` URL as a Markdown
+     hyperlink, e.g. `[<view name>](https://HOST/t/SITE/views/WORKBOOK/VIEW?...)`;
+   - call `get-view-image` once with `viewId` (the resolved
+     view LUID) and `format: "PNG"`, then handle the result as described in
+     [Download the PNG immediately](#download-the-png-immediately).
+
+Do not retry an unavailable rendering tool or repeat a failed path. The
+static image is the final fallback, even for "render," "show," and "preview"
+requests.
+
+## Download the PNG immediately
+
+`get-view-image` returns either an inline image or a
+`resource_link` holding a short-lived presigned URL. The URL expires quickly,
+so any delay between receiving it and fetching it can lose the render.
+
+- **Before calling**, pick the output path, e.g.
+  `<temp-dir>/<view-luid>.png`, so nothing is left to work out afterwards.
+- **Inline image:** it's already in the chat; don't download it.
+- **`resource_link`:** downloading it is the very next action. Don't call
+  any other tool, read a reference file, write to the user, or reason about
+  the result first. Download with a direct HTTP client, not a browser:
+
+  ```bash
+  curl -sSfL -o "<temp-dir>/<view-luid>.png" "<url>"
+  ```
+
+  If `curl` isn't available, use
+  `python3 -c "import sys,urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])" "<url>" "<temp-dir>/<view-luid>.png"`.
+  Run the download in the shell (the host's bash or code-execution tool).
+  Never pass the URL to a built-in web fetch tool: the presigned URL is
+  about 2,000+ characters and the host's fetch rejects it as too long. If no
+  shell tool is available, or both `curl` and Python fail, treat the PNG
+  path as failed instead of trying a fetch tool.
+- **After downloading**, check the file is a non-empty image, then show it
+  to the user: present the downloaded PNG to the user as a file, so it opens in the side-panel preview, and tell them to click the file card if the preview doesn't open on its own.
+- **If the download fails because the URL expired**, call
+  `get-view-image` once more and download the new URL
+  straight away. This is the only exception to calling it once. If that also
+  fails, treat the PNG path as failed.
+
+## Resolve the target view
+
+Prefer IDs and URLs returned by the current task’s publish result.
+
+When `publish-workbook` returns a list of views:
+
+1. Select the view whose name matches the worksheet or dashboard created or
+   edited for the user.
+2. Use that view’s LUID directly.
+3. Do not search for the workbook or list its views again.
+
+If the publish result contains only a workbook and default-view ID, use the
+default view unless the user requested another named view.
+
+Search or list views only when the current task has not already resolved the
+target view.
+
+## Build a direct view URL
+
+Convert a Tableau application-shell URL:
+
+`https://HOST/#/site/SITE/views/WORKBOOK/VIEW`
+
+to:
+
+`https://HOST/t/SITE/views/WORKBOOK/VIEW`
+
+Preserve URLs already using `/t/SITE/views/...` or `/views/...`.
+
+For Pulse metric URLs such as:
+
+`https://HOST/pulse/site/SITE/metrics/METRIC_ID`
+
+preserve the URL unchanged.
+
+For a specific view, merge these query parameters before any fragment:
+
+- `:showVizHome=no`
+- `:embed=yes`
+- `:toolbar=no`
+- `:tabs=no`
+
+Example:
+
+`https://HOST/t/SITE/views/WORKBOOK/VIEW?:showVizHome=no&:embed=yes&:toolbar=no&:tabs=no`
+
+Use `:tabs=yes` only when intentionally rendering a tabbed workbook rather
+than one specific view.
+
+## Open in the in-app browser
+
+1. Call the first available in-app browser tool once with the direct view URL.
+2. If it reports unknown, unavailable, or disabled, try the next one in the
+   list; otherwise don't call another.
+3. Treat a returned success as confirmation that the view opened; don't call
+   the same tool again for the same URL within this task.
+4. Don't substitute web search, a guessed URL, or a render surface not listed
+   above.
+
+## Check added interactivity
+
+A static render can't show actions, and web zones render blank in it. After
+publishing an edit that **added** interactivity, click through the new pieces
+once in a browser you can drive. This is a check, not a render path: do it
+after the view has been shown by the steps above, whichever path worked.
+
+### When to run it
+
+Run it only when this task's edit added at least one of these. Interactivity
+the workbook already had before the edit doesn't count, and neither do
+tooltips, legends, drill-down, sort buttons, map pan/zoom, group actions,
+pages controls, or extensions on their own.
+
+| Added | Markup to look for in the edit |
+|---|---|
+| Filter action | `<action>` with `command='tsc:tsl-filter'` |
+| Highlight action | `<action>` with `command='tsc:brush'` |
+| URL action | `<action>` with a `<link expression=...>` |
+| Go to sheet action | `<action>` navigating to another sheet |
+| Parameter action | `<action>` with `<edit-parameter-action>` |
+| Set action | `<action>` changing set membership |
+| Filter card | zone with `type-v2='filter'` |
+| Parameter control | zone with `type-v2='paramctrl'` |
+| Web page zone | zone with `type-v2='web'` |
+| Navigation or show/hide button | zone with `type-v2='dashboard-object'` |
+| Highlighter | zone with `type-v2='highlighter'` |
+| Viz in tooltip | a sheet embedded in a worksheet's tooltip |
+| Story points | `<story-points>` or zone with `type-v2='flipboard'` |
+
+### Browser tools
+
+Use whichever browser is available; the tools share base names and may carry
+a host prefix:
+
+- **Claude's built-in browser** (Chat, Code): `navigate` opens the pane.
+- **Claude in Chrome** (Cowork): this is the user's own Chrome. Call
+  `tabs_context_mcp` first, open a new tab with `tabs_create_mcp`, and work
+  only in that tab; leave the user's other tabs alone.
+
+Both provide `computer` (screenshot, click, hover, scroll, wait), `read_page`,
+`find`, `javascript_tool`, and `resize_window`. If no browser is available, or
+it can't open an arbitrary URL and click by screen coordinates (some app
+versions only offer selector-based `preview_*` tools, which can't reach marks
+drawn on Tableau's canvas), skip the check and say interactivity wasn't
+verified and why.
+
+### Steps
+
+1. **Open the view.** Navigate to the direct `/t/SITE/views/...` URL (see
+   [Build a direct view URL](#build-a-direct-view-url)) and take a screenshot.
+2. **Sign-in.** If the page is a Tableau or identity-provider sign-in page,
+   ask the user to sign in in that browser and wait for them. Never type
+   credentials. If the host asks for permission to use the site, let the user
+   answer it.
+3. **Size the viewport.** If the dashboard's `<size>` has a fixed width and
+   height (`sizing-mode='fixed'`, or equal `minwidth`/`maxwidth` and
+   `minheight`/`maxheight`), resize to that size plus about 40 px each way so
+   nothing is cut off. In Claude in Chrome this resizes the user's real
+   window, so first record its size with
+   `javascript_tool` (`[window.outerWidth, window.outerHeight]`).
+4. **Wait for web zones.** Web zones and other iframes take a few seconds to
+   load. Wait up to about 10 s, screenshot, then read each iframe's address
+   with `javascript_tool`
+   (`[...document.querySelectorAll('iframe')].map(f => f.src)`). Don't report
+   a web zone as blank until you've waited.
+5. **Exercise each added piece once.** Screenshot, act, wait 2–3 s,
+   screenshot again, and compare:
+   - **Actions:** Tableau draws marks on a canvas, so they aren't in the page
+     structure. Pick the mark's coordinates from the screenshot and click it
+     (hover for hover-activated actions). Confirm the target sheet filtered,
+     highlighted, changed sheet, or (URL action) the web zone's address or a
+     new tab's URL matches the expected link. Click the same mark again or an
+     empty area to clear the selection.
+   - **Filter cards, parameter controls, highlighters:** these are regular
+     page elements. Locate them with `find` or `read_page`, change one value,
+     confirm the affected sheets change, then set it back.
+   - **Buttons and story points:** click once and confirm the sheet, container,
+     or story point changes; navigate back if needed.
+   - **Viz in tooltip:** hover a mark and confirm the embedded sheet appears
+     in the tooltip.
+   Interaction state isn't saved to the workbook. Never click Save, Edit,
+   Share, Subscribe, Download, Alerts, Comments, or custom-view controls. If a
+   URL action opened a new tab, close it.
+6. **Clean up.** Restore the viewport (the built-in browser's `desktop`
+   preset, or the recorded size in Claude in Chrome) and, in Claude in
+   Chrome, close the tab you opened.
+7. **Report.** List each added piece as verified, not working (with what you
+   saw), or not checked (with why). A piece that doesn't work is a bug in the
+   edit: diagnose it in the TWB, fix, republish once, and re-check only that
+   piece.
+
+Spend at most one interaction per added piece; this is a smoke test, not
+exhaustive testing.
+
+## Failure handling
+
+- Attempt each available render path at most once.
+- Use this fallback order:
+  `render-interactive-viz` → in-app browser (`navigate`) → hyperlink plus `get-view-image` PNG.
+- Do not retry tools that report unknown, unavailable, or disabled.
+- If the PNG also fails, still give the direct URL hyperlink and briefly
+  identify which rendering capabilities were unavailable.
+- Do not let rendering failure obscure a successful workbook publication.
+
+## Success criteria
+
+Rendering is complete when one of the following is true:
+
+- the requested Tableau view is displayed interactively;
+- the direct view URL is open in the in-app browser;
+- the user has the direct URL as a hyperlink and a PNG of the view shown in
+  the chat; or
+- every render path failed and the user has the direct URL hyperlink with a
+  concise explanation.
+
+Report the rendered view’s name and preserve the workbook LUID, view LUID,
+project LUID, and direct URL for follow-up edits.

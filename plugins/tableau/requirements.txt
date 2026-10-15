@@ -1,0 +1,7 @@
+# Third-party packages needed by any skill script, installed once into a shared
+# venv by scripts/run_python.py (see that file). Keep to `name` plus optional
+# comma-separated `>=`, `==` or `<` versions so run_python.py can check them
+# without extra tooling. The floor is the version the validator is tested on;
+# the ceiling blocks breaking major releases while still letting newer Pythons
+# pick up later 6.x wheels.
+lxml>=6.1.3,<7

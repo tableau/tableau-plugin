@@ -1,0 +1,174 @@
+---
+name: tableau-workbook-authoring
+description: Create, edit, copy, or republish a Tableau workbook by editing TWB XML and publishing it through Tableau MCP. Requires Tableau Creator or Explorer (can publish), plus permission to publish to the target project. Use for create, build, edit, modify, copy, republish, or add-chart requests. Do not use for read-only analysis or for just opening/showing an existing view (tableau-content-viewer).
+---
+
+# Purpose
+
+Build or edit a Tableau workbook — from the bundled chart catalog when the request matches it, otherwise by hand-editing TWB XML — validate, publish through Tableau MCP, and render the result.
+
+Script paths below are written relative to `<skill-dir>`: resolve it as the absolute directory containing this loaded `SKILL.md`, and don't assume it is the current working directory. If `python3` isn't on the PATH (common on Windows), use `py -3` or `python` instead.
+
+## Preflight requirements
+
+Complete this preflight before downloading, editing, scaffolding, or creating
+workbook files.
+
+### Publishing access
+
+This workflow requires the connected Tableau user to have:
+
+- a Creator or Explorer (can publish) site role; and
+- permission to publish to the target project.
+
+Do not treat a generic Explorer license as sufficient: the user must have the
+Explorer (can publish) site role or equivalent publishing capability.
+
+Use Tableau metadata or permission information already available in the task
+when it conclusively establishes publishing access. If the user's site role or
+publishing access cannot be determined through the available Tableau tools,
+ask the user to confirm that they have Creator or Explorer (can publish) and
+permission to publish to the target project.
+
+Do not begin substantive workbook authoring while this prerequisite remains
+unconfirmed.
+
+### Required Tableau MCP capabilities
+
+Before beginning substantive work, verify that the Tableau MCP capabilities
+needed by the requested workflow are callable:
+
+- `publish-workbook`;
+- either `request-workbook-upload` or support for publishing
+  through `workbookFilePath`;
+- `get-view-image` for post-publish verification; and
+- for an existing workbook, `search-content` and
+  `download-workbook`.
+
+Interactive rendering must also be available for the required post-publish
+verification.
+
+Check only the capabilities relevant to the current request. A capability is
+not unavailable merely because it has not yet been loaded; perform one focused
+availability lookup when necessary.
+
+If a required capability is unavailable, stop before authoring and tell the
+user exactly which capability is missing and why it prevents completion. Do
+not create an unpublished workbook while presenting it as completion.
+
+## Resolve the requested Tableau object
+
+Resolve the object the user named before resolving its containing workbook.
+
+- “Dashboard” always means a Tableau `view`. Search with
+  `filter: { contentTypes: ["view"] }`.
+- After resolving the dashboard view, use its metadata to identify the parent
+  workbook, then download that workbook for editing.
+- Search with `contentTypes: ["workbook"]` only when the user explicitly names
+  a workbook or when no dashboard/view was specified.
+- Never substitute a workbook search for a dashboard search.
+
+## Canonical Tableau MCP tools
+
+Call these tool IDs directly when they are available. Do not scan or print the
+full tool catalog merely to rediscover their names or schemas.
+The host may list these with a server prefix (e.g. `mcp__<server>__search-content`);
+call the listed tool whose name ends in the name given here.
+
+- Workbook search:
+  `search-content`
+  with `{ terms, filter: { contentTypes: ["workbook"] }, limit }`
+- View / Dashboard search:
+  `search-content`
+  with `{ terms, filter: { contentTypes: ["view"] }, limit }`
+- Exact project lookup:
+  `list-projects`
+  with `{ filter: "name:eq:<project-name>", limit }`
+- Workbook download:
+  `download-workbook`
+  with `{ workbookId, includeExtract: true }`
+- Staged upload (call first, before publishing):
+  `request-workbook-upload`
+- Workbook publish:
+  `publish-workbook`
+  with `{ name, projectId, workbookUploadId, overwrite }`, or
+  `workbookFilePath` in place of `workbookUploadId` if staged upload is disabled
+- Workbook metadata:
+  `get-workbook`
+- View metadata:
+  `get-view`
+- Static view render:
+  `get-view-image`
+  with `{ viewId, format: "PNG", width, height }`.
+  If it returns a URL, download it as the very next action, before anything
+  else. The URL expires quickly; see [`../../references/rendering.md`](../../references/rendering.md#download-the-png-immediately).
+
+If a directly named tool is not callable, perform one focused availability
+lookup for that tool only. Do not enumerate the entire Tableau or global tool
+catalog.
+
+# Routing
+
+- Follow-up edit on a workbook already resolved this task → the fast path below.
+- Building or adding a chart:
+  1. First run:
+     `python3 <skill-dir>/scripts/tableau_resources.py list --tier executable --query "<intent>"`
+  2. If the result is empty, immediately follow the hand-edit path below. Do not read `references/catalog-templates.md`.
+  3. If a match is returned, read [`references/catalog-templates.md`](references/catalog-templates.md), inspect the match, and use `instantiate` for a new workbook or `inject` for an existing one.
+- Adding a breakdown/color split, or a filter, to an existing worksheet (not a whole new chart) → read [`references/field-edits.md`](references/field-edits.md) and use `add-encoding`/`add-filter`. Run `inspect-workbook` first if the field names the user gave aren't confirmed against the workbook yet.
+- No catalog match, and no field-level match above, or a genuinely custom construct neither covers → hand-edit the TWB XML per the steps below. Before writing the XML, look for a worked example with `python3 <skill-dir>/scripts/tableau_resources.py list --tier reference --query "<construct>"` and `inspect` the match. Examples include dashboard filter actions, URL actions, web page zones, and Top N with context filters.
+- First edit/republish of an existing workbook this task → resolve it with `search-content` (`filter: { contentTypes: ["workbook"] }`; see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches), then `download-workbook`.
+- Brand-new workbook with no starting point and no catalog match → read [`references/new-workbook.md`](references/new-workbook.md) first.
+`request-workbook-upload`, `publish-workbook`, `download-workbook`, and interactive rendering may be feature-gated — report a missing tool rather than retrying it.
+
+## Fast path for follow-up edits
+
+Reuse the extracted TWB/TWBX, published workbook ID, project ID, name, and view URL from this task. Make the smallest targeted XML edit, validate once, and republish with whichever transport already worked (`overwrite: true` for the same workbook, `false` for a new copy). Don't re-search, re-download, or re-inspect the whole workbook unless the current artifact is missing or stale.
+
+## Existing workbook, first pass this task
+
+1. Resolve the workbook (and destination project, if named) — reuse LUIDs already known this task; otherwise `search-content` (see [`../../references/search.md`](../../references/search.md) for disambiguating multiple matches). Resolve independent lookups in parallel when supported.
+2. `download-workbook` with `includeExtract: true` unless this is pure inspection that won't be republished. Unzip a TWBX and edit the root TWB.
+3. Add or change content: prefer `inject` against a catalog match (see Routing and [`references/catalog-templates.md`](references/catalog-templates.md)); otherwise hand-edit only the affected worksheet/dashboard and its `<datasource-dependencies>`, matching adjacent XML conventions. **Skip this step** for a plain copy/republish/move with no requested content change.
+4. Validate and publish (below).
+5. Render the result — see [`../../references/rendering.md`](../../references/rendering.md).
+
+If the downloaded package looks incomplete or a dependency is missing, read [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md). For a new XML construct or a validation failure, read [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md).
+
+## Validate and publish
+
+Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. `instantiate`/`inject` check the sheet, field, and datasource references they write, but not the XSD schema. For a hand-edited TWB, after the edit:
+
+```bash
+python3 "<skill-dir>/../../scripts/run_python.py" "<skill-dir>/scripts/validate_workbook.py" /absolute/path/to/workbook.twb --baseline /absolute/path/to/original.twb
+```
+
+Pass `--baseline` with an unedited copy of the workbook as downloaded (keep one before editing) so schema and reference errors your edit introduced block, and ones already in the original are dropped. Don't "fix" content you didn't edit to satisfy the validator: Tableau may reject the newer form. Without `--baseline`, for a workbook built from scratch, reference problems are only `reference check:` warnings: fix them in content you wrote, and leave them alone in content you didn't touch.
+
+The validator needs `lxml`, so always launch it through the plugin's shared `run_python.py` (two levels above `<skill-dir>`). It uses the running Python if that already has the plugin's requirements, otherwise a shared venv that the first call installs once (a few seconds, needs network). If it reports it couldn't prepare the environment, tell the user local validation was skipped and why, then rely on the publish-time validation below instead of retrying.
+
+For TWBX, run `unzip -t` after rebuilding it. Publish with `publish-workbook`, using `request-workbook-upload` first and pass its `workbookUploadId`.  If the `request-workbook-upload` tool is disabled, use `workbookFilePath` and pass in a local path. A TWB is validated inline (`status: 'invalid'` with structured `errors`/`warnings`); a TWBX is validated by Tableau during publish itself, so a failure there surfaces as a publish error instead of a findings list.
+
+If validation fails, fix the reported lines/elements and retry once; stop after 10 cycles and report the remaining errors.
+
+After rendering, if this task's edit added interactivity (actions, filter cards, parameter controls, web zones, buttons, a highlighter, viz in tooltip, or story points), click through it once in the browser — see [Check added interactivity](../../references/rendering.md#check-added-interactivity). Skip it otherwise.
+
+Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up can use the fast path.
+
+# Requirements
+
+- Keep worksheet, dashboard, datasource, and zone names unique and consistent.
+- Prefer fields already declared in the TWB's `<column>` metadata over inspecting the extract or datasource metadata; `inspect-workbook` (see `references/field-edits.md`) reads exactly that metadata.
+- Don't invent field names, roles, or numbers not backed by inspected metadata.
+- Don't force-fit a catalog template onto a chart it doesn't match — fall back to hand-editing instead of stretching the closest template.
+- If the `download-workbook` tool returns a temporary URL, download the file locally
+
+# References
+
+- [`../../references/search.md`](../../references/search.md) — resolving a name/keyword to a workbook and disambiguating multiple matches.
+- [`references/catalog-templates.md`](references/catalog-templates.md) — chart catalog: discover, inspect, and render bundled templates via `scripts/tableau_resources.py`.
+- [`references/field-edits.md`](references/field-edits.md) — add a breakdown/color split or a filter to an existing worksheet via `inspect-workbook`/`add-encoding`/`add-filter`.
+- [`references/new-workbook.md`](references/new-workbook.md) — brand-new workbook, no starting point, no catalog match.
+- [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package, or staged-upload steps and errors.
+- [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md) — new XML construct or validation failure.
+- [`../../references/rendering.md`](../../references/rendering.md) — render the published/target view.
