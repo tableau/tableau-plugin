@@ -9,6 +9,10 @@ assistant_name: ChatGPT and Codex
 # tools are addressed by the bare server key from .mcp.json ("Tableau").
 mcp_prefix: "mcp__Tableau__"
 
+# Codex hands a plugin's stdio MCP server only a minimal environment, so the
+# dev variant lists the variables it needs (TABLEAU_MCP_DIR) under `env_vars`.
+mcp_env_passthrough: true
+
 # Host-provided tools (NOT tools served by the Tableau MCP server). These names
 # are how each host surfaces its own built-in tools.
 tools:

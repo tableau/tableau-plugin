@@ -43,7 +43,35 @@ python3 build/build.py                 # build every platform
 python3 build/build.py openai          # build one platform -> dist/openai/
 python3 build/build.py --zip claude    # also write dist/claude-tableau.zip
 python3 build/build.py --check         # CI: fail if dist/ is stale
+python3 build/build.py --variant dev openai   # local-development build
 ```
+
+### Variants
+
+The published plugin and a local build can't share names. Codex keeps one MCP
+server per name (it skips a second plugin's `Tableau` server), and both hosts
+namespace skills and tools by plugin name. So `--variant` builds a renamed copy
+that installs beside the marketplace plugin:
+
+| Variant | MCP server | Output | Plugin / MCP server key |
+|---|---|---|---|
+| `prod` (default) | `https://mcp.tableau.com` | `dist/<platform>/` | `Tableau` / `Tableau` |
+| `test` | `https://test.mcp.tableau.com` | `dist/<platform>-test/` | `Tableau-test` / `TableauTest` |
+| `stage` | `https://stage.mcp.tableau.com` | `dist/<platform>-stage/` | `Tableau-stage` / `TableauStage` |
+| `dev` | local [tableau-mcp](https://github.com/tableau/tableau-mcp) over stdio | `dist/<platform>-dev/` | `Tableau-dev` / `TableauDev` |
+
+(Claude plugin names are lowercase: `tableau-test`, `tableau-stage`,
+`tableau-dev`.) The skills' tool names follow the server key, e.g.
+`mcp__TableauDev__search-content`.
+
+`dev` runs `node --env-file=<checkout>/.env <checkout>/build/index.js` with
+`TRANSPORT=stdio`. Point it at your checkout with `TABLEAU_MCP_DIR` in this
+repo's `.env` (git-ignored; copy `.env.example`), and the build bakes that in
+as the default. Hosts run the plugin from their own cache, not from this repo,
+so rebuild after changing it. A `TABLEAU_MCP_DIR` in the host app's environment
+still overrides the baked default. The checkout's own `.env` supplies `SERVER`,
+`SITE_NAME` and auth. After changing tableau-mcp, run `npm run build` there and
+start a new task; there's no need to reinstall the plugin.
 
 The build copies `src/plugin/` into `dist/<platform>/plugins/tableau/`, then
 merges `platforms/<platform>/overlay/` over the top (overlay wins on collision).
@@ -89,16 +117,23 @@ install covers all of them. `reload-plugin.sh` builds the plugin and
 (re)installs it:
 
 ```bash
-./reload-plugin.sh openai
+./reload-plugin.sh openai          # test variant (default)
+./reload-plugin.sh openai stage    # hosted stage.mcp.tableau.com
+./reload-plugin.sh openai dev      # local tableau-mcp over stdio
 ```
 
 The script:
 
 1. creates `.build-venv/` with the build dependencies (first run only);
-2. builds `dist/openai/`;
-3. removes any previous `Tableau@tableau-plugin` install and its marketplace;
-4. registers `dist/openai/` as the `tableau-plugin` marketplace and installs
-   the plugin.
+2. builds `dist/openai-<variant>/`;
+3. removes any previous `Tableau-<variant>@tableau-plugin-<variant>` install
+   and its marketplace;
+4. registers `dist/openai-<variant>/` as the `tableau-plugin-<variant>`
+   marketplace and installs the plugin.
+
+Each variant has its own names, so test, stage, dev and the marketplace plugin
+can be installed at once; disable the ones you aren't using to keep the tool
+list unambiguous.
 
 Then:
 
@@ -122,12 +157,12 @@ uploading it once it also appears on claude.ai and on your other machines.
 
 1. **Build the zip:**
    ```bash
-   ./reload-plugin.sh claude
+   ./reload-plugin.sh claude          # or: ./reload-plugin.sh claude dev
    ```
-   This writes `dist/claude-tableau.zip` and, on macOS, shows it in Finder
+   This writes `dist/claude-test-tableau.zip` and, on macOS, shows it in Finder
    and opens Claude.
 2. **Upload it.** In Claude, open **Customize → Plugins**, choose
-   **Add → Upload plugin**, and pick `dist/claude-tableau.zip`.
+   **Add → Upload plugin**, and pick `dist/claude-test-tableau.zip`.
 3. **Connect Tableau.** Open the installed **Tableau** plugin, go to its
    **Connectors** tab, and connect the Tableau connector. Sign in to Tableau
    Cloud or Server when prompted.
