@@ -6,7 +6,7 @@
     "name": "Salesforce, Inc."
   },
   "repository": "https://github.com/tableau/tableau-plugin",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": [
     "tableau",
     "analytics",
