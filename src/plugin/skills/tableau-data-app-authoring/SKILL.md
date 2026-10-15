@@ -393,6 +393,22 @@ Uses the MCP publish tools (not available to Slack clients).
    source. Omit it when no data source was wired. Do no extra permission lookups. Relay its stdout to the user
    verbatim.
 
+   Then **report what changed in `.agents/`** since the last publish (for an
+   app you downloaded, compared with the downloaded copy). The docs ship
+   inside the workbook, so the user must never be surprised by them. List
+   each file you added, edited, or moved to `history/`, with one line on
+   what changed, for example:
+
+   > **Agent docs (`.agents/`) published with this app:**
+   > - Added `spec.md`: the three questions the app answers, with filters and acceptance criteria.
+   > - Updated `memories.md`: noted the switch from a bar chart to a table.
+   > - Moved the previous `design.md` to `history/design.v1.2026-10-14.md` and saved your new one as v2.
+
+   Include files copied in from the user, and `README.md` if
+   `package_twbx.py` created it. If nothing changed, say so in one line
+   ("No changes to `.agents/`."). Do this after every publish, not only the
+   first.
+
    If `publish-workbook` returns `status: "invalid"` (or an error), surface the
    `errors`/`warnings` verbatim; common causes trace back to `.twb`/`.trex`
    wiring, not packaging. Set `overwrite: true` only if the user wants to replace
@@ -412,6 +428,9 @@ Uses the MCP publish tools (not available to Slack clients).
   `Packages/<id>/content/`.
 - Don't write agent docs for a clear, one-shot request. When modifying an
   existing app, read `.agents/` before changing anything.
+- Don't publish `.agents/` changes silently. After every publish, tell the
+  user which files in `.agents/` you added, edited, or moved to `history/`,
+  or say that nothing changed.
 - Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.
