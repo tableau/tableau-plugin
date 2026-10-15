@@ -37,6 +37,58 @@ There's no separate validation stage — `publish-workbook` is where errors
 surface. Get package *layout* right (see Package into a .twbx) or the
 workbook won't open at all.
 
+## Agent docs (`.agents/`)
+
+Every workspace has an `.agents/` folder at its root, next to the `.twb`. It
+holds context files (`spec.md`, `design.md`, `memories.md`, …) that guide
+agents building or changing the app. It ships inside the `.twbx`, so it's
+there for the next agent that opens the app. Its `README.md` (shipped by the
+template, or added by `package_twbx.py`) holds the conventions: file roles,
+frontmatter, and history. Read it once before writing any docs.
+
+**Decide at the start of the session which case applies.** Write docs only
+when they add value:
+
+| Situation | What to do |
+|---|---|
+| **User brings `spec.md` / `design.md` / other context files** | Always copy them into `.agents/` using the README's conventions: add frontmatter (`source: user`), and if the name already exists, move the current file to `history/` first. Treat them as the source of truth for the build. |
+| **User asks for help designing or planning, or the request is vague or multi-step** | Write `spec.md` (and `design.md` when look and feel matters), like a plan. Confirm it with the user before building. Add to `memories.md` as decisions are made. Publish with the docs. |
+| **Clear, one-shot request** | Don't create or edit docs. Only the template README ships. Don't spend time on documentation. |
+| **Modifying an existing app** | See Modify an existing app below. **Read `.agents/` before changing anything.** |
+
+- **Roles:** `spec.md` is what the app must do (questions answered, data,
+  filters, acceptance criteria). `design.md` is how it looks and behaves
+  (layout, visual style, interaction). `memories.md` is a dated log of
+  decisions and gotchas; add to it, don't rewrite it.
+- **Frontmatter** on every doc except `README.md`: `version`, `updated`
+  (`YYYY-MM-DD`), `source` (`user` | `agent`).
+- **History is only for user-supplied files.** Replaced versions go to
+  `.agents/history/<name>.v<version>.<updated>.md`, and the new file's
+  `version` goes up by one. Your own edits need no history entry; the
+  workbook's revision history already versions the `.twbx`.
+- **Size (not enforced):** keep docs concise and text-only, well under about
+  100 KB in total. No datasets, screenshots, or binaries. Summarize instead
+  of pasting transcripts.
+- **No secrets:** no tokens, credentials, or personal data. Anyone who can
+  download the workbook can read `.agents/`.
+- **Location:** `.agents/` at the workspace root only. Never put docs under
+  `Packages/<id>/content/`; that's the extension's web root, served to the
+  browser. Don't create `Packages/<id>/.agents/` unless the user asks for
+  notes about one specific extension package.
+
+### Modify an existing app
+
+1. Download it with `download-workbook({ workbookId, includeExtract: false })`.
+   You get a local file or a URL to fetch. Unzip the `.twbx` into a folder
+   named after the app; that folder is the workspace (`.twb`, `Packages/`,
+   `.agents/` at its root).
+2. **Read everything in `.agents/` before changing anything.** Follow
+   `spec.md` and `design.md` unless the user overrides them.
+3. Make the change, then continue at Package into a .twbx and Publish
+   (`overwrite: true` to replace the app).
+4. Afterwards, add to `memories.md` only if a decision changed, and update
+   `spec.md` only if the scope changed.
+
 ## Scaffold and finalize the workspace
 
 Call the `scaffold-data-app` MCP tool with the app name:
@@ -50,7 +102,9 @@ The result carries an un-substituted template **zip** plus a `postUnzip` plan,
 and either `filePath` (the zip on local disk) or `s3URL` (download it first).
 Branch on whichever is present; past the fetch step the steps are identical.
 It also returns `allowedOrigins: string[]` — any external origin the app
-fetches from must be in that list.
+fetches from must be in that list. Newer servers also return
+`agentDocs: { dir, instructions }`, which points at the workspace's `.agents/`
+folder (see Agent docs above). It's the same folder either way.
 
 Apply the plan deterministically with the bundled script — applying it freehand
 leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` / `TODO Sheet Name` tokens or interleaves
@@ -102,6 +156,7 @@ At the end of this stage you have a finalized workspace directory:
 ```
 <App Name>/
   <App Name>.twb
+  .agents/README.md         ← agent docs (see Agent docs above)
   Packages/com.tableau.mcp.<slug>/
     extensions/data-app.trex
     content/index.html
@@ -279,6 +334,15 @@ python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized work
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
 
+It always includes the root `.agents/` folder, and creates it with the
+standard `README.md` if it's missing. Other root-level files are not
+packaged, so docs must live in `.agents/`. Before publishing, confirm the
+archive contains `.agents/`:
+
+```bash
+unzip -l "<App Name>.twbx" | grep '\.agents/'
+```
+
 > The template these workspaces come from is already publish-valid (`.twb`
 > extension wired into a pane, `.trex` with `author email`, `<resources>` block,
 > `<icon>`, `min-api-version`). Packaging is the only structural step you own.
@@ -342,7 +406,12 @@ Uses the MCP publish tools (not available to Slack clients).
 ## Non-negotiable limits
 
 - Don't zip the `.twbx` freehand. Use `scripts/package_twbx.py` — it keeps
-  `.twb` + `Packages/` at the archive root, never nested under `<App Name>/`.
+  `.twb` + `Packages/` + `.agents/` at the archive root, never nested under
+  `<App Name>/`.
+- Don't put secrets in `.agents/`, and never put agent docs under
+  `Packages/<id>/content/`.
+- Don't write agent docs for a clear, one-shot request. When modifying an
+  existing app, read `.agents/` before changing anything.
 - Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.

@@ -21,8 +21,14 @@ Usage: python3 package_twbx.py <workspaceDir> [outputPath]
 
 import glob
 import os
+import shutil
 import sys
 import zipfile
+
+AGENTS_DIR = '.agents'
+AGENTS_README = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             'assets', 'agents-README.md')
+AGENTS_WARN_BYTES = 1024 * 1024
 
 
 def die(message):
@@ -32,6 +38,34 @@ def die(message):
 
 def is_cruft(rel_path):
     return any(part.endswith('.DS_Store') or part.startswith('__MACOSX') for part in rel_path.split('/'))
+
+
+def ensure_agents_dir(workspace):
+    """Create `.agents/README.md` from the bundled copy if missing; never overwrite."""
+    readme = os.path.join(workspace, AGENTS_DIR, 'README.md')
+    if not os.path.isfile(readme):
+        os.makedirs(os.path.dirname(readme), exist_ok=True)
+        shutil.copyfile(AGENTS_README, readme)
+        print(f'• Created {AGENTS_DIR}/README.md (workspace had none)', file=sys.stderr)
+
+
+def add_tree(archive, workspace, top):
+    """Add `top` recursively under its workspace-relative path; returns bytes of files added."""
+    total = 0
+    for root, dirs, files in os.walk(top):
+        dirs.sort()
+        rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
+        if is_cruft(rel_root):
+            dirs[:] = []
+            continue
+        archive.write(root, rel_root)
+        for name in sorted(files):
+            rel = f'{rel_root}/{name}'
+            if not is_cruft(rel):
+                path = os.path.join(root, name)
+                archive.write(path, rel)
+                total += os.path.getsize(path)
+    return total
 
 
 def main():
@@ -60,22 +94,18 @@ def main():
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
 
+    ensure_agents_dir(workspace)
+
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.write(os.path.join(workspace, twb), twb)
-        for root, dirs, files in os.walk(packages):
-            dirs.sort()
-            rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
-            if is_cruft(rel_root):
-                dirs[:] = []
-                continue
-            archive.write(root, rel_root)
-            for name in sorted(files):
-                rel = f'{rel_root}/{name}'
-                if not is_cruft(rel):
-                    archive.write(os.path.join(root, name), rel)
+        add_tree(archive, workspace, packages)
+        agents_bytes = add_tree(archive, workspace, os.path.join(workspace, AGENTS_DIR))
 
-    print(f'✓ Packaged {twb} + Packages/ into {output}', file=sys.stderr)
+    if agents_bytes > AGENTS_WARN_BYTES:
+        print(f'⚠ {AGENTS_DIR}/ is {agents_bytes / (1024 * 1024):.1f} MB — keep agent docs concise '
+              'and text-only (no datasets, screenshots, or binaries).', file=sys.stderr)
+    print(f'✓ Packaged {twb} + Packages/ + {AGENTS_DIR}/ into {output}', file=sys.stderr)
     print(output)
 
 
