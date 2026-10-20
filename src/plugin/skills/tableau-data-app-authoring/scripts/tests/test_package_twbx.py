@@ -69,6 +69,44 @@ def test_excludes_ds_store_and_macosx(tmp_path):
     assert f'{PACKAGE}/content/src/app.js' in entries
 
 
+def test_packs_data_and_resources_at_root(tmp_path):
+    workspace = make_workspace(tmp_path)
+    datasources = workspace / 'Data' / 'Datasources'
+    datasources.mkdir(parents=True)
+    (datasources / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
+    (datasources / '.DS_Store').write_text('x')
+    agents = workspace / 'Resources' / '.agents'
+    agents.mkdir(parents=True)
+    (agents / 'notes.md').write_text('# notes')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert entries[0] == 'Sales Demo.twb'
+    assert 'Data/Datasources/Sample.xls' in entries
+    assert 'Resources/.agents/notes.md' in entries
+    assert f'{PACKAGE}/extensions/data-app.trex' in entries
+    assert not any(entry.startswith('Sales Demo/') for entry in entries)
+    assert not any('.DS_Store' in entry for entry in entries)
+    with zipfile.ZipFile(result.stdout.strip()) as archive:
+        assert archive.read('Data/Datasources/Sample.xls') == b'\xd0\xcf\x11\xe0'
+    assert '✓ Packaged Sales Demo.twb + Packages/, Data/, Resources/' in result.stderr
+
+
+def test_skips_other_workspace_dirs(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'node_modules' / 'pkg').mkdir(parents=True)
+    (workspace / 'node_modules' / 'pkg' / 'index.js').write_text('//')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert not any(entry.startswith('node_modules') for entry in entries)
+    assert not any(entry.startswith(('Data', 'Resources')) for entry in entries)
+
+
 def test_explicit_output_overwrites_existing_file(tmp_path):
     workspace = make_workspace(tmp_path)
     output = tmp_path / 'out' / 'custom.twbx'

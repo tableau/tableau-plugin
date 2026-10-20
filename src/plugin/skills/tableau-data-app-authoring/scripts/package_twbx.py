@@ -4,11 +4,14 @@ Package a finalized data-app workspace into a `.twbx`. Workspace shape:
   <App Name>/
     <App Name>.twb
     Packages/<package id>/extensions/*.trex, content/...
+    Data/...        (optional: embedded datasource files the .twb references)
+    Resources/...   (optional)
 
-The archive holds the `.twb` (written first) and `Packages/` at its ROOT, never
-nested under `<App Name>/` — nesting fails to open on publish with
+The archive holds the `.twb` (written first), `Packages/`, and any `Data/` and
+`Resources/` at its ROOT, never nested under `<App Name>/` — nesting fails to open on publish with
 `PackageValidationException: Package directory contains no extension .trex
-files under extensions/`. OS cruft (`.DS_Store`, `__MACOSX`) is skipped.
+files under extensions/`. Without `Data/`, a `.twb` that references an embedded
+file by relative path publishes fine but has no data at runtime. OS cruft (`.DS_Store`, `__MACOSX`) is skipped.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 and at least one `.trex` under `Packages/*/extensions/`.
@@ -24,6 +27,9 @@ import os
 import sys
 import zipfile
 
+# Workspace-root dirs copied into the archive root, in order. Packages/ is
+# required (checked in main); the rest are packed only when present.
+PACKED_DIRS = ('Packages', 'Data', 'Resources')
 
 def die(message):
     print(f'✗ {message}', file=sys.stderr)
@@ -60,22 +66,26 @@ def main():
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
 
+    dirs_to_pack = [name for name in PACKED_DIRS if os.path.isdir(os.path.join(workspace, name))]
+
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.write(os.path.join(workspace, twb), twb)
-        for root, dirs, files in os.walk(packages):
-            dirs.sort()
-            rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
-            if is_cruft(rel_root):
-                dirs[:] = []
-                continue
-            archive.write(root, rel_root)
-            for name in sorted(files):
-                rel = f'{rel_root}/{name}'
-                if not is_cruft(rel):
-                    archive.write(os.path.join(root, name), rel)
+        for top in dirs_to_pack:
+            for root, dirs, files in os.walk(os.path.join(workspace, top)):
+                dirs.sort()
+                rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
+                if is_cruft(rel_root):
+                    dirs[:] = []
+                    continue
+                archive.write(root, rel_root)
+                for name in sorted(files):
+                    rel = f'{rel_root}/{name}'
+                    if not is_cruft(rel):
+                        archive.write(os.path.join(root, name), rel)
 
-    print(f'✓ Packaged {twb} + Packages/ into {output}', file=sys.stderr)
+    packed = ', '.join(f'{name}/' for name in dirs_to_pack)
+    print(f'✓ Packaged {twb} + {packed} into {output}', file=sys.stderr)
     print(output)
 
 
