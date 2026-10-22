@@ -10,6 +10,9 @@ import zipfile
 
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'package_twbx.py')
 PACKAGE = 'Packages/com.tableau.mcp.sales-demo'
+TWB_WITH_XLS = ("<workbook><datasources><datasource><connection class='federated'><named-connections>"
+                "<named-connection name='excel'><connection class='excel-direct' filename='Data/Datasources/Sample.xls'/>"
+                "</named-connection></named-connections></connection></datasource></datasources></workbook>")
 
 
 def run_package(*args):
@@ -69,15 +72,13 @@ def test_excludes_ds_store_and_macosx(tmp_path):
     assert f'{PACKAGE}/content/src/app.js' in entries
 
 
-def test_packs_data_and_resources_at_root(tmp_path):
+def test_packs_data_at_root(tmp_path):
     workspace = make_workspace(tmp_path)
     datasources = workspace / 'Data' / 'Datasources'
     datasources.mkdir(parents=True)
     (datasources / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
     (datasources / '.DS_Store').write_text('x')
-    agents = workspace / 'Resources' / '.agents'
-    agents.mkdir(parents=True)
-    (agents / 'notes.md').write_text('# notes')
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
 
     result = run_package(str(workspace))
 
@@ -85,13 +86,91 @@ def test_packs_data_and_resources_at_root(tmp_path):
     entries = names(result.stdout.strip())
     assert entries[0] == 'Sales Demo.twb'
     assert 'Data/Datasources/Sample.xls' in entries
-    assert 'Resources/.agents/notes.md' in entries
     assert f'{PACKAGE}/extensions/data-app.trex' in entries
     assert not any(entry.startswith('Sales Demo/') for entry in entries)
     assert not any('.DS_Store' in entry for entry in entries)
     with zipfile.ZipFile(result.stdout.strip()) as archive:
         assert archive.read('Data/Datasources/Sample.xls') == b'\xd0\xcf\x11\xe0'
-    assert '✓ Packaged Sales Demo.twb + Packages/, Data/, Resources/' in result.stderr
+    assert '✓ Packaged Sales Demo.twb + Packages/, Data/ into' in result.stderr
+
+
+def test_fails_when_twb_references_missing_data_file(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert '✗ Sales Demo.twb references files missing from the workspace' in result.stderr
+    assert 'Data/Datasources/Sample.xls' in result.stderr
+    assert not (tmp_path / 'Sales Demo.twbx').exists()
+
+
+def test_packs_only_agents_under_resources(tmp_path):
+    workspace = make_workspace(tmp_path)
+    agents = workspace / 'Resources' / '.agents'
+    (agents / 'history').mkdir(parents=True)
+    (agents / 'README.md').write_text('# agents')
+    (agents / 'history' / 'spec.md').write_text('# old spec')
+    (workspace / 'Resources' / 'scratch.md').write_text('scratch')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Resources/.agents/README.md' in entries
+    assert 'Resources/.agents/history/spec.md' in entries
+    assert 'Resources/scratch.md' not in entries
+    assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
+
+
+def test_skips_hidden_entries_below_packed_dirs(tmp_path):
+    workspace = make_workspace(tmp_path)
+    content = workspace / PACKAGE / 'content'
+    (content / '.git').mkdir()
+    (content / '.git' / 'config').write_text('x')
+    (content / '.env').write_text('SECRET=x')
+    (content / '.DS_Store').write_text('x')
+    (content / '.config' / 'gh').mkdir(parents=True)
+    (content / '.config' / 'gh' / 'hosts.yml').write_text('token: x')
+    data = workspace / 'Data'
+    data.mkdir()
+    (data / '.env').write_text('SECRET=x')
+    agents = workspace / 'Resources' / '.agents'
+    agents.mkdir(parents=True)
+    (agents / 'README.md').write_text('# agents')
+    (agents / '.env').write_text('SECRET=x')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Resources/.agents/README.md' in entries
+    assert not any(part.startswith('.') for entry in entries
+                   for part in entry.removeprefix('Resources/.agents/').split('/'))
+    assert f"  skipped {PACKAGE}/content/.config/ (hidden: names starting with '.' are not packed)\n" in result.stderr
+    assert f"  skipped {PACKAGE}/content/.env (hidden: " in result.stderr
+    assert 'skipped Resources/.agents/.env' in result.stderr
+    assert 'gh/hosts.yml' not in result.stderr
+    assert '.DS_Store' not in result.stderr
+
+
+def test_follows_symlinked_data_dir(tmp_path):
+    workspace = make_workspace(tmp_path)
+    shared = tmp_path / 'shared'
+    shared.mkdir()
+    (shared / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / 'Datasources').symlink_to(shared, target_is_directory=True)
+    (workspace / 'Data' / 'Datasources' / 'loop').symlink_to(workspace / 'Data', target_is_directory=True)
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Data/Datasources/Sample.xls' in entries
+    assert not any('/loop/' in entry for entry in entries)
 
 
 def test_skips_other_workspace_dirs(tmp_path):

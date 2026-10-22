@@ -328,10 +328,13 @@ hand:
 python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized workspace dir
 ```
 
-It also packs `Data/` and `Resources/` at the archive root when the workspace
-has them, so a `.twb` that references an embedded datasource file by relative
-path (e.g. `Data/Datasources/<file>.xls`) keeps its data. Nothing else at the
-workspace root is packed.
+It also packs `Data/` and `Resources/.agents/` at the archive root when the
+workspace has them, so a `.twb` that references an embedded datasource file by
+relative path (e.g. `Data/Datasources/<file>.xls`) keeps its data. It fails if
+a `Data/` file the `.twb` references is missing. Nothing else at the workspace
+root or under `Resources/` is packed, and below those dirs any file or folder
+whose name starts with `.` is skipped, along with everything inside it. Each
+one is listed on stderr with the reason; relay those lines to the user.
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
@@ -399,7 +402,7 @@ Uses the MCP publish tools (not available to Slack clients).
 ## Non-negotiable limits
 
 - Don't zip the `.twbx` freehand. Use `scripts/package_twbx.py` — it keeps
-  `.twb`, `Packages/`, and any `Data/`/`Resources/` at the archive root, never
+  `.twb`, `Packages/`, and any `Data/`/`Resources/.agents/` at the archive root, never
   nested under `<App Name>/`.
 - Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
