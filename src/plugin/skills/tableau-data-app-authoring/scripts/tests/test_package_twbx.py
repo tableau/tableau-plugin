@@ -106,6 +106,27 @@ def test_fails_when_twb_references_missing_data_file(tmp_path):
     assert not (tmp_path / 'Sales Demo.twbx').exists()
 
 
+def test_checks_directory_plus_filename_connections(tmp_path):
+    # CSV, JSON, and shapefile connections split the path: directory='Data' filename='x.csv'.
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Sales Demo.twb').write_text(
+        "<workbook><datasources><datasource><connection class='federated'><named-connections>"
+        "<named-connection name='csv'><connection class='textscan' directory='Data' filename='orders.csv'/>"
+        "</named-connection></named-connections></connection></datasource></datasources></workbook>")
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'Data/orders.csv' in result.stderr
+
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / 'orders.csv').write_text('a,b\n1,2\n')
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert 'Data/orders.csv' in names(result.stdout.strip())
+
+
 def test_packs_only_agents_under_resources(tmp_path):
     workspace = make_workspace(tmp_path)
     agents = workspace / 'Resources' / '.agents'

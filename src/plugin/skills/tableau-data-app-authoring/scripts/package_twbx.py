@@ -39,7 +39,9 @@ PACKED_DIRS = ('Packages', 'Data', 'Resources/.agents')
 
 HIDDEN_REASON = "(hidden: names starting with '.' are not packed)"
 
-# Connection attributes that hold a workbook-relative file path.
+# Connection attributes that hold a workbook-relative file path. Excel and Hyper
+# put the whole path in one (filename='Data/x.xlsx'); CSV, JSON, and shapefile
+# split it (directory='Data' filename='x.csv').
 FILE_ATTRS = ('filename', 'dbname')
 
 
@@ -65,8 +67,11 @@ def missing_data_files(workspace, twb):
         die(f'Could not parse {twb}: {error}')
     missing = set()
     for element in root.iter('connection'):
+        directory = element.get('directory', '').replace('\\', '/').rstrip('/')
         for attr in FILE_ATTRS:
             path = element.get(attr, '').replace('\\', '/')
+            if attr == 'filename' and directory and path:
+                path = f'{directory}/{path}'
             if path.startswith('Data/') and not os.path.isfile(os.path.join(workspace, path)):
                 missing.add(path)
     return sorted(missing)
