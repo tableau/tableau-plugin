@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-Wire one or more published datasources into a scaffolded data-app `.twb`.
+Wire one or more datasources into a scaffolded data-app `.twb`: published ones
+and files embedded in the workspace's `Data/` folder, in any mix.
 
 `scaffold-data-app` emits a workbook with TWO empty `<datasources />` anchors
 (workbook root + worksheet `<view>`). Until both are filled the extension's
 `getAllDataSourcesAsync()` finds nothing and renders "no data source found in
-the workbook." This fills both with N published `sqlproxy` (Data Server)
-datasources, keeping each `sqlproxy.<hash>` join key byte-identical everywhere.
+the workbook." This fills both in one run with N datasources:
+  - published: a `sqlproxy` (Data Server) connection, joined by `sqlproxy.<hash>`.
+  - file: a `federated` datasource over one Excel sheet (`excel-direct`) or CSV
+    file (`textscan`) at a workspace-relative `Data/...` path, joined by
+    `federated.<hash>`; its named connection is `<class>.<hash>` (same hash).
+Each join key stays byte-identical everywhere it appears.
 
 A script, not freehand XML, because the wiring spans coordinated locations that
 must agree exactly (root datasource `name`, root `relation connection`, view
@@ -36,8 +41,18 @@ list ONLY the fields the app will query). Either one datasource:
       { "name": "Region", "datatype": "string", "role": "dimension" }
     ]
   }
-or any number of them, primary first, wired in a single run:
+or an embedded file (the file must already be in the workspace):
+  {
+    "type":     "file",
+    "caption":  "Sample - Superstore",
+    "file":     "Data/Datasources/Sample - Superstore.xls",  // relative to the .twb; .xls, .xlsx, .xlsm, or .csv
+    "table":    "Orders",                                    // Excel only: the sheet to query
+    "connectionName": "federated.<hash>",                    // optional, generated if omitted
+    "fields": [ ...as above... ]
+  }
+or any number of either, primary first, wired in a single run:
   { "datasources": [ { ...as above... }, { ...as above... } ] }
+`type` defaults to "published".
 """
 
 import json
@@ -49,6 +64,15 @@ import xml.etree.ElementTree as ET
 
 # The exact empty anchor emitted by the scaffold template. Matched literally.
 EMPTY_ANCHOR = '<datasources />'
+
+# Embedded file extension -> connection class.
+FILE_CLASSES = {'.xls': 'excel-direct', '.xlsx': 'excel-direct', '.xlsm': 'excel-direct', '.csv': 'textscan'}
+
+# local-type -> the remote-type code Tableau records for each file class.
+FILE_REMOTE_TYPES = {
+    'excel-direct': {'string': 130, 'integer': 20, 'real': 5, 'date': 7, 'datetime': 7, 'boolean': 11},
+    'textscan': {'string': 129, 'integer': 20, 'real': 5, 'date': 133, 'datetime': 135, 'boolean': 11},
+}
 
 
 def die(message):
@@ -106,15 +130,27 @@ def derive_field(field, ordinal, error_prefix=''):
     }
 
 
-def generate_connection_name():
+def generate_connection_name(prefix):
     token = lambda: ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
-    return f'sqlproxy.{token()}{token()}'
+    return f'{prefix}.{token()}{token()}'
+
+
+def parse_fields(descriptor, error_prefix):
+    fields_in = descriptor.get('fields') if isinstance(descriptor.get('fields'), list) else []
+    if len(fields_in) == 0:
+        die(f'{error_prefix}Descriptor "fields" must list at least one field the app will query.')
+    return [derive_field(f, i, error_prefix) for i, f in enumerate(fields_in)]
 
 
 # Validate one datasource descriptor. `error_prefix` names the datasource in errors when wiring several.
 def parse_datasource(descriptor, error_prefix=''):
     if not isinstance(descriptor, dict):
         die(f'{error_prefix}Descriptor must be a JSON object.')
+    kind = descriptor.get('type', 'published')
+    if kind == 'file':
+        return parse_file_datasource(descriptor, error_prefix)
+    if kind != 'published':
+        die(f'{error_prefix}Descriptor "type" must be "published" or "file" (got {json.dumps(kind)}).')
     for key in ('caption', 'repositoryId', 'site', 'server'):
         value = descriptor.get(key)
         # site may be "" (the Default site); everything else must be non-empty.
@@ -123,22 +159,59 @@ def parse_datasource(descriptor, error_prefix=''):
     channel = descriptor.get('channel') or 'https'
     port = descriptor.get('port') if descriptor.get('port') is not None else (443 if channel == 'https' else 80)
 
-    fields_in = descriptor.get('fields') if isinstance(descriptor.get('fields'), list) else []
-    if len(fields_in) == 0:
-        die(f'{error_prefix}Descriptor "fields" must list at least one field the app will query.')
+    fields = parse_fields(descriptor, error_prefix)
 
     connection_name = descriptor.get('connectionName')
     if connection_name and not connection_name.startswith('sqlproxy.'):
         die(f'{error_prefix}connectionName must start with "sqlproxy." (got "{connection_name}").')
 
     return {
+        'type': 'published',
         'caption': descriptor['caption'],
         'repositoryId': descriptor['repositoryId'],
         'site': descriptor['site'],
         'server': descriptor['server'],
         'channel': channel,
         'port': port,
-        'fields': [derive_field(f, i, error_prefix) for i, f in enumerate(fields_in)],
+        'fields': fields,
+        'connectionName': connection_name,
+    }
+
+
+def parse_file_datasource(descriptor, error_prefix):
+    for key in ('caption', 'file'):
+        value = descriptor.get(key)
+        if not isinstance(value, str) or not value:
+            die(f'{error_prefix}Descriptor is missing required string "{key}".')
+    file_path = descriptor['file'].replace('\\', '/')
+    parts = file_path.split('/')
+    if len(parts) < 2 or parts[0] != 'Data' or any(part in ('', '.', '..') for part in parts):
+        die(f'{error_prefix}"file" must be a path inside the workspace Data/ folder, '
+            f'e.g. "Data/Datasources/Sales.xlsx" (got "{descriptor["file"]}").')
+    file_class = FILE_CLASSES.get(os.path.splitext(file_path)[1].lower())
+    if not file_class:
+        die(f'{error_prefix}"file" must be an Excel (.xls, .xlsx, .xlsm) or CSV (.csv) file (got "{file_path}").')
+
+    table = descriptor.get('table')
+    if file_class == 'excel-direct':
+        if not isinstance(table, str) or not table:
+            die(f'{error_prefix}Excel datasources need "table": the name of the sheet to query.')
+    elif table is not None:
+        die(f'{error_prefix}"table" applies only to Excel files; a CSV file is its own table.')
+
+    fields = parse_fields(descriptor, error_prefix)
+
+    connection_name = descriptor.get('connectionName')
+    if connection_name and not connection_name.startswith('federated.'):
+        die(f'{error_prefix}connectionName for a file datasource must start with "federated." (got "{connection_name}").')
+
+    return {
+        'type': 'file',
+        'caption': descriptor['caption'],
+        'file': file_path,
+        'class': file_class,
+        'table': table,
+        'fields': fields,
         'connectionName': connection_name,
     }
 
@@ -158,6 +231,8 @@ def parse_descriptor(descriptor):
 
     seen_repository_ids = set()
     for i, ds in enumerate(datasources):
+        if ds['type'] != 'published':
+            continue
         if ds['repositoryId'] in seen_repository_ids:
             die(f'datasources[{i}]: repositoryId "{ds["repositoryId"]}" is listed more than once.')
         seen_repository_ids.add(ds['repositoryId'])
@@ -177,11 +252,18 @@ def parse_descriptor(descriptor):
     used = set(explicit_names)
     for ds in datasources:
         if not ds['connectionName']:
-            name = generate_connection_name()
+            prefix = 'sqlproxy' if ds['type'] == 'published' else 'federated'
+            name = generate_connection_name(prefix)
             while name in used:
-                name = generate_connection_name()
+                name = generate_connection_name(prefix)
             ds['connectionName'] = name
             used.add(name)
+        # The connection the root relation points at: itself for sqlproxy, the
+        # named file connection (same hash) for federated.
+        if ds['type'] == 'published':
+            ds['relationConnection'] = ds['connectionName']
+        else:
+            ds['relationConnection'] = f"{ds['class']}.{ds['connectionName'].split('.', 1)[1]}"
     return datasources
 
 
@@ -193,6 +275,58 @@ def repository_location_xml(repository_id, site):
 
 
 def root_datasource_xml(ds):
+    return published_datasource_xml(ds) if ds['type'] == 'published' else file_datasource_xml(ds)
+
+
+# Tableau bracket-quotes table names, doubling any `]` inside.
+def bracket(name):
+    return '[' + name.replace(']', ']]') + ']'
+
+
+def file_datasource_xml(ds):
+    if ds['class'] == 'excel-direct':
+        # A sheet named Orders is the table [Orders$].
+        relation_name, table = ds['table'], bracket(f"{ds['table']}$")
+        connection = (f"<connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' "
+                      f"filename='{esc(ds['file'])}' interpretationMode='0' password='' server='' validate='no' />")
+    else:
+        # CSV splits the path, and orders.csv is the table [orders#csv].
+        directory, filename = ds['file'].rsplit('/', 1)
+        stem, extension = filename.rsplit('.', 1)
+        relation_name, table = filename, bracket(f'{stem}#{extension}')
+        connection = (f"<connection class='textscan' directory='{esc(directory)}' "
+                      f"filename='{esc(filename)}' password='' server='' />")
+    remote_types = FILE_REMOTE_TYPES[ds['class']]
+    metadata_records = '\n'.join(
+        f"""          <metadata-record class='column'>
+            <remote-name>{esc(f['name'])}</remote-name>
+            <remote-type>{remote_types.get(f['datatype'], remote_types['string'])}</remote-type>
+            <local-name>{esc(f['localName'])}</local-name>
+            <parent-name>{esc(bracket(relation_name))}</parent-name>
+            <remote-alias>{esc(f['name'])}</remote-alias>
+            <ordinal>{f['ordinal']}</ordinal>
+            <local-type>{esc(f['datatype'])}</local-type>
+            <aggregation>{f['aggregation']}</aggregation>
+            <contains-null>true</contains-null>
+          </metadata-record>"""
+        for f in ds['fields']
+    )
+    return f"""    <datasource caption='{esc(ds['caption'])}' inline='true' name='{esc(ds['connectionName'])}' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='{esc(ds['caption'])}' name='{esc(ds['relationConnection'])}'>
+            {connection}
+          </named-connection>
+        </named-connections>
+        <relation connection='{esc(ds['relationConnection'])}' name='{esc(relation_name)}' table='{esc(table)}' type='table' />
+        <metadata-records>
+{metadata_records}
+        </metadata-records>
+      </connection>
+    </datasource>"""
+
+
+def published_datasource_xml(ds):
     metadata_records = '\n'.join(
         f"""          <metadata-record class='column'>
             <remote-name>{esc(f['name'])}</remote-name>
@@ -254,8 +388,12 @@ def verify_wiring(wired, datasources):
         root_ds = root_datasources.get(name)
         if root_ds is None:
             die(f'Root <datasources> is missing {name} — wiring incomplete.')
-        if root_ds.find(f".//relation[@connection='{name}']") is None:
-            die(f'Root datasource {name} has no relation connection to itself — wiring incomplete.')
+        relation_connection = ds['relationConnection']
+        if root_ds.find(f".//relation[@connection='{relation_connection}']") is None:
+            target = 'itself' if relation_connection == name else relation_connection
+            die(f'Root datasource {name} has no relation connection to {target} — wiring incomplete.')
+        if ds['type'] == 'file' and root_ds.find(f".//named-connection[@name='{relation_connection}']") is None:
+            die(f'Root datasource {name} has no named connection {relation_connection} — wiring incomplete.')
 
     # The server only connects datasources listed on the host sheet's view.
     host_view = next(
@@ -290,6 +428,14 @@ def main():
     datasources = parse_descriptor(descriptor)
     primary = datasources[0]
 
+    # An embedded file the .twb points at must already sit in the workspace, or
+    # the app packages and publishes but has no data at runtime.
+    workspace = os.path.dirname(twb_path)
+    for ds in datasources:
+        if ds['type'] == 'file' and not os.path.isfile(os.path.join(workspace, ds['file'])):
+            die(f"Datasource '{ds['caption']}' file \"{ds['file']}\" is not in the workspace ({workspace}). "
+                'Copy it there first, at that path relative to the .twb.')
+
     # --- build the XML blocks ----------------------------------------------
 
     root_datasources = '<datasources>\n' + '\n'.join(root_datasource_xml(ds) for ds in datasources) + '\n  </datasources>'
@@ -318,7 +464,7 @@ def main():
     head = content[:split_idx]
     tail = content[split_idx:]
 
-    if "class='sqlproxy'" in head:
+    if "class='sqlproxy'" in head or "class='federated'" in head:
         die('This .twb is already wired. To change its datasources, re-scaffold, copy content/src/app.js '
             'into the new workspace, and wire every datasource in one run.')
 

@@ -1,6 +1,6 @@
 ---
 name: tableau-data-app-authoring
-description: Build and publish a Tableau data app, a custom viz-extension web app that queries a published datasource live. Scaffolds the app with the scaffold-data-app MCP tool, writes its query and visualization from the user's criteria or vibe, then packages it as a .twbx and publishes it. Requires scaffold-data-app, which may be unavailable depending on the user's site role, site settings, or Tableau Server version; don't invoke this skill unless it is available. Use to create, build, vibe-code, or publish a data app. Not for native workbooks or dashboards built from marks, Show Me, or the chart catalog (tableau-workbook-authoring), or for opening existing content, including published data apps (tableau-content-viewer).
+description: Build and publish a Tableau data app, a custom viz-extension web app that queries a published datasource live, or an Excel or CSV file embedded in the workbook. Scaffolds the app with the scaffold-data-app MCP tool, writes its query and visualization from the user's criteria or vibe, then packages it as a .twbx and publishes it. Requires scaffold-data-app, which may be unavailable depending on the user's site role, site settings, or Tableau Server version; don't invoke this skill unless it is available. Use to create, build, vibe-code, or publish a data app. Not for native workbooks or dashboards built from marks, Show Me, or the chart catalog (tableau-workbook-authoring), or for opening existing content, including published data apps (tableau-content-viewer).
 ---
 
 # Tableau Data App Authoring
@@ -160,7 +160,12 @@ At the end of this stage you have a finalized workspace directory:
     content/src/app.js      ← the authoring surface
     content/src/styles.css
     content/src/tableau.extensions.1.latest.min.js
+  Data/.gitkeep             ← placeholder; embedded datasource files go here
+  Resources/.agents/README.md   ← which agent docs travel with the workbook
 ```
+
+Keep the `Resources/.agents/README.md` as shipped and follow it for what else
+to put in that folder.
 
 **Sheet name:** the worksheet is named after the app's display name. It's a
 plain string with no hash/join-key involved, so it's freely hand-editable at
@@ -181,10 +186,15 @@ user only wants to publish the starter to prove packaging. Only add, remove, or
 swap datasources the user asked for; if you think a different or extra
 datasource would help, ask first.
 
-The app queries a datasource that already exists on the server (a `sqlproxy`
-connection, resolved live by VDS). Its identity can come straight from the
-user, or be reused from a datasource already wired into some other existing
-workbook — see Reuse an existing workbook's datasource below.
+The app queries either kind of datasource, in any mix:
+
+- **Published:** a datasource that already exists on the server (a `sqlproxy`
+  connection, resolved live by VDS). Its identity can come straight from the
+  user, or be reused from a datasource already wired into some other existing
+  workbook (see Reuse an existing workbook's datasource below).
+- **Embedded file:** an Excel sheet or CSV file the user supplies, copied into
+  the workspace's `Data/` folder and packed into the `.twbx` (see Embedded
+  file datasource below).
 
 Do **not** hand-edit the XML — the anchors must be filled atomically with a
 matching join key across multiple coordinated locations, or the app silently
@@ -263,6 +273,39 @@ Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
 
+**Embedded file datasource:** use this when the user hands you an Excel
+(`.xls`, `.xlsx`, `.xlsm`) or CSV file instead of naming a published
+datasource. The same script wires it; the descriptor just has `"type": "file"`.
+
+1. **Copy the file into the workspace** under `Data/`, conventionally
+   `Data/Datasources/<file>`. The script fails if the file isn't there, or if
+   its path is outside `Data/`.
+2. **Write a descriptor.** `file` is the path relative to the `.twb`. For
+   Excel, `table` is the sheet to query (sheet `Orders` → `"table": "Orders"`);
+   CSV has no `table`. Field names must match the sheet's or file's column
+   headers exactly. No server, site, or `repositoryId`:
+
+   ```bash
+   cat > "$WORK/descriptor.json" <<'DS_JSON'
+   {
+     "type": "file",
+     "caption": "Sample - Superstore",
+     "file": "Data/Datasources/Sample - Superstore.xls",
+     "table": "Orders",
+     "fields": [
+       { "name": "Sales",  "datatype": "real",   "role": "measure"   },
+       { "name": "Region", "datatype": "string", "role": "dimension" }
+     ]
+   }
+   DS_JSON
+   ```
+
+   To mix it with published datasources, put every entry in one
+   `datasources` array (primary first) as above.
+3. **Run the wiring script** the same way as for a published datasource. It
+   generates a `federated.<hash>` join key unless you supply `connectionName`
+   (which must then start with `federated.`).
+
 **Reuse an existing workbook's datasource:** point the Published path above
 at a datasource already wired into some *other* already-published workbook,
 instead of a fresh published DS. Only applies when that datasource actually
@@ -274,8 +317,10 @@ have produced).
    if ambiguous), then call `get-workbook({ workbookId })` and read
    `upstreamDatasources[]` — ask which entry if it lists more than one.
 2. Check the matched entry's `datasourceType`:
-   - **`"embedded"`** — it can't be reused via this path; ask the user for a
-     published datasource instead.
+   - **`"embedded"`**: its data lives inside that workbook, so it can't be
+     reused by reference. Ask the user for either a published datasource or
+     the source Excel/CSV file, and wire the file as an Embedded file
+     datasource above.
    - **`"published"`** — still run the rest of Published datasource step 1
      (`list-datasources` filtered by this LUID, for `contentUrl`/site/server
      — `get-workbook` doesn't carry those — plus
@@ -328,13 +373,17 @@ hand:
 python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized workspace dir
 ```
 
-It also packs `Data/` and `Resources/.agents/` at the archive root when the
-workspace has them, so a `.twb` that references an embedded datasource file by
-relative path (e.g. `Data/Datasources/<file>.xls`) keeps its data. It fails if
-a `Data/` file the `.twb` references is missing. Nothing else at the workspace
-root or under `Resources/` is packed, and below those dirs any file or folder
-whose name starts with `.` is skipped, along with everything inside it. Each
-one is listed on stderr with the reason; relay those lines to the user.
+It also packs `Data/` and `Resources/.agents/` at the archive root, so a
+`.twb` that references an embedded datasource file by relative path (e.g.
+`Data/Datasources/<file>.xls`) keeps its data. A folder is packed only when it
+holds at least one file to pack: the template's `Data/`, with nothing but its
+`.gitkeep`, is left out of the `.twbx` (expected when no file is embedded).
+It fails if a `Data/` file the `.twb` references is missing. Nothing else at
+the workspace root or under `Resources/` is packed. Below those folders,
+`.gitkeep` placeholders and OS cruft (`.DS_Store`, `__MACOSX`) are skipped
+silently, and any other file or folder whose name starts with `.` is skipped,
+along with everything inside it, and listed on stderr as `  skipped <path>
+(<why>)`; relay those lines to the user.
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
@@ -386,7 +435,8 @@ Uses the MCP publish tools (not available to Slack clients).
    source (the normal case after `wire_datasource.py`, or when reusing one),
    with its published name from `list-datasources` as `<name>` (not the
    descriptor's caption, which can differ). Repeat it once per wired data
-   source. Omit it when no data source was wired. Do no extra permission lookups. Relay its stdout to the user
+   source. Omit it for embedded file datasources and when no data source was
+   wired. Do no extra permission lookups. Relay its stdout to the user
    verbatim.
 
    If `publish-workbook` returns `status: "invalid"` (or an error), surface the
@@ -403,7 +453,11 @@ Uses the MCP publish tools (not available to Slack clients).
 
 - Don't zip the `.twbx` freehand. Use `scripts/package_twbx.py` — it keeps
   `.twb`, `Packages/`, and any `Data/`/`Resources/.agents/` at the archive root, never
-  nested under `<App Name>/`.
+  nested under `<App Name>/`, and leaves out a `Data/` that holds only its
+  `.gitkeep`.
+- Don't reference an embedded file from outside `Data/` or leave it out of the
+  workspace. `wire_datasource.py` and `package_twbx.py` both refuse, and a
+  `.twbx` without the file publishes but has no data at runtime.
 - Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.

@@ -33,6 +33,14 @@ def make_workspace(tmp_path, with_trex=True):
     return workspace
 
 
+def add_template_dirs(workspace):
+    # The scaffold-data-app template ships Data/ with only a placeholder, plus the agent README.
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / '.gitkeep').write_text('')
+    (workspace / 'Resources' / '.agents').mkdir(parents=True)
+    (workspace / 'Resources' / '.agents' / 'README.md').write_text('# Resources/.agents/')
+
+
 def names(twbx_path):
     with zipfile.ZipFile(twbx_path) as archive:
         return archive.namelist()
@@ -92,6 +100,57 @@ def test_packs_data_at_root(tmp_path):
     with zipfile.ZipFile(result.stdout.strip()) as archive:
         assert archive.read('Data/Datasources/Sample.xls') == b'\xd0\xcf\x11\xe0'
     assert '✓ Packaged Sales Demo.twb + Packages/, Data/ into' in result.stderr
+
+
+def test_template_data_dir_with_only_placeholder_is_not_packed(tmp_path):
+    workspace = make_workspace(tmp_path)
+    add_template_dirs(workspace)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert not any(entry.startswith('Data') for entry in entries)
+    assert 'Resources/.agents/README.md' in entries
+    assert 'gitkeep' not in result.stderr
+    assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
+
+
+def test_placeholder_is_skipped_silently_next_to_data_files(tmp_path):
+    workspace = make_workspace(tmp_path)
+    add_template_dirs(workspace)
+    (workspace / 'Data' / 'Datasources').mkdir()
+    (workspace / 'Data' / 'Datasources' / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Data/Datasources/Sample.xls' in entries
+    assert not any('gitkeep' in entry for entry in entries)
+    assert 'gitkeep' not in result.stderr
+    assert '✓ Packaged Sales Demo.twb + Packages/, Data/, Resources/.agents/ into' in result.stderr
+
+
+def test_dirs_without_packed_files_are_left_out(tmp_path):
+    workspace = make_workspace(tmp_path)
+    data = workspace / 'Data'
+    (data / 'Datasources').mkdir(parents=True)
+    (data / 'Datasources' / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
+    (data / 'Extracts').mkdir()
+    (data / 'Scratch').mkdir()
+    (data / 'Scratch' / '.gitkeep').write_text('')
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Data/' in entries
+    assert 'Data/Datasources/' in entries
+    assert 'Data/Datasources/Sample.xls' in entries
+    assert not any(entry.startswith(('Data/Extracts', 'Data/Scratch')) for entry in entries)
 
 
 def test_fails_when_twb_references_missing_data_file(tmp_path):
@@ -174,6 +233,10 @@ def test_skips_hidden_entries_below_packed_dirs(tmp_path):
     assert 'skipped Resources/.agents/.env' in result.stderr
     assert 'gh/hosts.yml' not in result.stderr
     assert '.DS_Store' not in result.stderr
+    # Data/ held only a hidden file, so it's reported but Data/ itself isn't packed.
+    assert 'skipped Data/.env' in result.stderr
+    assert not any(entry.startswith('Data') for entry in entries)
+    assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
 
 
 def test_follows_symlinked_data_dir(tmp_path):
