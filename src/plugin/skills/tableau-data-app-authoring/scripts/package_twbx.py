@@ -38,23 +38,15 @@ def die(message):
     sys.exit(1)
 
 
-def is_cruft(rel_path):
-    return any(part.endswith('.DS_Store') or part.startswith('__MACOSX') for part in rel_path.split('/'))
-
-
 def collect_entries(workspace, top, allowed=None):
     entries = []  # (path, archive name, is_dir)
     for root, dirs, files in os.walk(os.path.join(workspace, top)):
-        dirs.sort()
+        dirs[:] = sorted(name for name in dirs if not name.startswith(('.', '__MACOSX')))
         rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
-        if is_cruft(rel_root):
-            dirs[:] = []
-            continue
         entries.append((root, rel_root, True))
-        dirs[:] = [name for name in dirs if not name.startswith('.')]
         for name in sorted(files):
             rel = f'{rel_root}/{name}'
-            if name.startswith('.') or is_cruft(rel) or (allowed is not None and rel not in allowed):
+            if name.startswith('.') or (allowed is not None and rel not in allowed):
                 continue
             entries.append((os.path.join(root, name), rel, False))
 
@@ -110,8 +102,9 @@ def main():
     entries_by_top = {}
     for top in PACKED_DIRS:
         if os.path.isdir(os.path.join(workspace, top)):
-            entries_by_top[top] = collect_entries(workspace, top, referenced if top == 'Data' else None)
-    dirs_to_pack = [top for top, entries in entries_by_top.items() if entries]
+            entries = collect_entries(workspace, top, referenced if top == 'Data' else None)
+            if entries:
+                entries_by_top[top] = entries
 
     packed = {rel for entries in entries_by_top.values() for _, rel in entries}
     missing = sorted(referenced - packed)
@@ -122,12 +115,11 @@ def main():
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.write(os.path.join(workspace, twb), twb)
-        for top in dirs_to_pack:
-            for path, rel in entries_by_top[top]:
+        for entries in entries_by_top.values():
+            for path, rel in entries:
                 archive.write(path, rel)
 
-    packed = ', '.join(f'{top}/' for top in dirs_to_pack)
-    print(f'✓ Packaged {twb} + {packed} into {output}', file=sys.stderr)
+    print(f"✓ Packaged {twb} + {', '.join(top + '/' for top in entries_by_top)} into {output}", file=sys.stderr)
     print(output)
 
 
