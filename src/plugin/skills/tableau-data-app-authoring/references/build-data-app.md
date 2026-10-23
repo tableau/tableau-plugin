@@ -8,8 +8,8 @@
 
 ## Live-query model (read this first)
 
-**The data app queries its datasource live via the Tableau Extensions API — there is NO local data
-snapshot.** The shipped app calls `readMetadataAsync()` / `queryAsync()` at view time against the
+**The data app queries its datasource live via the Tableau Extensions API: no data is baked into
+the app code.** The shipped app calls `readMetadataAsync()` / `queryAsync()` at view time against the
 wired datasource. A published datasource always reflects current data; an embedded file is
 packed into the `.twbx` and is current only as of packaging. Two consequences:
 

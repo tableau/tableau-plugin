@@ -4,32 +4,19 @@ Package a finalized data-app workspace into a `.twbx`. Workspace shape:
   <App Name>/
     <App Name>.twb
     Packages/<package id>/extensions/*.trex, content/...
-    Data/...                (optional: embedded datasource files the .twb references)
-    Resources/.agents/...   (optional: agent docs that travel with the workbook)
+    Data/...                (optional: files the .twb references)
+    Resources/.agents/...   (optional: agent docs)
 
-The scaffold-data-app template ships `Data/` holding only a `.gitkeep`
-placeholder and `Resources/.agents/README.md`.
-
-The archive holds the `.twb` (written first), `Packages/`, and any `Data/` and
-`Resources/.agents/` at its ROOT, never nested under `<App Name>/`: nesting fails to open on publish with
-`PackageValidationException: Package directory contains no extension .trex
-files under extensions/`. Without `Data/`, a `.twb` that references an embedded
-file by relative path publishes fine but has no data at runtime. Nothing else
-under `Resources/` is packed. A dir is packed only when it holds at least one
-packed file, so a `Data/` with nothing but its `.gitkeep` is left out. Under
-`Data/`, only the files the `.twb` references are packed; any other file there is
-skipped and listed on stderr like the skips below. OS cruft
-(`.DS_Store`, `__MACOSX`) and `.gitkeep` placeholders are skipped silently; any
-other file or dir whose name starts with `.` below those dirs is skipped and
-listed on stderr as `  skipped <path> (<why>)`. Symlinks are never followed:
-each one is skipped and listed the same way, since a link could pull any file
-on the machine (an SSH key, a token) into an archive that gets published.
+The archive holds the `.twb` (written first), `Packages/`, `Data/`, and
+`Resources/.agents/` at its ROOT, never nested under `<App Name>/`: nesting fails
+to open on publish with `PackageValidationException: Package directory contains
+no extension .trex files under extensions/`. Hidden files, symlinks, and `Data/`
+files the `.twb` doesn't reference are skipped and listed on stderr as
+`  skipped <path> (<why>)`; OS cruft and `.gitkeep` are skipped silently.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 at least one `.trex` under `Packages/*/extensions/`, and every `Data/` file the
-`.twb` references packed under that exact (case-sensitive) path. Also fails if
-the `.twb` or `Packages/` is a symlink, or on an unreadable file; the output is
-only replaced once the new archive is complete.
+`.twb` references.
 
 Output defaults to `<App Name>.twbx` next to the workspace dir; an existing
 file is overwritten. Prints the output path on stdout.
