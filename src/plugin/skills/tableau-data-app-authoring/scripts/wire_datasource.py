@@ -445,6 +445,10 @@ def main():
         if ds['type'] == 'file' and not os.path.isfile(os.path.join(workspace, ds['file'])):
             die(f"Datasource '{ds['caption']}' file \"{ds['file']}\" is not in the workspace ({workspace}). "
                 'Copy it there first, at that path relative to the .twb.')
+        parts = ds['file'].split('/') if ds['type'] == 'file' else []
+        if any(os.path.islink(os.path.join(workspace, *parts[:i])) for i in range(1, len(parts) + 1)):
+            die(f"Datasource '{ds['caption']}' file \"{ds['file']}\" is a symlink, which packaging won't follow. "
+                'Copy the real file there instead.')
 
     # --- build the XML blocks ----------------------------------------------
 

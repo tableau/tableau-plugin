@@ -379,14 +379,16 @@ It also packs `Data/` and `Resources/.agents/` at the archive root, so a
 holds at least one file to pack: the template's `Data/`, with nothing but its
 `.gitkeep`, is left out of the `.twbx` (expected when no file is embedded).
 It fails if a `Data/` file the `.twb` references isn't packed under exactly
-that path (missing, hidden, or different letter case, which macOS hides but the
-server doesn't), or if a file can't be read (e.g. a dangling symlink); an
-existing `.twbx` is only replaced once the new one is complete. Nothing else at
+that path (missing, hidden, a symlink, or different letter case, which macOS
+hides but the server doesn't), or if a file can't be read; an existing `.twbx`
+is only replaced once the new one is complete. Nothing else at
 the workspace root or under `Resources/` is packed. Below those folders,
 `.gitkeep` placeholders and OS cruft (`.DS_Store`, `__MACOSX`) are skipped
-silently, and any other file or folder whose name starts with `.` is skipped,
-along with everything inside it, and listed on stderr as `  skipped <path>
-(<why>)`; relay those lines to the user.
+silently. Any other file or folder whose name starts with `.`, and every
+symlink (never followed, since a link could pull any file on the machine into a
+published workbook), is skipped along with everything inside it and listed on
+stderr as `  skipped <path> (<why>)`; relay those lines to the user. Copy
+embedded files into `Data/`; never link them.
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.

@@ -633,3 +633,17 @@ def test_quote_in_connection_name_fails_cleanly(tmp_path):
     assert result.returncode == 1
     assert result.stderr.strip() == (
         '✗ connectionName must be letters and digits after the prefix (got "federated.ab\'c").')
+
+
+def test_symlinked_file_is_rejected(tmp_path):
+    real = tmp_path / 'elsewhere.xls'
+    real.write_bytes(b'\xd0\xcf\x11\xe0')
+    (tmp_path / 'Data' / 'Datasources').mkdir(parents=True)
+    (tmp_path / XLS_PATH).symlink_to(real)
+    twb = write_twb(tmp_path)
+
+    result = run_wire(twb, write_descriptor(tmp_path, excel_descriptor()))
+
+    assert result.returncode == 1
+    assert 'is a symlink, which packaging won\'t follow' in result.stderr
+    assert open(twb).read() == TWB_TEMPLATE

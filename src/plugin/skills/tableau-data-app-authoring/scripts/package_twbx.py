@@ -19,14 +19,15 @@ under `Resources/` is packed. A dir is packed only when it holds at least one
 packed file, so a `Data/` with nothing but its `.gitkeep` is left out. OS cruft
 (`.DS_Store`, `__MACOSX`) and `.gitkeep` placeholders are skipped silently; any
 other file or dir whose name starts with `.` below those dirs is skipped and
-listed on stderr as `  skipped <path> (<why>)`. Symlinked files and dirs are
-followed.
+listed on stderr as `  skipped <path> (<why>)`. Symlinks are never followed:
+each one is skipped and listed the same way, since a link could pull any file
+on the machine (an SSH key, a token) into an archive that gets published.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 at least one `.trex` under `Packages/*/extensions/`, and every `Data/` file the
-`.twb` references packed under that exact (case-sensitive) path. Also fails on a
-dangling symlink or unreadable file; the output is only replaced once the new
-archive is complete.
+`.twb` references packed under that exact (case-sensitive) path. Also fails if
+the `.twb` or `Packages/` is a symlink, or on an unreadable file; the output is
+only replaced once the new archive is complete.
 
 Output defaults to `<App Name>.twbx` next to the workspace dir; an existing
 file is overwritten. Prints the output path on stdout.
@@ -46,6 +47,7 @@ import zipfile
 PACKED_DIRS = ('Packages', 'Data', 'Resources/.agents')
 
 HIDDEN_REASON = "(hidden: names starting with '.' are not packed)"
+SYMLINK_REASON = '(symlink: links are not followed; copy the file in instead)'
 
 # Keeps an otherwise-empty dir (the template's Data/) in git; never packed or reported.
 PLACEHOLDER = '.gitkeep'
@@ -71,14 +73,13 @@ def is_hidden(rel_path, top):
     return any(part.startswith('.') for part in below.split('/') if part)
 
 
-# True when a symlinked dir points back at one of its own ancestors. Only cycles
-# are cut: a second link to the same dir (Data/current -> v2) is packed under
-# both names, since the .twb may reference either.
-def is_cycle(workspace, rel_root):
-    parts = rel_root.split('/')
-    real_root = os.path.realpath(os.path.join(workspace, rel_root))
-    return any(os.path.realpath(os.path.join(workspace, *parts[:i])) == real_root
-               for i in range(1, len(parts)))
+# The first symlinked component of a workspace-relative path, or None.
+def linked_part(workspace, rel_path):
+    parts = rel_path.split('/')
+    for i in range(1, len(parts) + 1):
+        if os.path.islink(os.path.join(workspace, *parts[:i])):
+            return '/'.join(parts[:i])
+    return None
 
 
 # Walk one packed dir and return its (path, archive name) entries in walk order,
@@ -87,31 +88,35 @@ def is_cycle(workspace, rel_root):
 # is the output path, so repacking into the workspace never packs the old archive.
 def collect_entries(workspace, top, skip):
     entries = []  # (path, archive name, is_dir)
-    for root, dirs, files in os.walk(os.path.join(workspace, top), followlinks=True):
+    for root, dirs, files in os.walk(os.path.join(workspace, top)):
         dirs.sort()
         rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
-        if is_cruft(rel_root) or is_cycle(workspace, rel_root):
+        if is_cruft(rel_root):
             dirs[:] = []
             continue
         entries.append((root, rel_root, True))
-        # Prune hidden dirs here so each is reported once, not per file inside.
+        # Prune hidden and linked dirs here so each is reported once, not per file inside.
         for name in list(dirs):
             rel = f'{rel_root}/{name}'
-            if not is_cruft(rel) and is_hidden(rel, top):
-                print(f'  skipped {rel}/ {HIDDEN_REASON}', file=sys.stderr)
+            if is_cruft(rel):
+                continue
+            reason = HIDDEN_REASON if is_hidden(rel, top) else (
+                SYMLINK_REASON if os.path.islink(os.path.join(root, name)) else None)
+            if reason:
+                print(f'  skipped {rel}/ {reason}', file=sys.stderr)
                 dirs.remove(name)
         for name in sorted(files):
             rel = f'{rel_root}/{name}'
-            if is_cruft(rel) or name == PLACEHOLDER:
-                continue
-            if is_hidden(rel, top):
-                print(f'  skipped {rel} {HIDDEN_REASON}', file=sys.stderr)
-                continue
             path = os.path.join(root, name)
-            if os.path.realpath(path) == skip:
+            if is_cruft(rel) or name == PLACEHOLDER or os.path.realpath(path) == skip:
+                continue
+            reason = HIDDEN_REASON if is_hidden(rel, top) else (
+                SYMLINK_REASON if os.path.islink(path) else None)
+            if reason:
+                print(f'  skipped {rel} {reason}', file=sys.stderr)
                 continue
             if not os.path.isfile(path) or not os.access(path, os.R_OK):
-                die(f'Cannot read {rel} (a dangling symlink or unreadable file); fix or remove it.')
+                die(f'Cannot read {rel} (not a regular file you can read); fix or remove it.')
             entries.append((path, rel, False))
 
     # Every dir that is an ancestor of a packed file.
@@ -155,6 +160,10 @@ def main():
         die(f'Expected exactly one .twb at the workspace root, found {len(twbs)}: {workspace}')
     twb = twbs[0]
 
+    for required in (twb, 'Packages'):
+        if os.path.islink(os.path.join(workspace, required)):
+            die(f'{required} is a symlink; links are not followed, so copy the real one in.')
+
     packages = os.path.join(workspace, 'Packages')
     if not os.path.isdir(packages):
         die(f'Missing Packages/ directory in {workspace}')
@@ -166,8 +175,15 @@ def main():
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
 
-    entries_by_top = {top: collect_entries(workspace, top, os.path.realpath(output))
-                      for top in PACKED_DIRS if os.path.isdir(os.path.join(workspace, top))}
+    entries_by_top = {}
+    for top in PACKED_DIRS:
+        if not os.path.isdir(os.path.join(workspace, top)):
+            continue
+        link = linked_part(workspace, top)
+        if link:
+            print(f'  skipped {link}/ {SYMLINK_REASON}', file=sys.stderr)
+            continue
+        entries_by_top[top] = collect_entries(workspace, top, os.path.realpath(output))
     dirs_to_pack = [top for top, entries in entries_by_top.items() if entries]
 
     packed = {rel for entries in entries_by_top.values() for _, rel in entries}
