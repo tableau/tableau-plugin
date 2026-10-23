@@ -47,7 +47,6 @@ or an embedded file (the file must already be in the workspace):
     "caption":  "Sample - Superstore",
     "file":     "Data/Datasources/Sample - Superstore.xls",  // relative to the .twb; .xls, .xlsx, .xlsm, or .csv
     "table":    "Orders",                                    // Excel only: the sheet to query
-    "connectionName": "federated.<hash>",                    // optional, generated if omitted
     "fields": [ ...as above... ]
   }
 or any number of either, primary first, wired in a single run:
@@ -58,7 +57,6 @@ or any number of either, primary first, wired in a single run:
 import json
 import os
 import random
-import re
 import string
 import sys
 import xml.etree.ElementTree as ET
@@ -131,12 +129,6 @@ def derive_field(field, ordinal, error_prefix=''):
     }
 
 
-# The hash after the prefix is letters and digits, as Tableau generates it.
-def check_connection_hash(connection_name, error_prefix):
-    if connection_name and not re.fullmatch(r'[a-z]+\.[A-Za-z0-9]+', connection_name):
-        die(f'{error_prefix}connectionName must be letters and digits after the prefix (got "{connection_name}").')
-
-
 def generate_connection_name(prefix):
     token = lambda: ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
     return f'{prefix}.{token()}{token()}'
@@ -171,7 +163,6 @@ def parse_datasource(descriptor, error_prefix=''):
     connection_name = descriptor.get('connectionName')
     if connection_name and not connection_name.startswith('sqlproxy.'):
         die(f'{error_prefix}connectionName must start with "sqlproxy." (got "{connection_name}").')
-    check_connection_hash(connection_name, error_prefix)
 
     return {
         'type': 'published',
@@ -209,11 +200,6 @@ def parse_file_datasource(descriptor, error_prefix):
 
     fields = parse_fields(descriptor, error_prefix)
 
-    connection_name = descriptor.get('connectionName')
-    if connection_name and not connection_name.startswith('federated.'):
-        die(f'{error_prefix}connectionName for a file datasource must start with "federated." (got "{connection_name}").')
-    check_connection_hash(connection_name, error_prefix)
-
     return {
         'type': 'file',
         'caption': descriptor['caption'],
@@ -221,7 +207,7 @@ def parse_file_datasource(descriptor, error_prefix):
         'class': file_class,
         'table': table,
         'fields': fields,
-        'connectionName': connection_name,
+        'connectionName': None,  # always generated
     }
 
 
@@ -445,10 +431,6 @@ def main():
         if ds['type'] == 'file' and not os.path.isfile(os.path.join(workspace, ds['file'])):
             die(f"Datasource '{ds['caption']}' file \"{ds['file']}\" is not in the workspace ({workspace}). "
                 'Copy it there first, at that path relative to the .twb.')
-        parts = ds['file'].split('/') if ds['type'] == 'file' else []
-        if any(os.path.islink(os.path.join(workspace, *parts[:i])) for i in range(1, len(parts) + 1)):
-            die(f"Datasource '{ds['caption']}' file \"{ds['file']}\" is a symlink, which packaging won't follow. "
-                'Copy the real file there instead.')
 
     # --- build the XML blocks ----------------------------------------------
 

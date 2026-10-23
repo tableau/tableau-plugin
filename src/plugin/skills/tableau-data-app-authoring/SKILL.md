@@ -164,9 +164,6 @@ At the end of this stage you have a finalized workspace directory:
   Resources/.agents/README.md   ← which agent docs travel with the workbook
 ```
 
-Keep the `Resources/.agents/README.md` as shipped and follow it for what else
-to put in that folder.
-
 **Sheet name:** the worksheet is named after the app's display name. It's a
 plain string with no hash/join-key involved, so it's freely hand-editable at
 any point before packaging — edit all 3 matching locations in the `.twb` to
@@ -304,9 +301,7 @@ datasource. The same script wires it; the descriptor just has `"type": "file"`.
 
    To mix it with published datasources, put every entry in one
    `datasources` array (primary first) as above.
-3. **Run the wiring script** the same way as for a published datasource. It
-   generates a `federated.<hash>` join key unless you supply `connectionName`
-   (which must then start with `federated.`).
+3. **Run the wiring script** the same way as for a published datasource.
 
 **Reuse an existing workbook's datasource:** point the Published path above
 at a datasource already wired into some *other* already-published workbook,
@@ -375,23 +370,10 @@ hand:
 python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized workspace dir
 ```
 
-It also packs `Data/` and `Resources/.agents/` at the archive root, so a
-`.twb` that references an embedded datasource file by relative path (e.g.
-`Data/Datasources/<file>.xls`) keeps its data. A folder is packed only when it
-holds at least one file to pack: the template's `Data/`, with nothing but its
-`.gitkeep`, is left out of the `.twbx` (expected when no file is embedded).
-Only the `Data/` files the `.twb` references are packed; any other file there
-is skipped and listed on stderr (see below). It fails if a `Data/` file the `.twb` references isn't packed under exactly
-that path (missing, hidden, a symlink, or different letter case, which macOS
-hides but the server doesn't), or if a file can't be read; an existing `.twbx`
-is only replaced once the new one is complete. Nothing else at
-the workspace root or under `Resources/` is packed. Below those folders,
-`.gitkeep` placeholders and OS cruft (`.DS_Store`, `__MACOSX`) are skipped
-silently. Any other file or folder whose name starts with `.`, and every
-symlink (never followed, since a link could pull any file on the machine into a
-published workbook), is skipped along with everything inside it and listed on
-stderr as `  skipped <path> (<why>)`; relay those lines to the user. Copy
-embedded files into `Data/`; never link them.
+It also packs `Data/` and `Resources/.agents/` at the archive root. Under
+`Data/`, only the files the `.twb` references are packed. Anything it skips is
+listed on stderr as `  skipped <path> (<why>)`; relay those lines to the user.
+Copy embedded files into `Data/`; never link them.
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
@@ -461,11 +443,7 @@ Uses the MCP publish tools (not available to Slack clients).
 
 - Don't zip the `.twbx` freehand. Use `scripts/package_twbx.py` — it keeps
   `.twb`, `Packages/`, and any `Data/`/`Resources/.agents/` at the archive root, never
-  nested under `<App Name>/`, and leaves out a `Data/` that holds only its
-  `.gitkeep`.
-- Don't reference an embedded file from outside `Data/` or leave it out of the
-  workspace. `wire_datasource.py` and `package_twbx.py` both refuse, and a
-  `.twbx` without the file publishes but has no data at runtime.
+  nested under `<App Name>/`.
 - Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.

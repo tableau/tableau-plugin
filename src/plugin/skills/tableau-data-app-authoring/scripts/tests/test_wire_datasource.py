@@ -401,7 +401,6 @@ def excel_descriptor(**overrides):
         "caption": "Sample - Superstore",
         "file": XLS_PATH,
         "table": "Orders",
-        "connectionName": "federated.abc123",
         "fields": [
             {"name": "Sales", "datatype": "real", "role": "measure"},
             {"name": "Region", "datatype": "string", "role": "dimension"},
@@ -417,7 +416,6 @@ def csv_descriptor(**overrides):
         "type": "file",
         "caption": "Orders CSV",
         "file": "Data/orders.csv",
-        "connectionName": "federated.csv1",
         "fields": [
             {"name": "Profit", "datatype": "real", "role": "measure"},
             {"name": "Ship Date", "datatype": "date", "role": "dimension"},
@@ -434,21 +432,23 @@ def test_excel_file_wires_federated_datasource_with_matching_join_keys(tmp_path)
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == twb_path
-    assert "✓ Wired datasource 'Sample - Superstore' (federated.abc123) with 3 field(s)" in result.stderr
-
     wired = open(twb_path).read()
     root, view = view_of(wired)
     root_ds = root.find('./datasources/datasource')
-    assert root_ds.get('name') == 'federated.abc123'
+    name = root_ds.get('name')
+    assert re.fullmatch(r'federated\.[a-z0-9]{22}', name)
+    assert f"✓ Wired datasource 'Sample - Superstore' ({name}) with 3 field(s)" in result.stderr
+    # The named connection shares the generated hash.
+    key = 'excel-direct.' + name.split('.', 1)[1]
     assert root_ds.get('caption') == 'Sample - Superstore'
     assert root_ds.find('./connection').get('class') == 'federated'
     named = root_ds.find('./connection/named-connections/named-connection')
-    assert named.get('name') == 'excel-direct.abc123'
+    assert named.get('name') == key
     file_connection = named.find('./connection')
     assert file_connection.get('class') == 'excel-direct'
     assert file_connection.get('filename') == XLS_PATH
     relation = root_ds.find('./connection/relation')
-    assert relation.attrib == {'connection': 'excel-direct.abc123', 'name': 'Orders', 'table': '[Orders$]', 'type': 'table'}
+    assert relation.attrib == {'connection': key, 'name': 'Orders', 'table': '[Orders$]', 'type': 'table'}
     records = {r.findtext('remote-name'): r for r in root_ds.iter('metadata-record')}
     assert records['Sales'].findtext('remote-type') == '5'
     assert records['Region'].findtext('remote-type') == '130'
@@ -457,8 +457,8 @@ def test_excel_file_wires_federated_datasource_with_matching_join_keys(tmp_path)
     assert 'sqlproxy' not in wired
 
     # The view half is the same as for a published datasource.
-    assert [d.get('name') for d in view.findall('./datasources/datasource')] == ['federated.abc123']
-    assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == ['federated.abc123']
+    assert [d.get('name') for d in view.findall('./datasources/datasource')] == [name]
+    assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == [name]
     assert "<column aggregation='Sum' datatype='real' name='[Sales]' role='measure' type='quantitative' />" in wired
     assert "<column-instance column='[Region]' derivation='None' name='[none:Region:nk]' pivot='key' type='nominal' />" in wired
 
@@ -472,7 +472,7 @@ def test_csv_file_splits_directory_and_filename(tmp_path):
     root, _ = view_of(open(twb_path).read())
     root_ds = root.find('./datasources/datasource')
     named = root_ds.find('./connection/named-connections/named-connection')
-    assert named.get('name') == 'textscan.csv1'
+    assert named.get('name') == 'textscan.' + root_ds.get('name').split('.', 1)[1]
     assert named.find('./connection').attrib == {
         'class': 'textscan', 'directory': 'Data', 'filename': 'orders.csv', 'password': '', 'server': ''}
     relation = root_ds.find('./connection/relation')
@@ -493,25 +493,11 @@ def test_published_and_file_datasources_wire_in_one_run(tmp_path):
     assert result.returncode == 0, result.stderr
     wired = open(twb_path).read()
     root, view = view_of(wired)
-    assert [d.get('name') for d in root.findall('./datasources/datasource')] == ['sqlproxy.abc123', 'federated.abc123']
-    assert [d.get('name') for d in view.findall('./datasources/datasource')] == ['sqlproxy.abc123', 'federated.abc123']
+    names = [d.get('name') for d in root.findall('./datasources/datasource')]
+    assert names[0] == 'sqlproxy.abc123' and names[1].startswith('federated.')
+    assert [d.get('name') for d in view.findall('./datasources/datasource')] == names
     # The published primary alone carries datasource-dependencies.
     assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == ['sqlproxy.abc123']
-
-
-def test_generated_file_connection_name_shares_its_hash_with_the_named_connection(tmp_path):
-    add_data_file(tmp_path)
-    twb_path = write_twb(tmp_path)
-    result = run_wire(twb_path, write_descriptor(tmp_path, excel_descriptor(connectionName=None)))
-
-    assert result.returncode == 0, result.stderr
-    root, _ = view_of(open(twb_path).read())
-    root_ds = root.find('./datasources/datasource')
-    name = root_ds.get('name')
-    assert re.fullmatch(r'federated\.[a-z0-9]{22}', name)
-    expected = 'excel-direct.' + name.split('.', 1)[1]
-    assert root_ds.find('./connection/named-connections/named-connection').get('name') == expected
-    assert root_ds.find('./connection/relation').get('connection') == expected
 
 
 def test_file_missing_from_the_workspace_is_rejected(tmp_path):
@@ -554,16 +540,6 @@ def test_excel_requires_a_table_and_csv_rejects_one(tmp_path):
     result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(table='orders')))
     assert result.returncode == 1
     assert result.stderr.strip() == '✗ "table" applies only to Excel files; a CSV file is its own table.'
-
-
-def test_file_connection_name_must_start_with_federated_prefix(tmp_path):
-    add_data_file(tmp_path)
-    twb_path = write_twb(tmp_path)
-    result = run_wire(twb_path, write_descriptor(tmp_path, excel_descriptor(connectionName='sqlproxy.abc')))
-
-    assert result.returncode == 1
-    assert result.stderr.strip() == (
-        '✗ connectionName for a file datasource must start with "federated." (got "sqlproxy.abc").')
 
 
 def test_unknown_type_is_rejected(tmp_path):
@@ -622,28 +598,3 @@ def test_brackets_in_field_names_are_doubled(tmp_path):
     assert '<local-name>[Sales [USD]]]</local-name>' in wired
     assert "name='[Sales [USD]]]'" in wired
     assert "name='[sum:Sales [USD]]:qk]'" in wired
-
-
-def test_quote_in_connection_name_fails_cleanly(tmp_path):
-    add_data_file(tmp_path)
-    twb = write_twb(tmp_path)
-
-    result = run_wire(twb, write_descriptor(tmp_path, excel_descriptor(connectionName="federated.ab'c")))
-
-    assert result.returncode == 1
-    assert result.stderr.strip() == (
-        '✗ connectionName must be letters and digits after the prefix (got "federated.ab\'c").')
-
-
-def test_symlinked_file_is_rejected(tmp_path):
-    real = tmp_path / 'elsewhere.xls'
-    real.write_bytes(b'\xd0\xcf\x11\xe0')
-    (tmp_path / 'Data' / 'Datasources').mkdir(parents=True)
-    (tmp_path / XLS_PATH).symlink_to(real)
-    twb = write_twb(tmp_path)
-
-    result = run_wire(twb, write_descriptor(tmp_path, excel_descriptor()))
-
-    assert result.returncode == 1
-    assert 'is a symlink, which packaging won\'t follow' in result.stderr
-    assert open(twb).read() == TWB_TEMPLATE

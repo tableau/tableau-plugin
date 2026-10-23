@@ -42,7 +42,7 @@ file is packed into the `.twbx` and is current only as of packaging. Two consequ
    `list-datasources` (ask the user which one if ambiguous). You can wire any number if the app
    genuinely needs them — all in one 'Wire a datasource in' run, primary first. Each LUID drives
    both the `.twb` wiring and your introspection queries. If the user supplies an Excel or CSV
-   file instead, copy it into `Data/` and wire it as an embedded file (no LUID); the SKILL's
+   file instead, copy it into `Data/` and wire it as an embedded file; the SKILL's
    'Embedded file datasource' covers it. In `app.js`, find each datasource by
    `name` (its caption) in `getAllDataSourcesAsync()`, not by position. Query each separately and
    combine results in `app.js` — Tableau data blending doesn't apply, so don't add blend XML.
