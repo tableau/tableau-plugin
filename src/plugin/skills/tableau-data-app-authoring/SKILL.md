@@ -371,8 +371,8 @@ python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized work
 ```
 
 It also packs `Data/` and `Resources/.agents/` at the archive root. Under
-`Data/`, only the files the `.twb` references are packed. Hidden files and
-symlinks are never packed, so copy embedded files into `Data/`; never link them.
+`Data/`, only the files the `.twb` references are packed. Hidden files are
+never packed.
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.

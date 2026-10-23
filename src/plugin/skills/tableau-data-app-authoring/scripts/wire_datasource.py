@@ -115,10 +115,10 @@ def derive_field(field, ordinal, error_prefix=''):
         'aggregation': aggregation,
         # role attribute: 0 = dimension, 1 = measure
         'roleAttr': 1 if is_measure else 0,
-        'localName': bracket(name),
+        'localName': f'[{name}]',
         # column-instance derivation + name token: [sum:Profit:qk] / [none:Region:nk]
         'derivation': 'Sum' if is_measure else 'None',
-        'instanceName': bracket(f'sum:{name}:qk' if is_measure else f'none:{name}:nk'),
+        'instanceName': f'[sum:{name}:qk]' if is_measure else f'[none:{name}:nk]',
     }
 
 

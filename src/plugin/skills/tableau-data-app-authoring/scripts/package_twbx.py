@@ -25,7 +25,6 @@ Usage: python3 package_twbx.py <workspaceDir> [outputPath]
 import glob
 import os
 import sys
-import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -43,12 +42,7 @@ def is_cruft(rel_path):
     return any(part.endswith('.DS_Store') or part.startswith('__MACOSX') for part in rel_path.split('/'))
 
 
-def crosses_symlink(workspace, rel_path):
-    parts = rel_path.split('/')
-    return any(os.path.islink(os.path.join(workspace, *parts[:i])) for i in range(1, len(parts) + 1))
-
-
-def collect_entries(workspace, top, output, allowed=None):
+def collect_entries(workspace, top, allowed=None):
     entries = []  # (path, archive name, is_dir)
     for root, dirs, files in os.walk(os.path.join(workspace, top)):
         dirs.sort()
@@ -60,13 +54,9 @@ def collect_entries(workspace, top, output, allowed=None):
         dirs[:] = [name for name in dirs if not name.startswith('.')]
         for name in sorted(files):
             rel = f'{rel_root}/{name}'
-            path = os.path.join(root, name)
-            if (name.startswith('.') or is_cruft(rel) or os.path.islink(path)
-                    or os.path.realpath(path) == output or (allowed is not None and rel not in allowed)):
+            if name.startswith('.') or is_cruft(rel) or (allowed is not None and rel not in allowed):
                 continue
-            if not os.path.isfile(path) or not os.access(path, os.R_OK):
-                die(f'Cannot read {rel} (not a regular file you can read); fix or remove it.')
-            entries.append((path, rel, False))
+            entries.append((os.path.join(root, name), rel, False))
 
     ancestor_dirs = {rel.rsplit('/', i)[0] for _, rel, is_dir in entries if not is_dir
                      for i in range(1, rel.count('/') + 1)}
@@ -105,10 +95,6 @@ def main():
         die(f'Expected exactly one .twb at the workspace root, found {len(twbs)}: {workspace}')
     twb = twbs[0]
 
-    for required in (twb, 'Packages'):
-        if os.path.islink(os.path.join(workspace, required)):
-            die(f'{required} is a symlink; links are not followed, so copy the real one in.')
-
     packages = os.path.join(workspace, 'Packages')
     if not os.path.isdir(packages):
         die(f'Missing Packages/ directory in {workspace}')
@@ -123,34 +109,22 @@ def main():
     referenced = referenced_data_files(workspace, twb)
     entries_by_top = {}
     for top in PACKED_DIRS:
-        if not os.path.isdir(os.path.join(workspace, top)):
-            continue
-        if crosses_symlink(workspace, top):
-            continue
-        entries_by_top[top] = collect_entries(workspace, top, os.path.realpath(output),
-                                              referenced if top == 'Data' else None)
+        if os.path.isdir(os.path.join(workspace, top)):
+            entries_by_top[top] = collect_entries(workspace, top, referenced if top == 'Data' else None)
     dirs_to_pack = [top for top, entries in entries_by_top.items() if entries]
 
     packed = {rel for entries in entries_by_top.values() for _, rel in entries}
-    # By name, not on disk: a case mismatch passes on macOS but fails on the server.
     missing = sorted(referenced - packed)
     if missing:
         die(f'{twb} references files missing from the workspace (no data at runtime): '
             + ', '.join(missing))
 
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
-    fd, partial = tempfile.mkstemp(suffix='.twbx', dir=os.path.dirname(output))
-    os.close(fd)
-    try:
-        with zipfile.ZipFile(partial, 'w', zipfile.ZIP_DEFLATED) as archive:
-            archive.write(os.path.join(workspace, twb), twb)
-            for top in dirs_to_pack:
-                for path, rel in entries_by_top[top]:
-                    archive.write(path, rel)
-        os.replace(partial, output)
-    except BaseException:
-        os.remove(partial)
-        raise
+    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.write(os.path.join(workspace, twb), twb)
+        for top in dirs_to_pack:
+            for path, rel in entries_by_top[top]:
+                archive.write(path, rel)
 
     packed = ', '.join(f'{top}/' for top in dirs_to_pack)
     print(f'✓ Packaged {twb} + {packed} into {output}', file=sys.stderr)

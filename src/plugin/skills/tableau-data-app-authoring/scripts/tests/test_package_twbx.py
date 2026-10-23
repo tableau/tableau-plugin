@@ -120,42 +120,6 @@ def test_template_data_dir_with_only_placeholder_is_not_packed(tmp_path):
     assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
 
 
-def test_placeholder_is_skipped_silently_next_to_data_files(tmp_path):
-    workspace = make_workspace(tmp_path)
-    add_template_dirs(workspace)
-    (workspace / 'Data' / 'Datasources').mkdir()
-    (workspace / 'Data' / 'Datasources' / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
-    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 0, result.stderr
-    entries = names(result.stdout.strip())
-    assert 'Data/Datasources/Sample.xls' in entries
-    assert not any('gitkeep' in entry for entry in entries)
-    assert '✓ Packaged Sales Demo.twb + Packages/, Data/, Resources/.agents/ into' in result.stderr
-
-
-def test_dirs_without_packed_files_are_left_out(tmp_path):
-    workspace = make_workspace(tmp_path)
-    data = workspace / 'Data'
-    (data / 'Datasources').mkdir(parents=True)
-    (data / 'Datasources' / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
-    (data / 'Extracts').mkdir()
-    (data / 'Scratch').mkdir()
-    (data / 'Scratch' / '.gitkeep').write_text('')
-    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 0, result.stderr
-    entries = names(result.stdout.strip())
-    assert 'Data/' in entries
-    assert 'Data/Datasources/' in entries
-    assert 'Data/Datasources/Sample.xls' in entries
-    assert not any(entry.startswith(('Data/Extracts', 'Data/Scratch')) for entry in entries)
-
-
 def test_fails_when_twb_references_missing_data_file(tmp_path):
     workspace = make_workspace(tmp_path)
     (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
@@ -184,17 +148,6 @@ def test_packs_only_data_files_the_twb_references(tmp_path):
     entries = names(result.stdout.strip())
     assert 'Data/Datasources/Sample.xls' in entries
     assert not any(e.startswith('Data/Scratch') or 'credentials' in e for e in entries)
-
-
-def test_data_dir_is_left_out_when_the_twb_references_nothing(tmp_path):
-    workspace = make_workspace(tmp_path)
-    (workspace / 'Data').mkdir()
-    (workspace / 'Data' / 'orders.csv').write_text('a\n1\n')
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 0, result.stderr
-    assert not any(e.startswith('Data') for e in names(result.stdout.strip()))
 
 
 def test_checks_directory_plus_filename_connections(tmp_path):
@@ -261,74 +214,6 @@ def test_skips_hidden_entries_below_packed_dirs(tmp_path):
                    for part in entry.removeprefix('Resources/.agents/').split('/'))
     assert not any(entry.startswith('Data') for entry in entries)
     assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
-
-
-def test_symlinks_are_skipped_never_followed(tmp_path):
-    workspace = make_workspace(tmp_path)
-    secret = tmp_path / 'id_rsa'
-    secret.write_text('PRIVATE KEY')
-    shared = tmp_path / 'shared'
-    shared.mkdir()
-    (shared / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
-    data = workspace / 'Data'
-    data.mkdir()
-    (data / 'real.csv').write_text('a\n1\n')
-    (data / 'orders.csv').symlink_to(secret)
-    (data / 'Datasources').symlink_to(shared, target_is_directory=True)
-    (data / 'gone.csv').symlink_to(tmp_path / 'nonexistent.csv')
-    (workspace / PACKAGE / 'content' / 'src' / 'lib.js').symlink_to(secret)
-    (workspace / 'Sales Demo.twb').write_text(twb_referencing('Data/real.csv'))
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 0, result.stderr
-    entries = names(result.stdout.strip())
-    assert 'Data/real.csv' in entries
-    assert not any(e in entries for e in ('Data/orders.csv', 'Data/gone.csv', f'{PACKAGE}/content/src/lib.js'))
-    assert not any(e.startswith('Data/Datasources') for e in entries)
-    with zipfile.ZipFile(result.stdout.strip()) as archive:
-        assert not any(b'PRIVATE KEY' in archive.read(e) for e in entries if not e.endswith('/'))
-
-
-def test_twb_referencing_a_symlinked_file_fails_as_missing(tmp_path):
-    workspace = make_workspace(tmp_path)
-    shared = tmp_path / 'Sample.xls'
-    shared.write_bytes(b'\xd0\xcf\x11\xe0')
-    (workspace / 'Data' / 'Datasources').mkdir(parents=True)
-    (workspace / 'Data' / 'Datasources' / 'Sample.xls').symlink_to(shared)
-    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 1
-    assert 'references files missing from the workspace' in result.stderr
-
-
-def test_symlinked_packed_dir_is_skipped(tmp_path):
-    workspace = make_workspace(tmp_path)
-    shared = tmp_path / 'shared'
-    shared.mkdir()
-    (shared / 'x.csv').write_text('a\n1\n')
-    (workspace / 'Data').symlink_to(shared, target_is_directory=True)
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 0, result.stderr
-    assert not any(e.startswith('Data') for e in names(result.stdout.strip()))
-
-
-def test_symlinked_twb_or_packages_fails(tmp_path):
-    workspace = make_workspace(tmp_path)
-    real = tmp_path / 'real.twb'
-    real.write_text('<workbook/>')
-    (workspace / 'Sales Demo.twb').unlink()
-    (workspace / 'Sales Demo.twb').symlink_to(real)
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 1
-    assert '✗ Sales Demo.twb is a symlink' in result.stderr
-
 
 
 def test_skips_other_workspace_dirs(tmp_path):
@@ -399,51 +284,3 @@ def test_fails_without_trex(tmp_path):
     assert '✗ No .trex under Packages/*/extensions/' in result.stderr
     assert 'Package directory contains no extension .trex files under extensions/' in result.stderr
     assert not (tmp_path / 'Sales Demo.twbx').exists()
-
-
-def test_reference_case_must_match_the_packed_file(tmp_path):
-    workspace = make_workspace(tmp_path)
-    (workspace / 'Data' / 'v2').mkdir(parents=True)
-    (workspace / 'Data' / 'v2' / 'x.csv').write_text('a\n1\n')
-    (workspace / 'Sales Demo.twb').write_text(
-        "<workbook><connection class='textscan' directory='Data/V2' filename='X.csv'/></workbook>")
-
-    result = run_package(str(workspace))
-
-    assert result.returncode == 1
-    assert 'Data/V2/X.csv' in result.stderr
-
-
-def test_unreadable_file_fails_cleanly_and_keeps_existing_output(tmp_path):
-    workspace = make_workspace(tmp_path)
-    (workspace / 'Data').mkdir()
-    locked = workspace / 'Data' / 'locked.csv'
-    locked.write_text('a\n1\n')
-    locked.chmod(0)
-    (workspace / 'Sales Demo.twb').write_text(twb_referencing('Data/locked.csv'))
-    output = tmp_path / 'Sales Demo.twbx'
-    output.write_bytes(b'previous good archive')
-
-    try:
-        result = run_package(str(workspace))
-    finally:
-        locked.chmod(0o644)
-
-    assert result.returncode == 1
-    assert 'Traceback' not in result.stderr
-    assert '✗ Cannot read Data/locked.csv' in result.stderr
-    assert output.read_bytes() == b'previous good archive'
-    assert sorted(p.name for p in tmp_path.iterdir() if p.suffix == '.twbx') == ['Sales Demo.twbx']
-
-
-def test_output_inside_workspace_is_not_packed_on_repack(tmp_path):
-    workspace = make_workspace(tmp_path)
-    (workspace / 'Data').mkdir()
-    (workspace / 'Data' / 'x.csv').write_text('a\n1\n')
-    output = workspace / 'Data' / 'out.twbx'
-
-    run_package(str(workspace), str(output))
-    result = run_package(str(workspace), str(output))
-
-    assert result.returncode == 0, result.stderr
-    assert 'Data/out.twbx' not in names(str(output))

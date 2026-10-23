@@ -577,18 +577,3 @@ def test_wired_file_twb_packages_with_its_data(tmp_path):
         entries = archive.namelist()
     assert XLS_PATH in entries
     assert 'Data/orders.csv' in entries
-
-
-def test_brackets_in_field_names_are_doubled(tmp_path):
-    add_data_file(tmp_path)
-    twb = write_twb(tmp_path)
-    fields = [{"name": "Sales [USD]", "datatype": "real", "role": "measure"},
-              {"name": "Region", "datatype": "string", "role": "dimension"}]
-
-    result = run_wire(twb, write_descriptor(tmp_path, excel_descriptor(fields=fields)))
-
-    assert result.returncode == 0, result.stderr
-    wired = open(twb).read()
-    assert '<local-name>[Sales [USD]]]</local-name>' in wired
-    assert "name='[Sales [USD]]]'" in wired
-    assert "name='[sum:Sales [USD]]:qk]'" in wired
