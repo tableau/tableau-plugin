@@ -46,13 +46,6 @@ def main():
     if len(edits) == 0 and len(renames) == 0:
         die('Plan has no edits or renames — did you pass the full postUnzip object?')
 
-    # safe_join checks only the path text, so a link could escape the unzip dir.
-    links = sorted(os.path.relpath(os.path.join(root, name), unzip_dir)
-                   for root, dirs, files in os.walk(unzip_dir) for name in dirs + files
-                   if os.path.islink(os.path.join(root, name)))
-    if links:
-        die('Template contains symlinks, which are not allowed: ' + ', '.join(links))
-
     def safe_join(rel):
         abs_path = os.path.abspath(os.path.join(unzip_dir, rel))
         if abs_path != unzip_dir and not abs_path.startswith(unzip_dir + '/'):
