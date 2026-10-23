@@ -378,7 +378,8 @@ It also packs `Data/` and `Resources/.agents/` at the archive root, so a
 `Data/Datasources/<file>.xls`) keeps its data. A folder is packed only when it
 holds at least one file to pack: the template's `Data/`, with nothing but its
 `.gitkeep`, is left out of the `.twbx` (expected when no file is embedded).
-It fails if a `Data/` file the `.twb` references isn't packed under exactly
+Only the `Data/` files the `.twb` references are packed; any other file there
+is skipped and listed on stderr (see below). It fails if a `Data/` file the `.twb` references isn't packed under exactly
 that path (missing, hidden, a symlink, or different letter case, which macOS
 hides but the server doesn't), or if a file can't be read; an existing `.twbx`
 is only replaced once the new one is complete. Nothing else at

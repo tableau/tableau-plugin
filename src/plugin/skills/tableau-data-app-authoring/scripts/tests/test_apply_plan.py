@@ -126,6 +126,25 @@ def test_rename_escaping_unzip_dir_is_rejected(tmp_path):
     assert 'Plan path escapes the unzip directory: ../evil' in result.stderr
 
 
+def test_symlink_in_template_is_rejected_before_any_edit(tmp_path):
+    make_scaffold(tmp_path)
+    outside = tmp_path.parent / f'{tmp_path.name}-outside'
+    outside.mkdir()
+    (outside / 'f.txt').write_text('TODO App Name')
+    (tmp_path / 'Data App Name' / 'lnk').symlink_to(outside, target_is_directory=True)
+    plan = happy_plan()
+    plan['edits'].append({"file": "Data App Name/lnk/f.txt",
+                          "replacements": [{"find": "TODO App Name", "replace": "PWNED"}]})
+    plan_path = write_plan(tmp_path, plan)
+
+    result = run_apply_plan(str(tmp_path), plan_path)
+
+    assert result.returncode == 1
+    assert '✗ Template contains symlinks, which are not allowed: Data App Name/lnk' in result.stderr
+    assert (outside / 'f.txt').read_text() == 'TODO App Name'
+    assert 'TODO App Name' in (tmp_path / 'Data App Name' / 'Data App Name.twb').read_text()
+
+
 def test_rename_of_nonexistent_source_hard_fails(tmp_path):
     plan_path = write_plan(tmp_path, {
         "edits": [], "renames": [{"from": "does-not-exist", "to": "renamed"}]

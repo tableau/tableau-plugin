@@ -15,6 +15,12 @@ TWB_WITH_XLS = ("<workbook><datasources><datasource><connection class='federated
                 "</named-connection></named-connections></connection></datasource></datasources></workbook>")
 
 
+def twb_referencing(*paths):
+    connections = ''.join(f"<connection class='textscan' directory='{os.path.dirname(p)}' "
+                          f"filename='{os.path.basename(p)}'/>" for p in paths)
+    return f'<workbook>{connections}</workbook>'
+
+
 def run_package(*args):
     return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True)
 
@@ -165,6 +171,38 @@ def test_fails_when_twb_references_missing_data_file(tmp_path):
     assert not (tmp_path / 'Sales Demo.twbx').exists()
 
 
+def test_packs_only_data_files_the_twb_references(tmp_path):
+    workspace = make_workspace(tmp_path)
+    datasources = workspace / 'Data' / 'Datasources'
+    datasources.mkdir(parents=True)
+    (datasources / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
+    (datasources / 'credentials.json').write_text('{"token": "x"}')
+    (workspace / 'Data' / 'Scratch').mkdir()
+    (workspace / 'Data' / 'Scratch' / 'notes.txt').write_text('x')
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Data/Datasources/Sample.xls' in entries
+    assert not any(e.startswith('Data/Scratch') or 'credentials' in e for e in entries)
+    for rel in ('Data/Datasources/credentials.json', 'Data/Scratch/notes.txt'):
+        assert f'  skipped {rel} (not referenced by the .twb: ' in result.stderr
+
+
+def test_data_dir_is_left_out_when_the_twb_references_nothing(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / 'orders.csv').write_text('a\n1\n')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert not any(e.startswith('Data') for e in names(result.stdout.strip()))
+    assert '  skipped Data/orders.csv (not referenced by the .twb: ' in result.stderr
+
+
 def test_checks_directory_plus_filename_connections(tmp_path):
     # CSV, JSON, and shapefile connections split the path: directory='Data' filename='x.csv'.
     workspace = make_workspace(tmp_path)
@@ -253,6 +291,7 @@ def test_symlinks_are_skipped_and_reported_never_followed(tmp_path):
     (data / 'Datasources').symlink_to(shared, target_is_directory=True)
     (data / 'gone.csv').symlink_to(tmp_path / 'nonexistent.csv')
     (workspace / PACKAGE / 'content' / 'src' / 'lib.js').symlink_to(secret)
+    (workspace / 'Sales Demo.twb').write_text(twb_referencing('Data/real.csv'))
 
     result = run_package(str(workspace))
 
@@ -399,6 +438,7 @@ def test_unreadable_file_fails_cleanly_and_keeps_existing_output(tmp_path):
     locked = workspace / 'Data' / 'locked.csv'
     locked.write_text('a\n1\n')
     locked.chmod(0)
+    (workspace / 'Sales Demo.twb').write_text(twb_referencing('Data/locked.csv'))
     output = tmp_path / 'Sales Demo.twbx'
     output.write_bytes(b'previous good archive')
 
@@ -412,6 +452,21 @@ def test_unreadable_file_fails_cleanly_and_keeps_existing_output(tmp_path):
     assert '✗ Cannot read Data/locked.csv' in result.stderr
     assert output.read_bytes() == b'previous good archive'
     assert sorted(p.name for p in tmp_path.iterdir() if p.suffix == '.twbx') == ['Sales Demo.twbx']
+
+
+def test_symlink_to_the_output_is_reported(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / 'x.csv').write_text('a\n1\n')
+    output = tmp_path / 'Sales Demo.twbx'
+    (workspace / 'Data' / 'prev.twbx').symlink_to(output)
+
+    run_package(str(workspace))
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert '  skipped Data/prev.twbx (symlink: ' in result.stderr
+    assert 'Data/prev.twbx' not in names(str(output))
 
 
 def test_output_inside_workspace_is_not_packed_on_repack(tmp_path):

@@ -11,12 +11,14 @@ The scaffold-data-app template ships `Data/` holding only a `.gitkeep`
 placeholder and `Resources/.agents/README.md`.
 
 The archive holds the `.twb` (written first), `Packages/`, and any `Data/` and
-`Resources/.agents/` at its ROOT, never nested under `<App Name>/` — nesting fails to open on publish with
+`Resources/.agents/` at its ROOT, never nested under `<App Name>/`: nesting fails to open on publish with
 `PackageValidationException: Package directory contains no extension .trex
 files under extensions/`. Without `Data/`, a `.twb` that references an embedded
 file by relative path publishes fine but has no data at runtime. Nothing else
 under `Resources/` is packed. A dir is packed only when it holds at least one
-packed file, so a `Data/` with nothing but its `.gitkeep` is left out. OS cruft
+packed file, so a `Data/` with nothing but its `.gitkeep` is left out. Under
+`Data/`, only the files the `.twb` references are packed; any other file there is
+skipped and listed on stderr like the skips below. OS cruft
 (`.DS_Store`, `__MACOSX`) and `.gitkeep` placeholders are skipped silently; any
 other file or dir whose name starts with `.` below those dirs is skipped and
 listed on stderr as `  skipped <path> (<why>)`. Symlinks are never followed:
@@ -48,6 +50,7 @@ PACKED_DIRS = ('Packages', 'Data', 'Resources/.agents')
 
 HIDDEN_REASON = "(hidden: names starting with '.' are not packed)"
 SYMLINK_REASON = '(symlink: links are not followed; copy the file in instead)'
+UNREFERENCED_REASON = '(not referenced by the .twb: only the Data/ files it uses are packed)'
 
 # Keeps an otherwise-empty dir (the template's Data/) in git; never packed or reported.
 PLACEHOLDER = '.gitkeep'
@@ -86,7 +89,8 @@ def linked_part(workspace, rel_path):
 # reporting hidden skips on stderr. Dirs are kept only on the way to a packed
 # file, so a dir left with no files (an empty Data/) isn't packed at all. `skip`
 # is the output path, so repacking into the workspace never packs the old archive.
-def collect_entries(workspace, top, skip):
+# If `allowed` is given, only files whose archive name is in it are packed.
+def collect_entries(workspace, top, skip, allowed=None):
     entries = []  # (path, archive name, is_dir)
     for root, dirs, files in os.walk(os.path.join(workspace, top)):
         dirs.sort()
@@ -108,12 +112,18 @@ def collect_entries(workspace, top, skip):
         for name in sorted(files):
             rel = f'{rel_root}/{name}'
             path = os.path.join(root, name)
-            if is_cruft(rel) or name == PLACEHOLDER or os.path.realpath(path) == skip:
+            if is_cruft(rel) or name == PLACEHOLDER:
                 continue
             reason = HIDDEN_REASON if is_hidden(rel, top) else (
                 SYMLINK_REASON if os.path.islink(path) else None)
             if reason:
                 print(f'  skipped {rel} {reason}', file=sys.stderr)
+                continue
+            # After the link check, so a link to the output is reported like any other.
+            if os.path.realpath(path) == skip:
+                continue
+            if allowed is not None and rel not in allowed:
+                print(f'  skipped {rel} {UNREFERENCED_REASON}', file=sys.stderr)
                 continue
             if not os.path.isfile(path) or not os.access(path, os.R_OK):
                 die(f'Cannot read {rel} (not a regular file you can read); fix or remove it.')
@@ -125,24 +135,24 @@ def collect_entries(workspace, top, skip):
     return [(path, rel) for path, rel, is_dir in entries if not is_dir or rel in needed_dirs]
 
 
-# Data/ files the .twb references that aren't packed under exactly that name. The
-# names are compared as packed, not checked on disk, so a reference whose case
-# differs from the file (fine on macOS, missing on the server) still fails.
-def missing_data_files(workspace, twb, packed):
+# Data/ files the .twb references, as archive names. They're compared with the
+# names as packed, not checked on disk, so a reference whose case differs from
+# the file (fine on macOS, missing on the server) is reported missing.
+def referenced_data_files(workspace, twb):
     try:
         root = ET.parse(os.path.join(workspace, twb)).getroot()
     except ET.ParseError as error:
         die(f'Could not parse {twb}: {error}')
-    missing = set()
+    referenced = set()
     for element in root.iter('connection'):
         directory = element.get('directory', '').replace('\\', '/').rstrip('/')
         for attr in FILE_ATTRS:
             path = element.get(attr, '').replace('\\', '/')
             if attr == 'filename' and directory and path:
                 path = f'{directory}/{path}'
-            if path.startswith('Data/') and path not in packed:
-                missing.add(path)
-    return sorted(missing)
+            if path.startswith('Data/'):
+                referenced.add(path)
+    return referenced
 
 
 def main():
@@ -175,6 +185,7 @@ def main():
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
 
+    referenced = referenced_data_files(workspace, twb)
     entries_by_top = {}
     for top in PACKED_DIRS:
         if not os.path.isdir(os.path.join(workspace, top)):
@@ -183,11 +194,12 @@ def main():
         if link:
             print(f'  skipped {link}/ {SYMLINK_REASON}', file=sys.stderr)
             continue
-        entries_by_top[top] = collect_entries(workspace, top, os.path.realpath(output))
+        entries_by_top[top] = collect_entries(workspace, top, os.path.realpath(output),
+                                              referenced if top == 'Data' else None)
     dirs_to_pack = [top for top, entries in entries_by_top.items() if entries]
 
     packed = {rel for entries in entries_by_top.values() for _, rel in entries}
-    missing = missing_data_files(workspace, twb, packed)
+    missing = sorted(referenced - packed)
     if missing:
         die(f'{twb} references files missing from the workspace (no data at runtime): '
             + ', '.join(missing))

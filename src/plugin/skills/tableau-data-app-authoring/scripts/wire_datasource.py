@@ -400,10 +400,10 @@ def verify_wiring(wired, datasources):
         relation_connection = ds['relationConnection']
         if not any(r.get('connection') == relation_connection for r in root_ds.iter('relation')):
             target = 'itself' if relation_connection == name else relation_connection
-            die(f'Root datasource {name} has no relation connection to {target} — wiring incomplete.')
+            die(f'Root datasource {name} has no relation connection to {target}, so wiring is incomplete.')
         if ds['type'] == 'file' and not any(
                 c.get('name') == relation_connection for c in root_ds.iter('named-connection')):
-            die(f'Root datasource {name} has no named connection {relation_connection} — wiring incomplete.')
+            die(f'Root datasource {name} has no named connection {relation_connection}, so wiring is incomplete.')
 
     # The server only connects datasources listed on the host sheet's view.
     host_view = next(
