@@ -100,8 +100,7 @@ size change is the just-noticeable difference).
 - **Rough-only for area/size.** Doubling a value doubles a bubble's *area* but radius grows as √, so
   viewers over-read big bubbles.
 - **Show provenance and uncertainty.** Because the app queries **live**, surface the datasource name
-  and an "as of <load time>" note in the app chrome (for an embedded file, which is a snapshot,
-  say what the data covers instead); where relevant, show a reference band /
+  and an "as of <load time>" note in the app chrome; where relevant, show a reference band /
   confidence range and sample size. A number with no target/prior/benchmark is meaningless.
 - **Don't imply causation** from a scatter + trend line without the caveat.
 
