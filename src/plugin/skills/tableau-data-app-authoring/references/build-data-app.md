@@ -29,8 +29,7 @@ file is packed into the `.twbx` and is current only as of packaging. Two consequ
 2. **You cannot run the live query yourself.** A live query only executes inside the Tableau host, so
    you cannot see real rows until the app is published and opened in Tableau. While authoring,
    introspect the datasource with `get-datasource-metadata` / `query-datasource` to design and
-   sanity-check the query (for an embedded file, read its headers and a few rows locally instead);
-   do the **visual** review in Tableau **after** publishing.
+   sanity-check the query; do the **visual** review in Tableau **after** publishing.
 
 ## Workflow
 
@@ -53,8 +52,6 @@ file is packed into the `.twbx` and is current only as of packaging. Two consequ
    - `query-datasource({ datasourceLuid, query, limit })` → preview real VDS `{ data: [...] }` rows
      so you can sanity-check the exact query the app will run before you commit to a chart. Match
      columns by field caption/name, not by position.
-   - Embedded file: there is no LUID until it's published, so read the sheet's or CSV's header row
-     and a few rows from the file in `Data/`. The headers are the field names to wire and query.
 4. **Author `content/src/app.js`** — see Author `app.js` below.
 5. **Package** the workspace into a flat `.twbx` with `scripts/package_twbx.py` per the SKILL's
    'Package into a .twbx' stage.
