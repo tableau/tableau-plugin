@@ -117,7 +117,6 @@ def test_template_data_dir_with_only_placeholder_is_not_packed(tmp_path):
     entries = names(result.stdout.strip())
     assert not any(entry.startswith('Data') for entry in entries)
     assert 'Resources/.agents/README.md' in entries
-    assert 'gitkeep' not in result.stderr
     assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
 
 
@@ -134,7 +133,6 @@ def test_placeholder_is_skipped_silently_next_to_data_files(tmp_path):
     entries = names(result.stdout.strip())
     assert 'Data/Datasources/Sample.xls' in entries
     assert not any('gitkeep' in entry for entry in entries)
-    assert 'gitkeep' not in result.stderr
     assert '✓ Packaged Sales Demo.twb + Packages/, Data/, Resources/.agents/ into' in result.stderr
 
 
@@ -186,8 +184,6 @@ def test_packs_only_data_files_the_twb_references(tmp_path):
     entries = names(result.stdout.strip())
     assert 'Data/Datasources/Sample.xls' in entries
     assert not any(e.startswith('Data/Scratch') or 'credentials' in e for e in entries)
-    for rel in ('Data/Datasources/credentials.json', 'Data/Scratch/notes.txt'):
-        assert f'  skipped {rel} (not referenced by the .twb: ' in result.stderr
 
 
 def test_data_dir_is_left_out_when_the_twb_references_nothing(tmp_path):
@@ -199,7 +195,6 @@ def test_data_dir_is_left_out_when_the_twb_references_nothing(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert not any(e.startswith('Data') for e in names(result.stdout.strip()))
-    assert '  skipped Data/orders.csv (not referenced by the .twb: ' in result.stderr
 
 
 def test_checks_directory_plus_filename_connections(tmp_path):
@@ -264,17 +259,11 @@ def test_skips_hidden_entries_below_packed_dirs(tmp_path):
     assert 'Resources/.agents/README.md' in entries
     assert not any(part.startswith('.') for entry in entries
                    for part in entry.removeprefix('Resources/.agents/').split('/'))
-    assert f"  skipped {PACKAGE}/content/.config/ (hidden: names starting with '.' are not packed)\n" in result.stderr
-    assert f"  skipped {PACKAGE}/content/.env (hidden: " in result.stderr
-    assert 'skipped Resources/.agents/.env' in result.stderr
-    assert 'gh/hosts.yml' not in result.stderr
-    assert '.DS_Store' not in result.stderr
-    assert 'skipped Data/.env' in result.stderr
     assert not any(entry.startswith('Data') for entry in entries)
     assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
 
 
-def test_symlinks_are_skipped_and_reported_never_followed(tmp_path):
+def test_symlinks_are_skipped_never_followed(tmp_path):
     workspace = make_workspace(tmp_path)
     secret = tmp_path / 'id_rsa'
     secret.write_text('PRIVATE KEY')
@@ -299,8 +288,6 @@ def test_symlinks_are_skipped_and_reported_never_followed(tmp_path):
     assert not any(e.startswith('Data/Datasources') for e in entries)
     with zipfile.ZipFile(result.stdout.strip()) as archive:
         assert not any(b'PRIVATE KEY' in archive.read(e) for e in entries if not e.endswith('/'))
-    for rel in ('Data/orders.csv', 'Data/Datasources/', 'Data/gone.csv', f'{PACKAGE}/content/src/lib.js'):
-        assert f'  skipped {rel} (symlink: ' in result.stderr
 
 
 def test_twb_referencing_a_symlinked_file_fails_as_missing(tmp_path):
@@ -314,7 +301,6 @@ def test_twb_referencing_a_symlinked_file_fails_as_missing(tmp_path):
     result = run_package(str(workspace))
 
     assert result.returncode == 1
-    assert 'skipped Data/Datasources/Sample.xls (symlink: ' in result.stderr
     assert 'references files missing from the workspace' in result.stderr
 
 
@@ -329,7 +315,6 @@ def test_symlinked_packed_dir_is_skipped(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert not any(e.startswith('Data') for e in names(result.stdout.strip()))
-    assert '  skipped Data/ (symlink: ' in result.stderr
 
 
 def test_symlinked_twb_or_packages_fails(tmp_path):
@@ -449,21 +434,6 @@ def test_unreadable_file_fails_cleanly_and_keeps_existing_output(tmp_path):
     assert '✗ Cannot read Data/locked.csv' in result.stderr
     assert output.read_bytes() == b'previous good archive'
     assert sorted(p.name for p in tmp_path.iterdir() if p.suffix == '.twbx') == ['Sales Demo.twbx']
-
-
-def test_symlink_to_the_output_is_reported(tmp_path):
-    workspace = make_workspace(tmp_path)
-    (workspace / 'Data').mkdir()
-    (workspace / 'Data' / 'x.csv').write_text('a\n1\n')
-    output = tmp_path / 'Sales Demo.twbx'
-    (workspace / 'Data' / 'prev.twbx').symlink_to(output)
-
-    run_package(str(workspace))
-    result = run_package(str(workspace))
-
-    assert result.returncode == 0, result.stderr
-    assert '  skipped Data/prev.twbx (symlink: ' in result.stderr
-    assert 'Data/prev.twbx' not in names(str(output))
 
 
 def test_output_inside_workspace_is_not_packed_on_repack(tmp_path):

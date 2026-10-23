@@ -31,12 +31,6 @@ import zipfile
 
 PACKED_DIRS = ('Packages', 'Data', 'Resources/.agents')
 
-HIDDEN_REASON = "(hidden: names starting with '.' are not packed)"
-SYMLINK_REASON = '(symlink: links are not followed; copy the file in instead)'
-UNREFERENCED_REASON = '(not referenced by the .twb: only the Data/ files it uses are packed)'
-
-TEMPLATE_PLACEHOLDER = '.gitkeep'
-
 FILE_PATH_ATTRS = ('filename', 'dbname')
 
 
@@ -49,17 +43,9 @@ def is_cruft(rel_path):
     return any(part.endswith('.DS_Store') or part.startswith('__MACOSX') for part in rel_path.split('/'))
 
 
-def is_hidden_below(top, rel_path):
-    below = rel_path[len(top):].strip('/')
-    return any(part.startswith('.') for part in below.split('/') if part)
-
-
-def first_symlink(workspace, rel_path):
+def crosses_symlink(workspace, rel_path):
     parts = rel_path.split('/')
-    for i in range(1, len(parts) + 1):
-        if os.path.islink(os.path.join(workspace, *parts[:i])):
-            return '/'.join(parts[:i])
-    return None
+    return any(os.path.islink(os.path.join(workspace, *parts[:i])) for i in range(1, len(parts) + 1))
 
 
 def collect_entries(workspace, top, output, allowed=None):
@@ -71,29 +57,12 @@ def collect_entries(workspace, top, output, allowed=None):
             dirs[:] = []
             continue
         entries.append((root, rel_root, True))
-        for name in list(dirs):
-            rel = f'{rel_root}/{name}'
-            if is_cruft(rel):
-                continue
-            reason = HIDDEN_REASON if is_hidden_below(top, rel) else (
-                SYMLINK_REASON if os.path.islink(os.path.join(root, name)) else None)
-            if reason:
-                print(f'  skipped {rel}/ {reason}', file=sys.stderr)
-                dirs.remove(name)
+        dirs[:] = [name for name in dirs if not name.startswith('.')]
         for name in sorted(files):
             rel = f'{rel_root}/{name}'
             path = os.path.join(root, name)
-            if is_cruft(rel) or name == TEMPLATE_PLACEHOLDER:
-                continue
-            reason = HIDDEN_REASON if is_hidden_below(top, rel) else (
-                SYMLINK_REASON if os.path.islink(path) else None)
-            if reason:
-                print(f'  skipped {rel} {reason}', file=sys.stderr)
-                continue
-            if os.path.realpath(path) == output:
-                continue
-            if allowed is not None and rel not in allowed:
-                print(f'  skipped {rel} {UNREFERENCED_REASON}', file=sys.stderr)
+            if (name.startswith('.') or is_cruft(rel) or os.path.islink(path)
+                    or os.path.realpath(path) == output or (allowed is not None and rel not in allowed)):
                 continue
             if not os.path.isfile(path) or not os.access(path, os.R_OK):
                 die(f'Cannot read {rel} (not a regular file you can read); fix or remove it.')
@@ -156,9 +125,7 @@ def main():
     for top in PACKED_DIRS:
         if not os.path.isdir(os.path.join(workspace, top)):
             continue
-        link = first_symlink(workspace, top)
-        if link:
-            print(f'  skipped {link}/ {SYMLINK_REASON}', file=sys.stderr)
+        if crosses_symlink(workspace, top):
             continue
         entries_by_top[top] = collect_entries(workspace, top, os.path.realpath(output),
                                               referenced if top == 'Data' else None)
