@@ -1,7 +1,13 @@
-# Third-party packages needed by any skill script, installed once into a shared
+# Core third-party packages needed by skill scripts, installed once into a shared
 # venv by scripts/run_python.py (see that file). Keep to `name` plus optional
 # comma-separated `>=`, `==` or `<` versions so run_python.py can check them
 # without extra tooling. The floor is the version the validator is tested on;
 # the ceiling blocks breaking major releases while still letting newer Pythons
 # pick up later 6.x wheels.
 lxml>=6.1.3,<7
+
+# Hyper datasource creation used by convert-dashboard-to-tableau-data-app.
+# tableauhyperapi 0.0.26479 is the newest release with macOS (arm64 + x86_64),
+# Linux x86_64, and Windows x64 wheels. Linux/Windows arm64 are unsupported.
+tableauhyperapi==0.0.26479
+pyarrow>=14

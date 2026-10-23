@@ -1,0 +1,3 @@
+# Optional Snowflake export support. Installed on demand with:
+#   run_python.py --with snowflake SCRIPT.py [args...]
+snowflake-connector-python

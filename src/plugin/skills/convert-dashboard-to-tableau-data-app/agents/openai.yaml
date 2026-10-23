@@ -1,0 +1,4 @@
+interface:
+  display_name: "Convert Dashboard to Tableau Data App"
+  short_description: "Convert Data dashboards into Tableau data apps"
+  default_prompt: "Use $convert-dashboard-to-tableau-data-app to convert my Data dashboard into a published Tableau data app."

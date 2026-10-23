@@ -107,7 +107,8 @@ def dev_server_command() -> str:
         checkout = f'${{TABLEAU_MCP_DIR:-{default}}}'
     else:
         checkout = '${TABLEAU_MCP_DIR:?set TABLEAU_MCP_DIR (in .env or the environment)}'
-    return f'dir="{checkout}"; exec node --env-file="$dir/.env" "$dir/build/index.js"'
+    #return f'dir="{checkout}"; exec node --env-file="$dir/.env" "$dir/build/index.js"'
+    return f'dir="{checkout}"; PATH="$HOME/.local/bin:$PATH"; export PATH; exec node --env-file="$dir/.env" "$dir/build/index.js"'
 
 
 def log(msg: str) -> None:

@@ -1,0 +1,151 @@
+# When to Convert a Dashboard to a Tableau Data App
+
+Dashboards built by {{ dashboard_app }} are vibe-coded HTML/CSS/JS apps that
+get their data from MCP tool calls. That is the right shape for exploration
+and personal or small-team use. At some point a dashboard outgrows it and
+should be converted to a Tableau data app: the same HTML/CSS/JS, looking
+identical, embedded in a published workbook, with Tableau querying the data
+instead of MCP.
+
+There is no strict rule for when that point arrives. Use the signals below as
+judgment aids, not a checklist, and explain your reasoning with evidence.
+
+## What conversion gains
+
+Conversion moves the dashboard onto Tableau's scale and governance:
+
+- **Scale:** Tableau runs the queries, so larger result sets, complex data
+  models, and many concurrent viewers no longer depend on MCP tool calls.
+- **Sharing:** the dashboard is published content with a URL, project
+  placement, and Tableau permissions instead of a file or chat artifact.
+- **Governance:** a published datasource brings user access permissions,
+  row-level security, datasource certification, and lineage.
+
+Every completed conversion uses the **published-datasource path**. Reuse a
+credible published datasource when one exists; otherwise create and publish a
+TDS or TDSX first. A TDSX backed by a materialized extract centralizes access
+and removes browser-side file loading, but it is still a snapshot unless a
+supported refresh path is configured. Never present a static published extract
+as live or automatically refreshed.
+
+## Classify the source first
+
+Classify the dashboard's source exactly as
+[step 2 of the conversion](../SKILL.md#2-inspect-the-data-dashboard-and-provenance)
+does, and reuse that classification if it was already done:
+
+1. **Flat files:** the data came from CSV, TSV, Excel, or a local
+   extract/export.
+2. **Connector-backed MCP:** the data came from an MCP tool call backed by a
+   system Tableau has an equivalent connector for.
+3. **Neither:** an MCP tool call backed by a system no Tableau connector
+   reaches.
+
+Then check whether a credible published datasource for the same data already
+exists. If you have not searched yet, say that the data path depends on it
+rather than assuming either outcome.
+
+The class sets which volume threshold applies and what conversion can provide:
+
+| Source class | Volume threshold | Published datasource | Data path | What conversion provides | How to recommend |
+|---|---|---|---|---|---|
+| Flat files | Over 1M rows or 5M cells (rows × columns) loaded | Credible match exists | Published datasource | Scale, sharing, full governance | Weigh the signals normally |
+| Flat files | Over 1M rows or 5M cells loaded | None | Create and publish TDSX, then wire it | Scale, sharing, centralized permissions; freshness depends on refresh setup | Recommend conversion and disclose refresh requirements |
+| Connector-backed MCP | 1,000+ marks in a single visual | Credible match exists | Published datasource | Scale, sharing, full governance | Weigh the signals normally |
+| Connector-backed MCP | 1,000+ marks in a single visual | None | Create live TDS when connection/auth are available; otherwise publish TDSX extract | Scale and sharing; full freshness/governance only with the live or refreshed path | Recommend conversion and name the feasible publish path |
+| Neither | 1,000+ marks in a single visual | Not possible | Publish materialized results as TDSX extract | Scale and centralized access to the snapshot, not live freshness | Recommend only when sharing/centralization justifies a snapshot and disclose refresh limits |
+
+## Strong signals
+
+Any one of these is usually enough to recommend conversion.
+
+**Data volume:** measured on the data the dashboard works with, not on the
+underlying database tables. Use the threshold for the source class in the
+table above; each class has one threshold, not both.
+
+- **Marks** are the bars, points, lines, cells, or other elements drawn from
+  the data that one chart or table needs. Count them per visual, not across
+  the whole dashboard.
+- **Rows and cells** are counted on the flat-file data the dashboard loads,
+  including any inline data.
+- In any class, a tool call's results were truncated, paginated to work
+  around a limit, or sampled to fit.
+
+**Data modeling:** measured on what the dashboard combines itself, across tool
+calls or in its own code.
+
+- Data from more than one source system is combined, for example Snowflake
+  plus SQL Server.
+- Two or more fact tables at different grains are joined (multi-fact).
+
+**Connectivity:**
+
+- The source requires authentication that is tied to the author's MCP session.
+  Other viewers would need their own credentials, or the dashboard would expose
+  data under the author's identity.
+
+**Publishing:**
+
+- The dashboard is shared with, or intended for, more than 3 people.
+- It is still being used or shared 90 days after creation.
+- Viewers should see only the rows or content they are entitled to (row-level
+  security or per-user permissions).
+
+## Supporting signals
+
+Two or more of these together usually justify recommending conversion. One
+alone is a reason to mention it, not to push.
+
+- More than 2 joins are performed across tool calls or in app code.
+- Object-model relationships (logical tables joined at query time by
+  relationship rules) are reimplemented in app code.
+- Business metrics, calculations, or groupings are defined in app code rather
+  than in a governed datasource.
+- The numbers are quoted in decisions, decks, or recurring reviews, so they
+  need a certified source and lineage.
+- The data is sensitive (PII, financial, or regulated) and the audience is
+  growing.
+- The dashboard needs refreshed data on a schedule rather than whenever
+  someone reruns the tool calls.
+
+## Reasons to keep it as is
+
+Recommend staying put, or say the case is weak, when:
+
+- it is one-off exploration or a personal working view;
+- each visual draws few marks, the data comes from a single source, and the
+  app does no modeling of its own;
+- the audience is the author or a few people who already have access to the
+  data;
+- the source class is "Neither" and the user has no sharing need (see the
+  table above).
+
+## Gathering evidence
+
+Check what you can from the dashboard artifact itself before asking:
+
+- the number of MCP tool calls and their sources, enough to classify the
+  source;
+- the volume measure for that class: marks per visual, from the data bound to
+  each chart or table, or rows and columns of the loaded flat-file data;
+- joins, merges, and lookups across result sets in the JavaScript;
+- calculations and groupings defined in app code;
+- whether a published datasource for the same source already exists, and
+  whether it is certified.
+
+Some facts can only come from the user: audience size, how long the dashboard
+has been in use, whether it is shared, how sensitive the data is, and whether
+row-level restrictions apply. Ask for these in one batched question, and only
+for the facts that would change the recommendation.
+
+## Presenting the recommendation
+
+- Lead with the recommendation: convert, consider converting, or keep as is.
+- List the signals that apply, each with its evidence: what the code shows or
+  what the user said.
+- Name the source class and the data path the conversion would use, and say
+  what that path does and does not provide. When no credible datasource exists,
+  say that the conversion will create and publish a TDS/TDSX before publishing
+  the app.
+- Never start a conversion based on these signals alone. Recommend it, and
+  wait for the user to agree.

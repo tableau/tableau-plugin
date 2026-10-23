@@ -41,7 +41,8 @@ needed by the requested workflow are callable:
 - `{{ mcp_prefix }}publish-workbook`;
 - either `{{ mcp_prefix }}request-workbook-upload` or support for publishing
   through `workbookFilePath`;
-- `{{ mcp_prefix }}get-view-image` for post-publish verification; and
+- `{{ mcp_prefix }}get-view-image`, always with `format: "PNG"`, for
+  post-publish verification; and
 - for an existing workbook, `{{ mcp_prefix }}search-content` and
   `{{ mcp_prefix }}download-workbook`.
 

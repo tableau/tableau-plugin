@@ -1,0 +1,3 @@
+# Optional Trino export support. Installed on demand with:
+#   run_python.py --with trino SCRIPT.py [args...]
+trino

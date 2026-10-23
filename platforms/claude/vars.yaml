@@ -7,6 +7,10 @@
 # How the assistant refers to itself in user-facing prose.
 assistant_name: Claude
 
+# The host feature that builds vibe-coded dashboards from MCP tool calls, which
+# convert-dashboard-to-tableau-data-app converts into Tableau data apps.
+dashboard_app: Claude Dashboards
+
 # Empty on purpose. In the Claude apps the Tableau connector's tools get a
 # host-assigned prefix that isn't predictable from the plugin (e.g.
 # mcp__<connector-uuid>__search-content), so skills name tools by base name and

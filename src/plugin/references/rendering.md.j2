@@ -48,6 +48,14 @@ Do not retry an unavailable rendering tool or repeat a failed path. The
 static image is the final fallback, even for "render," "show," and "preview"
 requests.
 
+## Always request PNG
+
+Every call to `{{ mcp_prefix }}get-view-image` or
+`{{ mcp_prefix }}get-custom-view-image` passes `format: "PNG"`, whether the
+image is for you to inspect or only to show the user. Never request
+`"SVG"`, even though the tools' descriptions suggest it for display, and
+don't rely on the default.
+
 ## Download the PNG immediately
 
 `{{ mcp_prefix }}get-view-image` returns either an inline image or a

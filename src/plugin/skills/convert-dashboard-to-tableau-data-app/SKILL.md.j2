@@ -1,0 +1,366 @@
+---
+name: convert-dashboard-to-tableau-data-app
+description: Convert an existing dashboard created by {{ dashboard_app }} into a packaged and published Tableau data app while preserving its design and interactions. Reuse a suitable published Tableau datasource when possible; otherwise build a modeled Hyper extract, package and publish it as a TDSX datasource, then wire the app to it. Use when the user asks to convert, migrate, or publish such a dashboard as a Tableau data app, or asks whether one has outgrown MCP-fetched data and should move to Tableau for scale or governance. Not for creating a data app from scratch, authoring a native Tableau dashboard, merely opening existing Tableau content, or independently preparing extracts outside a dashboard conversion.
+---
+
+# Convert a Data Dashboard to a Tableau Data App
+
+"Data dashboard" here means a dashboard created by {{ dashboard_app }}:
+HTML/CSS/JS that gets its data from MCP tool calls.
+
+Convert the existing Data dashboard rather than redesigning it. Preserve its
+information hierarchy, styling, charts, controls, interactions, responsive behavior,
+and accessibility unless Tableau's viz-extension sandbox requires a change.
+
+Follow this sequence:
+
+```
+Preflight → Inspect source → Scaffold → Resolve/publish datasource → Port dashboard → Package → Publish app → Verify
+```
+
+Use `request_user_input` for the datasource decisions below when that tool is
+available. Do not make the user choose until the source evidence and candidate
+Tableau datasources are known.
+
+## When conversion makes sense
+
+When the user asks whether a dashboard should be converted, or when a dashboard
+you are working with shows signs of outgrowing MCP-fetched data, assess it with
+[When to convert](references/when-to-convert.md) before recommending anything.
+That guide starts from the source classification in step 2, then covers data
+volume, data modeling, connectivity, and publishing signals, and how the
+resulting data path affects scale and governance. Recommend; do not
+start a conversion until the user agrees.
+
+When the user explicitly asks to convert, do not gate the request on these
+signals. If the only feasible datasource is a published extract of MCP results,
+state that it is centrally governed but is not live or automatically
+refreshable unless a supported refresh path is configured.
+
+## 1. Preflight publishing and tools
+
+Complete preflight before scaffolding or modifying files.
+
+- Confirm the connected Tableau user has a Creator or Explorer (can publish)
+  site role and permission to publish to the intended project. Use conclusive
+  Tableau metadata or permission information when available. Otherwise ask the
+  user to confirm both. A generic Explorer role is not enough.
+- Verify that `scaffold-data-app`, `publish-datasource`, `publish-workbook`, and
+  `request-workbook-upload` are callable, and that interactive rendering plus a
+  static PNG render are available for post-publish verification.
+- Confirm permission to publish both datasources and workbooks to the target
+  project. `publish-datasource` requires a writable project ID; Personal Space
+  is not a datasource-publish fallback.
+- Verify datasource search and metadata tools are callable if the live
+  published-datasource path may apply.
+- Treat a tool as missing only after one focused availability lookup. If
+  `scaffold-data-app` or another required capability is unavailable, stop and
+  name the missing capability; do not hand-build a substitute or claim partial
+  work is complete.
+
+## 2. Inspect the Data dashboard and provenance
+
+Locate and inspect the complete dashboard artifact: HTML, CSS, JavaScript,
+images/fonts, data files, and any manifest or analysis notes. Identify:
+
+- the entry HTML and all local or remote dependencies;
+- charting libraries and whether they are locally vendored;
+- the fields, types, transformations, joins, filters, calculations, and
+  aggregation grain the dashboard expects;
+- its source provenance, including Data-plugin MCP calls and source files;
+- whether the rendered dashboard contains data inline in JavaScript or HTML;
+- a baseline render or screenshots for later visual comparison.
+
+Do not infer provenance from filenames alone. If provenance is missing, inspect
+the dashboard's code and accompanying Data artifact, then ask only for facts
+that cannot be recovered.
+
+Classify the source against both criteria:
+
+1. The data originated from flat files such as CSV, TSV, Excel, or a local
+   extract/export.
+2. The data originated from an MCP tool call backed by a system for which
+   Tableau has an equivalent connector.
+
+An equivalent connector must plausibly reach the same system and semantic
+dataset; a connector with a merely similar name does not qualify.
+
+If the source was already classified while assessing whether to convert, reuse
+that classification rather than repeating it.
+
+## 3. Scaffold the Tableau data app
+
+Call `scaffold-data-app({ datappName: "<App Name>" })`. If it fails, stop; do
+not recreate its template manually.
+
+Finalize the returned template exactly as the installed
+`tableau-data-app-authoring` skill specifies: save the returned `postUnzip`
+object verbatim, fetch and unzip the template from `filePath` or `s3URL`, and
+apply the plan with that skill's `scripts/apply_plan.py`. Preserve the generated
+`.twb`, `.trex`, Tableau Extensions API library, package layout, and identifiers.
+
+## 4. Choose and wire the data path
+
+### Search for an existing published datasource when either criterion is true
+
+If either source criterion from step 2 is true, ask whether the user wants you
+to search Tableau Cloud for an equivalent published datasource.
+
+- If the user declines, finds no candidate acceptable, or no relevant candidate
+  exists, create and publish a datasource as described below.
+- If the user agrees, search published datasources using source-system,
+  table/file, business-domain, and field-name evidence. Inspect candidate
+  metadata and compare fields, types, calculations, grain, and freshness with
+  the dashboard's contract. Never select on name alone.
+- If one or more credible candidates remain, present concise evidence and ask
+  the user to select or confirm the datasource. Do not wire a candidate before
+  confirmation. If none is credible, say so and create and publish a datasource.
+
+For a confirmed published datasource:
+
+1. Resolve its LUID, `contentUrl`/repository id, site, server, and metadata.
+2. Map every dashboard field and transformation to the datasource. Surface
+   missing fields or semantic differences before continuing; do not silently
+   substitute measures or change grain.
+3. Wire it into the scaffold using the installed
+   `tableau-data-app-authoring/scripts/wire_datasource.py` workflow. Do not
+   hand-edit the coordinated `sqlproxy` XML anchors.
+4. Replace the dashboard's snapshot/inline-data reads with Tableau Extensions
+   API datasource lookup and `queryAsync` calls. Match datasources and returned
+   columns by name, not position. Preserve the dashboard's visual and interaction
+   code around this new data adapter.
+5. Show the datasource name and an "as of" load time in the app chrome.
+
+### Build and publish a Hyper datasource otherwise
+
+When the user does not want an existing datasource, no credible match exists,
+or the source has no reusable Tableau connection, build a modeled Hyper extract,
+generate a TDSX, publish it with `publish-datasource`, and wire the app to the
+newly published datasource. This is supporting behavior inside this conversion
+skill, not a handoff to a separate extract-publishing skill. Never fall back to
+reading a data file directly from the `.twbx`.
+
+Scripts below live in this skill's `scripts/` directory. Run every Python helper
+through the plugin's shared `scripts/run_python.py` runner. The session-start
+hook bootstraps only the core environment with `tableauhyperapi`, `pyarrow`,
+and `lxml`; the runner installs a warehouse connector in a separate cached
+profile only when that connector is used. It also repairs a missing or stale
+environment on demand:
+
+```bash
+SKILL_DIR="<absolute path to this skill>"
+H="$SKILL_DIR/scripts"
+PY_RUNNER="$SKILL_DIR/../../scripts/run_python.py"
+WORK="$(mktemp -d -t dataapp-hyper)"
+python3 "$PY_RUNNER" "$H/build_hyper.py" --help
+```
+
+The cached environments live under the Tableau plugin cache and are reused by
+skill scripts. Supported Hyper hosts are macOS, Linux x86_64, and Windows
+x86_64. On Linux or Windows arm64, stop and explain that the Hyper API needs an
+x86_64 machine or container. If the hook or runner reports a dependency-install
+failure, surface it and stop rather than creating another venv.
+
+#### Prepare source tables
+
+Materialize the exact data contract the dashboard needs. Local CSV, TSV,
+Parquet, and JSON Lines files can load directly. Export spreadsheet sheets to
+CSV first. For MCP results, write faithful table files without changing field
+names, types, nulls, precision, or grain. Keep credentials out of commands,
+scratch files, and chat.
+
+If direct warehouse extraction is appropriate and the user has access,
+`export_query.py` streams Snowflake, Databricks, or Trino queries to Parquet.
+Run it as `python3 "$PY_RUNNER" --with <engine> "$H/export_query.py" ...` so
+only the selected connector is installed at runtime.
+Read [Warehouse export](references/warehouse-export.md) before using it. Prefer
+joins, filters, and unsupported-type casts in warehouse SQL.
+
+Decide the model before building: one fact table per event grain and dimension
+tables at their entity grains. Leave genuinely flat data as one table. For a
+flat file with repeated entity attributes, use a Hyper SQL transform to split it
+into fact and dimensions.
+
+#### Build, profile, and model the Hyper
+
+Build one Hyper table per source file:
+
+```bash
+python3 "$PY_RUNNER" "$H/build_hyper.py" "$WORK/data.hyper" \
+  fact="$WORK/fact.parquet" dim_customer="$WORK/dim_customer.csv"
+```
+
+Use `--transform "$WORK/transform.sql"` when reshaping or casting is needed.
+The script prints final table row counts; compare them with the source before
+continuing.
+
+Profile the extract and draft its model:
+
+```bash
+python3 "$PY_RUNNER" "$H/profile_hyper.py" "$WORK/data.hyper" \
+  --model-out "$WORK/model.json" \
+  --check fact.customer_id=dim_customer.customer_id
+```
+
+Read [Hyper model](references/hyper-model.md), then edit `model.json` so it
+captures the datasource caption/description, fact-first table order, unique
+field captions, descriptions, roles, hidden duplicate keys, and exactly one
+single-column many-to-one relationship per dimension. Do not invent business
+meaning. Fix duplicate dimension keys, mismatched key types, or inappropriate
+many-to-many relationships in the build/transform stage.
+
+#### Generate and validate the TDSX
+
+Generate the TDSX and the exact field descriptor used by app wiring:
+
+```bash
+python3 "$PY_RUNNER" "$H/generate_tds.py" "$WORK/data.hyper" "$WORK/model.json" \
+  --out "$WORK/<Datasource Name>.tdsx" --fields-out "$WORK/fields.json"
+```
+
+`generate_tds.py` validates the model against the Hyper and atomically creates a
+package containing the generated root TDS plus `Data/Extracts/<name>.hyper`.
+Trust its failure over patching XML. Do not hand-write or edit the TDS/TDSX.
+Also run `unzip -t` and inspect the archive: it must contain exactly the root
+`.tds` and the expected Hyper extract.
+
+#### Publish and verify the datasource
+
+Confirm the datasource name and writable project with the user; datasources
+cannot publish to Personal Space. If needed, use
+`list-projects({ capability: "Write" })`. Publish the generated TDSX:
+
+> publish-datasource({ datasourceFilePath: "<absolute .tdsx path>", name: "<Datasource Name>", projectId: "<project LUID>", overwrite: false })
+
+If local paths are unsupported, call
+`request-workbook-upload({ fileName: "<Datasource Name>.tdsx" })`, upload the
+bytes with every required header, then pass its `workbookUploadId` as
+`datasourceUploadId`:
+
+> publish-datasource({ datasourceUploadId: "<workbookUploadId>", name: "<Datasource Name>", projectId: "<project LUID>", overwrite: false })
+
+Never overwrite without explicit approval. For `status: "pending"`, wait for
+the publish job and resolve the datasource by name plus project after it
+finishes. Relay `boundedContextNote` verbatim because the MCP operator may need
+to allow the new LUID before it can be queried.
+
+Require a successful publish result and save the datasource LUID, `contentUrl`,
+project, canonical URL, warnings, permissions, host, and site content URL.
+Verify the result with one `query-datasource` call; for a multi-table model,
+query a dimension field plus a fact measure across a relationship and compare
+it with a value known from the profile.
+
+Do not block on `get-datasource-metadata`: Catalog can take minutes to index a
+new datasource and descriptions can lag an overwrite. Build the wiring
+descriptor from the publish result and `fields.json` (`name`, `datatype`, and
+`role` only), then run
+`tableau-data-app-authoring/scripts/wire_datasource.py`. Replace the dashboard's
+file/MCP reads with Tableau Extensions API lookup and `queryAsync`, matching the
+datasource and fields by name, never position.
+
+Show the published datasource name, load time, and extract snapshot timestamp
+or refresh status. A generated Hyper is a one-time extract: do not describe it
+as live or automatically refreshable. To update it later, rebuild and republish
+with approved `overwrite: true`; its LUID remains stable, so the wired app keeps
+working.
+
+## 5. Port the dashboard into the scaffold
+
+Use the Data dashboard's HTML, CSS, JavaScript, and local assets as the starting
+point inside `Packages/com.tableau.mcp.<slug>/content/`.
+
+- Integrate the markup into the scaffolded `index.html`; adapt paths and startup
+  logic instead of embedding the old dashboard in an iframe.
+- Preserve the generated Tableau Extensions API script and required initialization.
+- Merge or replace the scaffolded CSS and app code as needed, keeping the
+  original layout, chart encodings, interactions, and responsive behavior.
+- Vendor required libraries locally. Do not add CDN dependencies. Any necessary
+  external fetch must use an origin returned in the scaffold's `allowedOrigins`;
+  otherwise remove it or bundle the asset.
+- Follow the scaffold's `AUTHOR YOUR APP HERE` sandbox rules: render errors
+  visibly, use safe DOM APIs for live values, and avoid unsupported browser or
+  WebGL assumptions.
+- Remove Data-plugin-only shell, navigation, controls, or services that have no
+  meaning inside Tableau, while preserving user-facing dashboard functionality.
+- Remove all direct file-data and MCP data fetches after the published
+  datasource adapter is working. Dashboard assets may remain in the extension
+  package, but source data must not.
+
+Inspect the completed files for unresolved placeholders, missing assets, stale
+absolute paths, external URLs, and references to the original Data runtime.
+
+## 6. Validate and package
+
+Use the installed `tableau-data-app-authoring/scripts/package_twbx.py` helper.
+Do not zip the package freehand. The `.twb` and `Packages/` directory must be at
+the archive root.
+
+Before publishing:
+
+- run the helper's structural validation and fix every error;
+- run `unzip -t` on the produced `.twbx`;
+- inspect the archive listing to confirm the extension assets are present and
+  source data files were not accidentally embedded;
+- confirm that the app has no empty or mismatched published-datasource wiring;
+- confirm that app code queries the published datasource and contains no stale
+  Data-plugin/MCP or local-file data path.
+
+Tableau performs the final package/extension validation during publish. Treat a
+publish validation error as a build failure to fix, not a warning to ignore.
+
+## 7. Publish the workbook
+
+Publish with `publish-workbook`, following the installed
+`tableau-data-app-authoring` skill's destination, staged-upload fallback, access
+summary, and overwrite rules. An explicit request to convert and publish the
+dashboard authorizes the initial publish; still obtain explicit confirmation
+before overwriting an existing workbook or changing the destination.
+
+Save and report the canonical published URL and warnings. Do not report success
+for an `invalid` status or a partially uploaded workbook.
+
+## 8. Render and verify the published revision
+
+Completion requires all of the following after every successful publish or
+overwrite:
+
+1. Open the updated target view interactively in Codex.
+2. Force a fresh load so the previous workbook revision is not reused. Use a
+   supported reload/cache-busting mechanism and confirm the newly published
+   revision is the one displayed.
+3. Obtain a fresh static PNG render of the same target view with
+   `{{ mcp_prefix }}get-view-image` and `format: "PNG"`, and inspect it. Handle
+   the result as
+   [rendering.md](../../references/rendering.md#download-the-png-immediately)
+   describes.
+4. Compare it with the baseline and verify that the requested dashboard is
+   visible, major layout and interactions are represented correctly, no error
+   or trust screen obscures the app, and the correct data-state label appears:
+   published datasource provenance plus truthful live/refresh or extract
+   freshness status.
+
+If either interactive rendering or PNG verification fails, diagnose the app,
+fix the local files, repackage, republish, and repeat the full fresh-render
+verification. Do not report completion until publishing and both visual checks
+succeed.
+
+## Non-negotiable boundaries
+
+- Do not redesign a working Data dashboard without the user's request.
+- Do not choose an ambiguous published datasource for the user.
+- Do not embed source data in the `.twbx` or make the app read packaged data
+  directly; create and publish a `.tds` or `.tdsx`, then wire that published
+  datasource into the app.
+- Do not describe a generated Hyper extract as live or automatically
+  refreshable.
+- Do not expose or route to a separate extract-publishing skill. Hyper creation
+  and datasource publishing are internal support stages of this conversion.
+- Do not hand-write or patch the generated TDS XML; fix `model.json` or the
+  Hyper build and rerun `generate_tds.py`.
+- Do not hand-build the scaffold, datasource wiring XML, or `.twbx` archive
+  when the required helpers exist.
+- Do not publish the workbook until the selected or newly created datasource
+  has published successfully and passed metadata/query verification.
+- Do not publish over existing content without explicit overwrite approval.
+- Do not finish after publish without a fresh interactive render and inspected
+  static PNG.

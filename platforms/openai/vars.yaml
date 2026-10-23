@@ -4,6 +4,10 @@
 # How the assistant refers to itself in user-facing prose.
 assistant_name: ChatGPT and Codex
 
+# The host feature that builds vibe-coded dashboards from MCP tool calls, which
+# convert-dashboard-to-tableau-data-app converts into Tableau data apps.
+dashboard_app: the Data plugin
+
 # Prefix applied to every Tableau MCP server tool name in prose, e.g.
 # `{{ mcp_prefix }}search-content` -> `mcp__Tableau__search-content`. On Codex,
 # tools are addressed by the bare server key from .mcp.json ("Tableau").

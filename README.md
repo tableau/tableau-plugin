@@ -98,14 +98,14 @@ uploading in the Claude apps or submitting to OpenAI.
     Leave empty when a host has none; the prose falls back (PNG render,
     numbered list).
   - `plugin_root`: how hooks find the plugin's install directory.
-- **Scripts** are Python (stdlib only, cross-platform). Third-party packages
-  for any skill go in one list, `src/plugin/requirements.txt`, installed into a
-  single shared venv (`~/.cache/tableau-plugin/venv-<pyver>`, keyed by a hash
-  of that file). The session-start hook prepares it via
-  `scripts/run_python.py --bootstrap`, so skills don't pay the install cost
-  mid-task. A script that needs those packages is launched as
-  `python3 <plugin>/scripts/run_python.py <script.py> [args]`; without the hook
-  (Claude Chat, the web) the first such call installs the venv instead.
+- **Scripts** are Python (stdlib only, cross-platform). Core third-party
+  packages go in `src/plugin/requirements.txt` and optional integrations go in
+  `requirements-<profile>.txt`. The session-start hook prepares only the core
+  venv (`~/.cache/tableau-plugin/venv-<pyver>`) via
+  `scripts/run_python.py --bootstrap`. A script needing an optional integration
+  is launched as `run_python.py --with <profile> <script.py> [args]`; each
+  profile gets a separate cached venv. Without the hook, the first script call
+  installs core lazily.
 
 To add a platform: create `platforms/<name>/{overlay,vars.yaml}` with that
 host's manifests and values, then run `python3 build/build.py <name>`.
