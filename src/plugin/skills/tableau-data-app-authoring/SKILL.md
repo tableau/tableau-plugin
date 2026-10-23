@@ -1,6 +1,6 @@
 ---
 name: tableau-data-app-authoring
-description: Build and publish a Tableau data app, a custom viz-extension web app that queries a published datasource live, or an Excel or CSV file embedded in the workbook. Scaffolds the app with the scaffold-data-app MCP tool, writes its query and visualization from the user's criteria or vibe, then packages it as a .twbx and publishes it. Requires scaffold-data-app, which may be unavailable depending on the user's site role, site settings, or Tableau Server version; don't invoke this skill unless it is available. Use to create, build, vibe-code, or publish a data app. Not for native workbooks or dashboards built from marks, Show Me, or the chart catalog (tableau-workbook-authoring), or for opening existing content, including published data apps (tableau-content-viewer).
+description: Build and publish a Tableau data app, a custom viz-extension web app that queries a published datasource live, or a data file embedded in the workbook. Scaffolds the app with the scaffold-data-app MCP tool, writes its query and visualization from the user's criteria or vibe, then packages it as a .twbx and publishes it. Requires scaffold-data-app, which may be unavailable depending on the user's site role, site settings, or Tableau Server version; don't invoke this skill unless it is available. Use to create, build, vibe-code, or publish a data app. Not for native workbooks or dashboards built from marks, Show Me, or the chart catalog (tableau-workbook-authoring), or for opening existing content, including published data apps (tableau-content-viewer).
 ---
 
 # Tableau Data App Authoring
@@ -189,7 +189,7 @@ The app queries either kind of datasource, in any mix:
   connection, resolved live by VDS). Its identity can come straight from the
   user, or be reused from a datasource already wired into some other existing
   workbook (see Reuse an existing workbook's datasource below).
-- **Embedded file:** an Excel sheet or CSV file the user supplies, copied into
+- **Embedded file:** a data file the user supplies, copied into
   the workspace's `Data/` folder and packed into the `.twbx` (see Embedded
   file datasource below).
 
@@ -316,7 +316,7 @@ have produced).
 2. Check the matched entry's `datasourceType`:
    - **`"embedded"`**: its data lives inside that workbook, so it can't be
      reused by reference. Ask the user for either a published datasource or
-     the source Excel/CSV file, and wire the file as an Embedded file
+     the source data file, and wire the file as an Embedded file
      datasource above.
    - **`"published"`** — still run the rest of Published datasource step 1
      (`list-datasources` filtered by this LUID, for `contentUrl`/site/server

@@ -8,8 +8,7 @@
 ## What this is
 
 The design layer for a Tableau **data app** — a custom HTML/JS/CSS web app, bundled as a viz
-(worksheet) extension, that queries a published datasource **live** (or an Excel/CSV file embedded
-in the workbook, queried the same way).
+(worksheet) extension, that queries a published datasource **live**.
 
 **You render everything yourself.** There is no Marks card, no Show Me, no Analytics pane, no
 drag-to-Rows. When this guide says "put the measure on position" or "grey the non-focal marks," that
