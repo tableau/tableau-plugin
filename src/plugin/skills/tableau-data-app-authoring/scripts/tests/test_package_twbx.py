@@ -325,3 +325,61 @@ def test_fails_without_trex(tmp_path):
     assert '✗ No .trex under Packages/*/extensions/' in result.stderr
     assert 'Package directory contains no extension .trex files under extensions/' in result.stderr
     assert not (tmp_path / 'Sales Demo.twbx').exists()
+
+
+def test_symlinked_alias_packs_the_real_path_too(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Data' / 'v2').mkdir(parents=True)
+    (workspace / 'Data' / 'v2' / 'x.csv').write_text('a\n1\n')
+    (workspace / 'Data' / 'current').symlink_to(workspace / 'Data' / 'v2', target_is_directory=True)
+    (workspace / 'Sales Demo.twb').write_text(
+        "<workbook><connection class='textscan' directory='Data/v2' filename='x.csv'/></workbook>")
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Data/v2/x.csv' in entries
+    assert 'Data/current/x.csv' in entries
+
+
+def test_reference_case_must_match_the_packed_file(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Data' / 'v2').mkdir(parents=True)
+    (workspace / 'Data' / 'v2' / 'x.csv').write_text('a\n1\n')
+    (workspace / 'Sales Demo.twb').write_text(
+        "<workbook><connection class='textscan' directory='Data/V2' filename='X.csv'/></workbook>")
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'Data/V2/X.csv' in result.stderr
+
+
+def test_dangling_symlink_fails_cleanly_and_keeps_existing_output(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / 'gone.csv').symlink_to(tmp_path / 'nonexistent.csv')
+    output = tmp_path / 'Sales Demo.twbx'
+    output.write_bytes(b'previous good archive')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'Traceback' not in result.stderr
+    assert '✗ Cannot read Data/gone.csv' in result.stderr
+    assert output.read_bytes() == b'previous good archive'
+    assert sorted(p.name for p in tmp_path.iterdir() if p.suffix == '.twbx') == ['Sales Demo.twbx']
+
+
+def test_output_inside_workspace_is_not_packed_on_repack(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / 'x.csv').write_text('a\n1\n')
+    output = workspace / 'Data' / 'out.twbx'
+
+    run_package(str(workspace), str(output))
+    result = run_package(str(workspace), str(output))
+
+    assert result.returncode == 0, result.stderr
+    assert 'Data/out.twbx' not in names(str(output))

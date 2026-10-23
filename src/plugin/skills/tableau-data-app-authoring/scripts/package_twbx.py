@@ -24,7 +24,9 @@ followed.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 at least one `.trex` under `Packages/*/extensions/`, and every `Data/` file the
-`.twb` references.
+`.twb` references packed under that exact (case-sensitive) path. Also fails on a
+dangling symlink or unreadable file; the output is only replaced once the new
+archive is complete.
 
 Output defaults to `<App Name>.twbx` next to the workspace dir; an existing
 file is overwritten. Prints the output path on stdout.
@@ -35,6 +37,7 @@ Usage: python3 package_twbx.py <workspaceDir> [outputPath]
 import glob
 import os
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -68,20 +71,28 @@ def is_hidden(rel_path, top):
     return any(part.startswith('.') for part in below.split('/') if part)
 
 
+# True when a symlinked dir points back at one of its own ancestors. Only cycles
+# are cut: a second link to the same dir (Data/current -> v2) is packed under
+# both names, since the .twb may reference either.
+def is_cycle(workspace, rel_root):
+    parts = rel_root.split('/')
+    real_root = os.path.realpath(os.path.join(workspace, rel_root))
+    return any(os.path.realpath(os.path.join(workspace, *parts[:i])) == real_root
+               for i in range(1, len(parts)))
+
+
 # Walk one packed dir and return its (path, archive name) entries in walk order,
 # reporting hidden skips on stderr. Dirs are kept only on the way to a packed
-# file, so a dir left with no files (an empty Data/) isn't packed at all.
-def collect_entries(workspace, top):
+# file, so a dir left with no files (an empty Data/) isn't packed at all. `skip`
+# is the output path, so repacking into the workspace never packs the old archive.
+def collect_entries(workspace, top, skip):
     entries = []  # (path, archive name, is_dir)
-    visited = set()
     for root, dirs, files in os.walk(os.path.join(workspace, top), followlinks=True):
         dirs.sort()
         rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
-        real_root = os.path.realpath(root)
-        if is_cruft(rel_root) or real_root in visited:
+        if is_cruft(rel_root) or is_cycle(workspace, rel_root):
             dirs[:] = []
             continue
-        visited.add(real_root)
         entries.append((root, rel_root, True))
         # Prune hidden dirs here so each is reported once, not per file inside.
         for name in list(dirs):
@@ -96,7 +107,12 @@ def collect_entries(workspace, top):
             if is_hidden(rel, top):
                 print(f'  skipped {rel} {HIDDEN_REASON}', file=sys.stderr)
                 continue
-            entries.append((os.path.join(root, name), rel, False))
+            path = os.path.join(root, name)
+            if os.path.realpath(path) == skip:
+                continue
+            if not os.path.isfile(path) or not os.access(path, os.R_OK):
+                die(f'Cannot read {rel} (a dangling symlink or unreadable file); fix or remove it.')
+            entries.append((path, rel, False))
 
     # Every dir that is an ancestor of a packed file.
     needed_dirs = {rel.rsplit('/', i)[0] for _, rel, is_dir in entries if not is_dir
@@ -104,7 +120,10 @@ def collect_entries(workspace, top):
     return [(path, rel) for path, rel, is_dir in entries if not is_dir or rel in needed_dirs]
 
 
-def missing_data_files(workspace, twb):
+# Data/ files the .twb references that aren't packed under exactly that name. The
+# names are compared as packed, not checked on disk, so a reference whose case
+# differs from the file (fine on macOS, missing on the server) still fails.
+def missing_data_files(workspace, twb, packed):
     try:
         root = ET.parse(os.path.join(workspace, twb)).getroot()
     except ET.ParseError as error:
@@ -116,7 +135,7 @@ def missing_data_files(workspace, twb):
             path = element.get(attr, '').replace('\\', '/')
             if attr == 'filename' and directory and path:
                 path = f'{directory}/{path}'
-            if path.startswith('Data/') and not os.path.isfile(os.path.join(workspace, path)):
+            if path.startswith('Data/') and path not in packed:
                 missing.add(path)
     return sorted(missing)
 
@@ -144,24 +163,33 @@ def main():
         die('No .trex under Packages/*/extensions/ — publish would fail with '
             '"Package directory contains no extension .trex files under extensions/".')
 
-    missing = missing_data_files(workspace, twb)
+    output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
+        os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
+
+    entries_by_top = {top: collect_entries(workspace, top, os.path.realpath(output))
+                      for top in PACKED_DIRS if os.path.isdir(os.path.join(workspace, top))}
+    dirs_to_pack = [top for top, entries in entries_by_top.items() if entries]
+
+    packed = {rel for entries in entries_by_top.values() for _, rel in entries}
+    missing = missing_data_files(workspace, twb, packed)
     if missing:
         die(f'{twb} references files missing from the workspace (no data at runtime): '
             + ', '.join(missing))
 
-    output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
-        os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
-
-    entries_by_top = {top: collect_entries(workspace, top)
-                      for top in PACKED_DIRS if os.path.isdir(os.path.join(workspace, top))}
-    dirs_to_pack = [top for top, entries in entries_by_top.items() if entries]
-
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
-    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-        archive.write(os.path.join(workspace, twb), twb)
-        for top in dirs_to_pack:
-            for path, rel in entries_by_top[top]:
-                archive.write(path, rel)
+    # Written to a temp file first, so a failure never leaves a truncated .twbx.
+    fd, partial = tempfile.mkstemp(suffix='.twbx', dir=os.path.dirname(output))
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(partial, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.write(os.path.join(workspace, twb), twb)
+            for top in dirs_to_pack:
+                for path, rel in entries_by_top[top]:
+                    archive.write(path, rel)
+        os.replace(partial, output)
+    except BaseException:
+        os.remove(partial)
+        raise
 
     packed = ', '.join(f'{top}/' for top in dirs_to_pack)
     print(f'✓ Packaged {twb} + {packed} into {output}', file=sys.stderr)

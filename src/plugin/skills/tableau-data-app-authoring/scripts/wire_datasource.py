@@ -58,6 +58,7 @@ or any number of either, primary first, wired in a single run:
 import json
 import os
 import random
+import re
 import string
 import sys
 import xml.etree.ElementTree as ET
@@ -123,11 +124,17 @@ def derive_field(field, ordinal, error_prefix=''):
         'aggregation': aggregation,
         # role attribute: 0 = dimension, 1 = measure
         'roleAttr': 1 if is_measure else 0,
-        'localName': f'[{name}]',
+        'localName': bracket(name),
         # column-instance derivation + name token: [sum:Profit:qk] / [none:Region:nk]
         'derivation': 'Sum' if is_measure else 'None',
-        'instanceName': f'[sum:{name}:qk]' if is_measure else f'[none:{name}:nk]',
+        'instanceName': bracket(f'sum:{name}:qk' if is_measure else f'none:{name}:nk'),
     }
+
+
+# The hash after the prefix is letters and digits, as Tableau generates it.
+def check_connection_hash(connection_name, error_prefix):
+    if connection_name and not re.fullmatch(r'[a-z]+\.[A-Za-z0-9]+', connection_name):
+        die(f'{error_prefix}connectionName must be letters and digits after the prefix (got "{connection_name}").')
 
 
 def generate_connection_name(prefix):
@@ -164,6 +171,7 @@ def parse_datasource(descriptor, error_prefix=''):
     connection_name = descriptor.get('connectionName')
     if connection_name and not connection_name.startswith('sqlproxy.'):
         die(f'{error_prefix}connectionName must start with "sqlproxy." (got "{connection_name}").')
+    check_connection_hash(connection_name, error_prefix)
 
     return {
         'type': 'published',
@@ -204,6 +212,7 @@ def parse_file_datasource(descriptor, error_prefix):
     connection_name = descriptor.get('connectionName')
     if connection_name and not connection_name.startswith('federated.'):
         die(f'{error_prefix}connectionName for a file datasource must start with "federated." (got "{connection_name}").')
+    check_connection_hash(connection_name, error_prefix)
 
     return {
         'type': 'file',
@@ -389,10 +398,11 @@ def verify_wiring(wired, datasources):
         if root_ds is None:
             die(f'Root <datasources> is missing {name} — wiring incomplete.')
         relation_connection = ds['relationConnection']
-        if root_ds.find(f".//relation[@connection='{relation_connection}']") is None:
+        if not any(r.get('connection') == relation_connection for r in root_ds.iter('relation')):
             target = 'itself' if relation_connection == name else relation_connection
             die(f'Root datasource {name} has no relation connection to {target} — wiring incomplete.')
-        if ds['type'] == 'file' and root_ds.find(f".//named-connection[@name='{relation_connection}']") is None:
+        if ds['type'] == 'file' and not any(
+                c.get('name') == relation_connection for c in root_ds.iter('named-connection')):
             die(f'Root datasource {name} has no named connection {relation_connection} — wiring incomplete.')
 
     # The server only connects datasources listed on the host sheet's view.

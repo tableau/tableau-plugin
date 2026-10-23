@@ -10,7 +10,8 @@
 
 **The data app queries its datasource live via the Tableau Extensions API — there is NO local data
 snapshot.** The shipped app calls `readMetadataAsync()` / `queryAsync()` at view time against the
-published datasource, so it always reflects current data. Two consequences:
+wired datasource. A published datasource always reflects current data; an embedded Excel/CSV
+file is packed into the `.twbx` and is current only as of packaging. Two consequences:
 
 1. **The app reaches datasources through the workbook, and queries them directly.** It is a viz
    extension hosted on a worksheet, so it uses
@@ -28,7 +29,8 @@ published datasource, so it always reflects current data. Two consequences:
 2. **You cannot run the live query yourself.** A live query only executes inside the Tableau host, so
    you cannot see real rows until the app is published and opened in Tableau. While authoring,
    introspect the datasource with `get-datasource-metadata` / `query-datasource` to design and
-   sanity-check the query; do the **visual** review in Tableau **after** publishing.
+   sanity-check the query (for an embedded file, read its headers and a few rows locally instead);
+   do the **visual** review in Tableau **after** publishing.
 
 ## Workflow
 
@@ -40,7 +42,9 @@ published datasource, so it always reflects current data. Two consequences:
 2. **Identify the datasource(s).** Find the target published datasource and its LUID with
    `list-datasources` (ask the user which one if ambiguous). You can wire any number if the app
    genuinely needs them — all in one 'Wire a datasource in' run, primary first. Each LUID drives
-   both the `.twb` wiring and your introspection queries. In `app.js`, find each datasource by
+   both the `.twb` wiring and your introspection queries. If the user supplies an Excel or CSV
+   file instead, copy it into `Data/` and wire it as an embedded file (no LUID); the SKILL's
+   'Embedded file datasource' covers it. In `app.js`, find each datasource by
    `name` (its caption) in `getAllDataSourcesAsync()`, not by position. Query each separately and
    combine results in `app.js` — Tableau data blending doesn't apply, so don't add blend XML.
 3. **Introspect the datasource before writing `app.js`.**
@@ -49,6 +53,8 @@ published datasource, so it always reflects current data. Two consequences:
    - `query-datasource({ datasourceLuid, query, limit })` → preview real VDS `{ data: [...] }` rows
      so you can sanity-check the exact query the app will run before you commit to a chart. Match
      columns by field caption/name, not by position.
+   - Embedded file: there is no LUID until it's published, so read the sheet's or CSV's header row
+     and a few rows from the file in `Data/`. The headers are the field names to wire and query.
 4. **Author `content/src/app.js`** — see Author `app.js` below.
 5. **Package** the workspace into a flat `.twbx` with `scripts/package_twbx.py` per the SKILL's
    'Package into a .twbx' stage.
