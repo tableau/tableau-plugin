@@ -282,8 +282,10 @@ datasource. The same script wires it; the descriptor just has `"type": "file"`.
    its path is outside `Data/`.
 2. **Write a descriptor.** `file` is the path relative to the `.twb`. For
    Excel, `table` is the sheet to query (sheet `Orders` → `"table": "Orders"`);
-   CSV has no `table`. Field names must match the sheet's or file's column
-   headers exactly. No server, site, or `repositoryId`:
+   CSV has no `table`. Field names must match the column names Tableau gives
+   the file: usually the header row, but for CSV Tableau changes `[`/`]` to
+   `(`/`)`, names the columns of a file with no header row F1, F2…, and reads
+   decimal commas (`100,5`) as text. No server, site, or `repositoryId`:
 
    ```bash
    cat > "$WORK/descriptor.json" <<'DS_JSON'
