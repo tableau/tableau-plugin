@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """
-Wire one or more datasources into a scaffolded data-app `.twb`: published ones
-and files embedded in the workspace's `Data/` folder, in any mix.
+Wire one or more datasources (published, or files in the workspace's `Data/`)
+into a scaffolded data-app `.twb`.
 
 `scaffold-data-app` emits a workbook with TWO empty `<datasources />` anchors
 (workbook root + worksheet `<view>`). Until both are filled the extension's
 `getAllDataSourcesAsync()` finds nothing and renders "no data source found in
-the workbook." This fills both in one run with N datasources:
-  - published: a `sqlproxy` (Data Server) connection, joined by `sqlproxy.<hash>`.
-  - file: a `federated` datasource over one Excel sheet (`excel-direct`) or CSV
-    file (`textscan`) at a workspace-relative `Data/...` path, joined by
-    `federated.<hash>`; its named connection is `<class>.<hash>` (same hash).
-Each join key stays byte-identical everywhere it appears.
+the workbook." This fills both with N datasources, keeping each
+join key (`sqlproxy.<hash>` or `federated.<hash>`) byte-identical everywhere.
 
 A script, not freehand XML, because the wiring spans coordinated locations that
 must agree exactly (root datasource `name`, root `relation connection`, view
@@ -45,13 +41,12 @@ or an embedded file (the file must already be in the workspace):
   {
     "type":     "file",
     "caption":  "Sample - Superstore",
-    "file":     "Data/Datasources/Sample - Superstore.xls",  // relative to the .twb; .xls, .xlsx, .xlsm, or .csv
-    "table":    "Orders",                                    // Excel only: the sheet to query
+    "file":     "Data/Datasources/Sample - Superstore.xls",  // .xls, .xlsx, .xlsm, or .csv
+    "table":    "Orders",                                    // Excel only: the sheet
     "fields": [ ...as above... ]
   }
 or any number of either, primary first, wired in a single run:
   { "datasources": [ { ...as above... }, { ...as above... } ] }
-`type` defaults to "published".
 """
 
 import json
@@ -64,11 +59,9 @@ import xml.etree.ElementTree as ET
 # The exact empty anchor emitted by the scaffold template. Matched literally.
 EMPTY_ANCHOR = '<datasources />'
 
-# Embedded file extension -> connection class.
-FILE_CLASSES = {'.xls': 'excel-direct', '.xlsx': 'excel-direct', '.xlsm': 'excel-direct', '.csv': 'textscan'}
+CONNECTION_CLASS_BY_EXTENSION = {'.xls': 'excel-direct', '.xlsx': 'excel-direct', '.xlsm': 'excel-direct', '.csv': 'textscan'}
 
-# local-type -> the remote-type code Tableau records for each file class.
-FILE_REMOTE_TYPES = {
+REMOTE_TYPE_CODES = {
     'excel-direct': {'string': 130, 'integer': 20, 'real': 5, 'date': 7, 'datetime': 7, 'boolean': 11},
     'textscan': {'string': 129, 'integer': 20, 'real': 5, 'date': 133, 'datetime': 135, 'boolean': 11},
 }
@@ -187,7 +180,7 @@ def parse_file_datasource(descriptor, error_prefix):
     if len(parts) < 2 or parts[0] != 'Data' or any(part in ('', '.', '..') for part in parts):
         die(f'{error_prefix}"file" must be a path inside the workspace Data/ folder, '
             f'e.g. "Data/Datasources/Sales.xlsx" (got "{descriptor["file"]}").')
-    file_class = FILE_CLASSES.get(os.path.splitext(file_path)[1].lower())
+    file_class = CONNECTION_CLASS_BY_EXTENSION.get(os.path.splitext(file_path)[1].lower())
     if not file_class:
         die(f'{error_prefix}"file" must be an Excel (.xls, .xlsx, .xlsm) or CSV (.csv) file (got "{file_path}").')
 
@@ -253,8 +246,6 @@ def parse_descriptor(descriptor):
                 name = generate_connection_name(prefix)
             ds['connectionName'] = name
             used.add(name)
-        # The connection the root relation points at: itself for sqlproxy, the
-        # named file connection (same hash) for federated.
         if ds['type'] == 'published':
             ds['relationConnection'] = ds['connectionName']
         else:
@@ -273,25 +264,22 @@ def root_datasource_xml(ds):
     return published_datasource_xml(ds) if ds['type'] == 'published' else file_datasource_xml(ds)
 
 
-# Tableau bracket-quotes table names, doubling any `]` inside.
 def bracket(name):
     return '[' + name.replace(']', ']]') + ']'
 
 
 def file_datasource_xml(ds):
     if ds['class'] == 'excel-direct':
-        # A sheet named Orders is the table [Orders$].
         relation_name, table = ds['table'], bracket(f"{ds['table']}$")
         connection = (f"<connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' "
                       f"filename='{esc(ds['file'])}' interpretationMode='0' password='' server='' validate='no' />")
     else:
-        # CSV splits the path, and orders.csv is the table [orders#csv].
         directory, filename = ds['file'].rsplit('/', 1)
         stem, extension = filename.rsplit('.', 1)
         relation_name, table = filename, bracket(f'{stem}#{extension}')
         connection = (f"<connection class='textscan' directory='{esc(directory)}' "
                       f"filename='{esc(filename)}' password='' server='' />")
-    remote_types = FILE_REMOTE_TYPES[ds['class']]
+    remote_types = REMOTE_TYPE_CODES[ds['class']]
     metadata_records = '\n'.join(
         f"""          <metadata-record class='column'>
             <remote-name>{esc(f['name'])}</remote-name>
@@ -424,8 +412,6 @@ def main():
     datasources = parse_descriptor(descriptor)
     primary = datasources[0]
 
-    # An embedded file the .twb points at must already sit in the workspace, or
-    # the app packages and publishes but has no data at runtime.
     workspace = os.path.dirname(twb_path)
     for ds in datasources:
         if ds['type'] == 'file' and not os.path.isfile(os.path.join(workspace, ds['file'])):

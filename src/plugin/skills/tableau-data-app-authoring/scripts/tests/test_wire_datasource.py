@@ -384,8 +384,6 @@ def test_default_site_omits_site_path_and_attribute(tmp_path):
     assert 'site=' not in wired
 
 
-# --- embedded file datasources ------------------------------------------------
-
 XLS_PATH = 'Data/Datasources/Sample - Superstore.xls'
 
 
@@ -438,7 +436,6 @@ def test_excel_file_wires_federated_datasource_with_matching_join_keys(tmp_path)
     name = root_ds.get('name')
     assert re.fullmatch(r'federated\.[a-z0-9]{22}', name)
     assert f"✓ Wired datasource 'Sample - Superstore' ({name}) with 3 field(s)" in result.stderr
-    # The named connection shares the generated hash.
     key = 'excel-direct.' + name.split('.', 1)[1]
     assert root_ds.get('caption') == 'Sample - Superstore'
     assert root_ds.find('./connection').get('class') == 'federated'
@@ -456,7 +453,6 @@ def test_excel_file_wires_federated_datasource_with_matching_join_keys(tmp_path)
     assert {r.findtext('parent-name') for r in records.values()} == {'[Orders]'}
     assert 'sqlproxy' not in wired
 
-    # The view half is the same as for a published datasource.
     assert [d.get('name') for d in view.findall('./datasources/datasource')] == [name]
     assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == [name]
     assert "<column aggregation='Sum' datatype='real' name='[Sales]' role='measure' type='quantitative' />" in wired
@@ -496,7 +492,6 @@ def test_published_and_file_datasources_wire_in_one_run(tmp_path):
     names = [d.get('name') for d in root.findall('./datasources/datasource')]
     assert names[0] == 'sqlproxy.abc123' and names[1].startswith('federated.')
     assert [d.get('name') for d in view.findall('./datasources/datasource')] == names
-    # The published primary alone carries datasource-dependencies.
     assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == ['sqlproxy.abc123']
 
 
@@ -563,7 +558,6 @@ def test_rewiring_a_file_wired_twb_is_rejected(tmp_path):
 
 
 def test_wired_file_twb_packages_with_its_data(tmp_path):
-    # wire_datasource.py and package_twbx.py agree on where the file lives.
     import zipfile
     workspace = tmp_path / 'Sales Demo'
     ext_dir = workspace / 'Packages' / 'com.tableau.mcp.sales-demo' / 'extensions'

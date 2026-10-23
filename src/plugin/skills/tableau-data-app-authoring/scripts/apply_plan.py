@@ -46,8 +46,7 @@ def main():
     if len(edits) == 0 and len(renames) == 0:
         die('Plan has no edits or renames — did you pass the full postUnzip object?')
 
-    # A link in the unzipped template would let an edit or rename reach outside
-    # the unzip dir (safe_join only checks the path text), so refuse any.
+    # safe_join checks only the path text, so a link could escape the unzip dir.
     links = sorted(os.path.relpath(os.path.join(root, name), unzip_dir)
                    for root, dirs, files in os.walk(unzip_dir) for name in dirs + files
                    if os.path.islink(os.path.join(root, name)))

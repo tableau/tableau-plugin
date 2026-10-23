@@ -40,7 +40,6 @@ def make_workspace(tmp_path, with_trex=True):
 
 
 def add_template_dirs(workspace):
-    # The scaffold-data-app template ships Data/ with only a placeholder, plus the agent README.
     (workspace / 'Data').mkdir()
     (workspace / 'Data' / '.gitkeep').write_text('')
     (workspace / 'Resources' / '.agents').mkdir(parents=True)
@@ -204,7 +203,6 @@ def test_data_dir_is_left_out_when_the_twb_references_nothing(tmp_path):
 
 
 def test_checks_directory_plus_filename_connections(tmp_path):
-    # CSV, JSON, and shapefile connections split the path: directory='Data' filename='x.csv'.
     workspace = make_workspace(tmp_path)
     (workspace / 'Sales Demo.twb').write_text(
         "<workbook><datasources><datasource><connection class='federated'><named-connections>"
@@ -271,7 +269,6 @@ def test_skips_hidden_entries_below_packed_dirs(tmp_path):
     assert 'skipped Resources/.agents/.env' in result.stderr
     assert 'gh/hosts.yml' not in result.stderr
     assert '.DS_Store' not in result.stderr
-    # Data/ held only a hidden file, so it's reported but Data/ itself isn't packed.
     assert 'skipped Data/.env' in result.stderr
     assert not any(entry.startswith('Data') for entry in entries)
     assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr

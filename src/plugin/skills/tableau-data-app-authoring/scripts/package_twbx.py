@@ -10,9 +10,7 @@ Package a finalized data-app workspace into a `.twbx`. Workspace shape:
 The archive holds the `.twb` (written first), `Packages/`, `Data/`, and
 `Resources/.agents/` at its ROOT, never nested under `<App Name>/`: nesting fails
 to open on publish with `PackageValidationException: Package directory contains
-no extension .trex files under extensions/`. Hidden files, symlinks, and `Data/`
-files the `.twb` doesn't reference are skipped and listed on stderr as
-`  skipped <path> (<why>)`; OS cruft and `.gitkeep` are skipped silently.
+no extension .trex files under extensions/`.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 at least one `.trex` under `Packages/*/extensions/`, and every `Data/` file the
@@ -31,21 +29,15 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
-# Workspace-relative dirs copied into the archive root, in order. Packages/ is
-# required (checked in main); the rest are packed only when present.
 PACKED_DIRS = ('Packages', 'Data', 'Resources/.agents')
 
 HIDDEN_REASON = "(hidden: names starting with '.' are not packed)"
 SYMLINK_REASON = '(symlink: links are not followed; copy the file in instead)'
 UNREFERENCED_REASON = '(not referenced by the .twb: only the Data/ files it uses are packed)'
 
-# Keeps an otherwise-empty dir (the template's Data/) in git; never packed or reported.
-PLACEHOLDER = '.gitkeep'
+TEMPLATE_PLACEHOLDER = '.gitkeep'
 
-# Connection attributes that hold a workbook-relative file path. Excel and Hyper
-# put the whole path in one (filename='Data/x.xlsx'); CSV, JSON, and shapefile
-# split it (directory='Data' filename='x.csv').
-FILE_ATTRS = ('filename', 'dbname')
+FILE_PATH_ATTRS = ('filename', 'dbname')
 
 
 def die(message):
@@ -57,14 +49,12 @@ def is_cruft(rel_path):
     return any(part.endswith('.DS_Store') or part.startswith('__MACOSX') for part in rel_path.split('/'))
 
 
-def is_hidden(rel_path, top):
-    # Hidden below the packed dir only, so Resources/.agents itself still ships.
+def is_hidden_below(top, rel_path):
     below = rel_path[len(top):].strip('/')
     return any(part.startswith('.') for part in below.split('/') if part)
 
 
-# The first symlinked component of a workspace-relative path, or None.
-def linked_part(workspace, rel_path):
+def first_symlink(workspace, rel_path):
     parts = rel_path.split('/')
     for i in range(1, len(parts) + 1):
         if os.path.islink(os.path.join(workspace, *parts[:i])):
@@ -72,12 +62,7 @@ def linked_part(workspace, rel_path):
     return None
 
 
-# Walk one packed dir and return its (path, archive name) entries in walk order,
-# reporting hidden skips on stderr. Dirs are kept only on the way to a packed
-# file, so a dir left with no files (an empty Data/) isn't packed at all. `skip`
-# is the output path, so repacking into the workspace never packs the old archive.
-# If `allowed` is given, only files whose archive name is in it are packed.
-def collect_entries(workspace, top, skip, allowed=None):
+def collect_entries(workspace, top, output, allowed=None):
     entries = []  # (path, archive name, is_dir)
     for root, dirs, files in os.walk(os.path.join(workspace, top)):
         dirs.sort()
@@ -86,12 +71,11 @@ def collect_entries(workspace, top, skip, allowed=None):
             dirs[:] = []
             continue
         entries.append((root, rel_root, True))
-        # Prune hidden and linked dirs here so each is reported once, not per file inside.
         for name in list(dirs):
             rel = f'{rel_root}/{name}'
             if is_cruft(rel):
                 continue
-            reason = HIDDEN_REASON if is_hidden(rel, top) else (
+            reason = HIDDEN_REASON if is_hidden_below(top, rel) else (
                 SYMLINK_REASON if os.path.islink(os.path.join(root, name)) else None)
             if reason:
                 print(f'  skipped {rel}/ {reason}', file=sys.stderr)
@@ -99,15 +83,14 @@ def collect_entries(workspace, top, skip, allowed=None):
         for name in sorted(files):
             rel = f'{rel_root}/{name}'
             path = os.path.join(root, name)
-            if is_cruft(rel) or name == PLACEHOLDER:
+            if is_cruft(rel) or name == TEMPLATE_PLACEHOLDER:
                 continue
-            reason = HIDDEN_REASON if is_hidden(rel, top) else (
+            reason = HIDDEN_REASON if is_hidden_below(top, rel) else (
                 SYMLINK_REASON if os.path.islink(path) else None)
             if reason:
                 print(f'  skipped {rel} {reason}', file=sys.stderr)
                 continue
-            # After the link check, so a link to the output is reported like any other.
-            if os.path.realpath(path) == skip:
+            if os.path.realpath(path) == output:
                 continue
             if allowed is not None and rel not in allowed:
                 print(f'  skipped {rel} {UNREFERENCED_REASON}', file=sys.stderr)
@@ -116,15 +99,11 @@ def collect_entries(workspace, top, skip, allowed=None):
                 die(f'Cannot read {rel} (not a regular file you can read); fix or remove it.')
             entries.append((path, rel, False))
 
-    # Every dir that is an ancestor of a packed file.
-    needed_dirs = {rel.rsplit('/', i)[0] for _, rel, is_dir in entries if not is_dir
+    ancestor_dirs = {rel.rsplit('/', i)[0] for _, rel, is_dir in entries if not is_dir
                    for i in range(1, rel.count('/') + 1)}
-    return [(path, rel) for path, rel, is_dir in entries if not is_dir or rel in needed_dirs]
+    return [(path, rel) for path, rel, is_dir in entries if not is_dir or rel in ancestor_dirs]
 
 
-# Data/ files the .twb references, as archive names. They're compared with the
-# names as packed, not checked on disk, so a reference whose case differs from
-# the file (fine on macOS, missing on the server) is reported missing.
 def referenced_data_files(workspace, twb):
     try:
         root = ET.parse(os.path.join(workspace, twb)).getroot()
@@ -133,7 +112,7 @@ def referenced_data_files(workspace, twb):
     referenced = set()
     for element in root.iter('connection'):
         directory = element.get('directory', '').replace('\\', '/').rstrip('/')
-        for attr in FILE_ATTRS:
+        for attr in FILE_PATH_ATTRS:
             path = element.get(attr, '').replace('\\', '/')
             if attr == 'filename' and directory and path:
                 path = f'{directory}/{path}'
@@ -177,7 +156,7 @@ def main():
     for top in PACKED_DIRS:
         if not os.path.isdir(os.path.join(workspace, top)):
             continue
-        link = linked_part(workspace, top)
+        link = first_symlink(workspace, top)
         if link:
             print(f'  skipped {link}/ {SYMLINK_REASON}', file=sys.stderr)
             continue
@@ -186,13 +165,13 @@ def main():
     dirs_to_pack = [top for top, entries in entries_by_top.items() if entries]
 
     packed = {rel for entries in entries_by_top.values() for _, rel in entries}
+    # By name, not on disk: a case mismatch passes on macOS but fails on the server.
     missing = sorted(referenced - packed)
     if missing:
         die(f'{twb} references files missing from the workspace (no data at runtime): '
             + ', '.join(missing))
 
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
-    # Written to a temp file first, so a failure never leaves a truncated .twbx.
     fd, partial = tempfile.mkstemp(suffix='.twbx', dir=os.path.dirname(output))
     os.close(fd)
     try:
