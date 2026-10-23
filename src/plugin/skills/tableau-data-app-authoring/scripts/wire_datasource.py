@@ -61,11 +61,6 @@ EMPTY_ANCHOR = '<datasources />'
 
 CONNECTION_CLASS_BY_EXTENSION = {'.xls': 'excel-direct', '.xlsx': 'excel-direct', '.xlsm': 'excel-direct', '.csv': 'textscan'}
 
-REMOTE_TYPE_CODES = {
-    'excel-direct': {'string': 130, 'integer': 20, 'real': 5, 'date': 7, 'datetime': 7, 'boolean': 11},
-    'textscan': {'string': 129, 'integer': 20, 'real': 5, 'date': 133, 'datetime': 135, 'boolean': 11},
-}
-
 
 def die(message):
     print(f'✗ {message}', file=sys.stderr)
@@ -279,11 +274,10 @@ def file_datasource_xml(ds):
         relation_name, table = filename, bracket(f'{stem}#{extension}')
         connection = (f"<connection class='textscan' directory='{esc(directory)}' "
                       f"filename='{esc(filename)}' password='' server='' />")
-    remote_types = REMOTE_TYPE_CODES[ds['class']]
     metadata_records = '\n'.join(
         f"""          <metadata-record class='column'>
             <remote-name>{esc(f['name'])}</remote-name>
-            <remote-type>{remote_types.get(f['datatype'], remote_types['string'])}</remote-type>
+            <remote-type>{5 if f['type'] == 'quantitative' else 129}</remote-type>
             <local-name>{esc(f['localName'])}</local-name>
             <parent-name>{esc(bracket(relation_name))}</parent-name>
             <remote-alias>{esc(f['name'])}</remote-alias>

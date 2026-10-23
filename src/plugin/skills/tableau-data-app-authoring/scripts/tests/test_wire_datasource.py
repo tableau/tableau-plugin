@@ -448,8 +448,8 @@ def test_excel_file_wires_federated_datasource_with_matching_join_keys(tmp_path)
     assert relation.attrib == {'connection': key, 'name': 'Orders', 'table': '[Orders$]', 'type': 'table'}
     records = {r.findtext('remote-name'): r for r in root_ds.iter('metadata-record')}
     assert records['Sales'].findtext('remote-type') == '5'
-    assert records['Region'].findtext('remote-type') == '130'
-    assert records['Order Date'].findtext('remote-type') == '7'
+    assert records['Region'].findtext('remote-type') == '129'
+    assert records['Order Date'].findtext('remote-type') == '129'
     assert {r.findtext('parent-name') for r in records.values()} == {'[Orders]'}
     assert 'sqlproxy' not in wired
 
@@ -476,7 +476,7 @@ def test_csv_file_splits_directory_and_filename(tmp_path):
     assert relation.get('table') == '[orders#csv]'
     records = {r.findtext('remote-name'): r for r in root_ds.iter('metadata-record')}
     assert records['Profit'].findtext('remote-type') == '5'
-    assert records['Ship Date'].findtext('remote-type') == '133'
+    assert records['Ship Date'].findtext('remote-type') == '129'
     assert {r.findtext('parent-name') for r in records.values()} == {'[orders.csv]'}
 
 
