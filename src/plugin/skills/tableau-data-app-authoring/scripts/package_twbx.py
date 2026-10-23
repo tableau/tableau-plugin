@@ -69,7 +69,7 @@ def collect_entries(workspace, top, output, allowed=None):
             entries.append((path, rel, False))
 
     ancestor_dirs = {rel.rsplit('/', i)[0] for _, rel, is_dir in entries if not is_dir
-                   for i in range(1, rel.count('/') + 1)}
+                     for i in range(1, rel.count('/') + 1)}
     return [(path, rel) for path, rel, is_dir in entries if not is_dir or rel in ancestor_dirs]
 
 
