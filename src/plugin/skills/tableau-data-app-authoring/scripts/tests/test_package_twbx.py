@@ -10,6 +10,15 @@ import zipfile
 
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'package_twbx.py')
 PACKAGE = 'Packages/com.tableau.mcp.sales-demo'
+TWB_WITH_XLS = ("<workbook><datasources><datasource><connection class='federated'><named-connections>"
+                "<named-connection name='excel'><connection class='excel-direct' filename='Data/Datasources/Sample.xls'/>"
+                "</named-connection></named-connections></connection></datasource></datasources></workbook>")
+
+
+def twb_referencing(*paths):
+    connections = ''.join(f"<connection class='textscan' directory='{os.path.dirname(p)}' "
+                          f"filename='{os.path.basename(p)}'/>" for p in paths)
+    return f'<workbook>{connections}</workbook>'
 
 
 def run_package(*args):
@@ -28,6 +37,13 @@ def make_workspace(tmp_path, with_trex=True):
     (workspace / PACKAGE / 'content' / 'index.html').write_text('<html/>')
     (src_dir / 'app.js').write_text('// app')
     return workspace
+
+
+def add_template_dirs(workspace):
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / '.gitkeep').write_text('')
+    (workspace / 'Resources' / '.agents').mkdir(parents=True)
+    (workspace / 'Resources' / '.agents' / 'README.md').write_text('# Resources/.agents/')
 
 
 def names(twbx_path):
@@ -67,6 +83,150 @@ def test_excludes_ds_store_and_macosx(tmp_path):
     entries = names(result.stdout.strip())
     assert not any('.DS_Store' in entry or '__MACOSX' in entry for entry in entries)
     assert f'{PACKAGE}/content/src/app.js' in entries
+
+
+def test_packs_data_at_root(tmp_path):
+    workspace = make_workspace(tmp_path)
+    datasources = workspace / 'Data' / 'Datasources'
+    datasources.mkdir(parents=True)
+    (datasources / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
+    (datasources / '.DS_Store').write_text('x')
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert entries[0] == 'Sales Demo.twb'
+    assert 'Data/Datasources/Sample.xls' in entries
+    assert f'{PACKAGE}/extensions/data-app.trex' in entries
+    assert not any(entry.startswith('Sales Demo/') for entry in entries)
+    assert not any('.DS_Store' in entry for entry in entries)
+    with zipfile.ZipFile(result.stdout.strip()) as archive:
+        assert archive.read('Data/Datasources/Sample.xls') == b'\xd0\xcf\x11\xe0'
+    assert '✓ Packaged Sales Demo.twb + Packages/, Data/ into' in result.stderr
+
+
+def test_template_data_dir_with_only_placeholder_is_not_packed(tmp_path):
+    workspace = make_workspace(tmp_path)
+    add_template_dirs(workspace)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert not any(entry.startswith('Data') for entry in entries)
+    assert 'Resources/.agents/README.md' in entries
+    assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
+
+
+def test_fails_when_twb_references_missing_data_file(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert '✗ Sales Demo.twb references files missing from the workspace' in result.stderr
+    assert 'Data/Datasources/Sample.xls' in result.stderr
+    assert not (tmp_path / 'Sales Demo.twbx').exists()
+
+
+def test_packs_only_data_files_the_twb_references(tmp_path):
+    workspace = make_workspace(tmp_path)
+    datasources = workspace / 'Data' / 'Datasources'
+    datasources.mkdir(parents=True)
+    (datasources / 'Sample.xls').write_bytes(b'\xd0\xcf\x11\xe0')
+    (datasources / 'credentials.json').write_text('{"token": "x"}')
+    (workspace / 'Data' / 'Scratch').mkdir()
+    (workspace / 'Data' / 'Scratch' / 'notes.txt').write_text('x')
+    (workspace / 'Sales Demo.twb').write_text(TWB_WITH_XLS)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Data/Datasources/Sample.xls' in entries
+    assert not any(e.startswith('Data/Scratch') or 'credentials' in e for e in entries)
+
+
+def test_checks_directory_plus_filename_connections(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Sales Demo.twb').write_text(
+        "<workbook><datasources><datasource><connection class='federated'><named-connections>"
+        "<named-connection name='csv'><connection class='textscan' directory='Data' filename='orders.csv'/>"
+        "</named-connection></named-connections></connection></datasource></datasources></workbook>")
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'Data/orders.csv' in result.stderr
+
+    (workspace / 'Data').mkdir()
+    (workspace / 'Data' / 'orders.csv').write_text('a,b\n1,2\n')
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert 'Data/orders.csv' in names(result.stdout.strip())
+
+
+def test_packs_only_agents_under_resources(tmp_path):
+    workspace = make_workspace(tmp_path)
+    agents = workspace / 'Resources' / '.agents'
+    (agents / 'history').mkdir(parents=True)
+    (agents / 'README.md').write_text('# agents')
+    (agents / 'history' / 'spec.md').write_text('# old spec')
+    (workspace / 'Resources' / 'scratch.md').write_text('scratch')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Resources/.agents/README.md' in entries
+    assert 'Resources/.agents/history/spec.md' in entries
+    assert 'Resources/scratch.md' not in entries
+    assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
+
+
+def test_skips_hidden_entries_below_packed_dirs(tmp_path):
+    workspace = make_workspace(tmp_path)
+    content = workspace / PACKAGE / 'content'
+    (content / '.git').mkdir()
+    (content / '.git' / 'config').write_text('x')
+    (content / '.env').write_text('SECRET=x')
+    (content / '.DS_Store').write_text('x')
+    (content / '.config' / 'gh').mkdir(parents=True)
+    (content / '.config' / 'gh' / 'hosts.yml').write_text('token: x')
+    data = workspace / 'Data'
+    data.mkdir()
+    (data / '.env').write_text('SECRET=x')
+    agents = workspace / 'Resources' / '.agents'
+    agents.mkdir(parents=True)
+    (agents / 'README.md').write_text('# agents')
+    (agents / '.env').write_text('SECRET=x')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Resources/.agents/README.md' in entries
+    assert not any(part.startswith('.') for entry in entries
+                   for part in entry.removeprefix('Resources/.agents/').split('/'))
+    assert not any(entry.startswith('Data') for entry in entries)
+    assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/ into' in result.stderr
+
+
+def test_skips_other_workspace_dirs(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'node_modules' / 'pkg').mkdir(parents=True)
+    (workspace / 'node_modules' / 'pkg' / 'index.js').write_text('//')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert not any(entry.startswith('node_modules') for entry in entries)
+    assert not any(entry.startswith(('Data', 'Resources')) for entry in entries)
 
 
 def test_explicit_output_overwrites_existing_file(tmp_path):

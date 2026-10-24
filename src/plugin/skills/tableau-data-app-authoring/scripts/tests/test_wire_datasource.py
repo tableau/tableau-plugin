@@ -382,3 +382,198 @@ def test_default_site_omits_site_path_and_attribute(tmp_path):
     wired = open(twb_path).read()
     assert "<repository-location id='SuperstoreDatasource' path='/datasources' revision='1.0' />" in wired
     assert 'site=' not in wired
+
+
+XLS_PATH = 'Data/Datasources/Sample - Superstore.xls'
+
+
+def add_data_file(tmp_path, rel=XLS_PATH, content=b'\xd0\xcf\x11\xe0'):
+    path = tmp_path / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+def excel_descriptor(**overrides):
+    ds = {
+        "type": "file",
+        "caption": "Sample - Superstore",
+        "file": XLS_PATH,
+        "table": "Orders",
+        "fields": [
+            {"name": "Sales", "datatype": "real", "role": "measure"},
+            {"name": "Region", "datatype": "string", "role": "dimension"},
+            {"name": "Order Date", "datatype": "date", "role": "dimension"},
+        ],
+    }
+    ds.update(overrides)
+    return ds
+
+
+def csv_descriptor(**overrides):
+    ds = {
+        "type": "file",
+        "caption": "Orders CSV",
+        "file": "Data/orders.csv",
+        "fields": [
+            {"name": "Profit", "datatype": "real", "role": "measure"},
+            {"name": "Ship Date", "datatype": "date", "role": "dimension"},
+        ],
+    }
+    ds.update(overrides)
+    return ds
+
+
+def test_excel_file_wires_federated_datasource_with_matching_join_keys(tmp_path):
+    add_data_file(tmp_path)
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, excel_descriptor()))
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == twb_path
+    wired = open(twb_path).read()
+    root, view = view_of(wired)
+    root_ds = root.find('./datasources/datasource')
+    name = root_ds.get('name')
+    assert re.fullmatch(r'federated\.[a-z0-9]{22}', name)
+    assert f"✓ Wired datasource 'Sample - Superstore' ({name}) with 3 field(s)" in result.stderr
+    key = 'excel-direct.' + name.split('.', 1)[1]
+    assert root_ds.get('caption') == 'Sample - Superstore'
+    assert root_ds.find('./connection').get('class') == 'federated'
+    named = root_ds.find('./connection/named-connections/named-connection')
+    assert named.get('name') == key
+    file_connection = named.find('./connection')
+    assert file_connection.get('class') == 'excel-direct'
+    assert file_connection.get('filename') == XLS_PATH
+    relation = root_ds.find('./connection/relation')
+    assert relation.attrib == {'connection': key, 'name': 'Orders', 'table': '[Orders$]', 'type': 'table'}
+    records = {r.findtext('remote-name'): r for r in root_ds.iter('metadata-record')}
+    assert records['Sales'].findtext('remote-type') == '5'
+    assert records['Region'].findtext('remote-type') == '129'
+    assert records['Order Date'].findtext('remote-type') == '129'
+    assert {r.findtext('parent-name') for r in records.values()} == {'[Orders]'}
+    assert 'sqlproxy' not in wired
+
+    assert [d.get('name') for d in view.findall('./datasources/datasource')] == [name]
+    assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == [name]
+    assert "<column aggregation='Sum' datatype='real' name='[Sales]' role='measure' type='quantitative' />" in wired
+    assert "<column-instance column='[Region]' derivation='None' name='[none:Region:nk]' pivot='key' type='nominal' />" in wired
+
+
+def test_csv_file_splits_directory_and_filename(tmp_path):
+    add_data_file(tmp_path, 'Data/orders.csv', b'Profit,Ship Date\n1.5,2026-01-31\n')
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor()))
+
+    assert result.returncode == 0, result.stderr
+    root, _ = view_of(open(twb_path).read())
+    root_ds = root.find('./datasources/datasource')
+    named = root_ds.find('./connection/named-connections/named-connection')
+    assert named.get('name') == 'textscan.' + root_ds.get('name').split('.', 1)[1]
+    assert named.find('./connection').attrib == {
+        'class': 'textscan', 'directory': 'Data', 'filename': 'orders.csv', 'password': '', 'server': ''}
+    relation = root_ds.find('./connection/relation')
+    assert relation.get('name') == 'orders.csv'
+    assert relation.get('table') == '[orders#csv]'
+    records = {r.findtext('remote-name'): r for r in root_ds.iter('metadata-record')}
+    assert records['Profit'].findtext('remote-type') == '5'
+    assert records['Ship Date'].findtext('remote-type') == '129'
+    assert {r.findtext('parent-name') for r in records.values()} == {'[orders.csv]'}
+
+
+def test_published_and_file_datasources_wire_in_one_run(tmp_path):
+    add_data_file(tmp_path)
+    twb_path = write_twb(tmp_path)
+    descriptor = {"datasources": [descriptor_happy(), excel_descriptor()]}
+    result = run_wire(twb_path, write_descriptor(tmp_path, descriptor))
+
+    assert result.returncode == 0, result.stderr
+    wired = open(twb_path).read()
+    root, view = view_of(wired)
+    names = [d.get('name') for d in root.findall('./datasources/datasource')]
+    assert names[0] == 'sqlproxy.abc123' and names[1].startswith('federated.')
+    assert [d.get('name') for d in view.findall('./datasources/datasource')] == names
+    assert [d.get('datasource') for d in view.findall('./datasource-dependencies')] == ['sqlproxy.abc123']
+
+
+def test_file_missing_from_the_workspace_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, excel_descriptor()))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        f"✗ Datasource 'Sample - Superstore' file \"{XLS_PATH}\" is not in the workspace ({tmp_path}). "
+        'Copy it there first, at that path relative to the .twb.'
+    )
+    assert open(twb_path).read() == TWB_TEMPLATE
+
+
+def test_file_outside_data_folder_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    for bad in ('orders.csv', 'Data/../orders.csv', '/abs/Data/orders.csv', 'Resources/orders.csv'):
+        result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file=bad)))
+        assert result.returncode == 1
+        assert '"file" must be a path inside the workspace Data/ folder' in result.stderr
+    assert open(twb_path).read() == TWB_TEMPLATE
+
+
+def test_unsupported_file_type_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file='Data/orders.json')))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ "file" must end in .xls, .xlsx, .xlsm, .csv (got "Data/orders.json").'
+
+
+def test_excel_requires_a_table_and_csv_rejects_one(tmp_path):
+    twb_path = write_twb(tmp_path)
+    descriptor = excel_descriptor()
+    del descriptor['table']
+    result = run_wire(twb_path, write_descriptor(tmp_path, descriptor))
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ Excel datasources need "table": the name of the sheet to query.'
+
+    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(table='orders')))
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ "table" applies only to Excel files; a CSV file is its own table.'
+
+
+def test_unknown_type_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, excel_descriptor(type='extract')))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ Descriptor "type" must be "published" or "file" (got "extract").'
+
+
+def test_rewiring_a_file_wired_twb_is_rejected(tmp_path):
+    add_data_file(tmp_path)
+    twb_path = write_twb(tmp_path)
+    desc_path = write_descriptor(tmp_path, excel_descriptor())
+    assert run_wire(twb_path, desc_path).returncode == 0
+
+    result = run_wire(twb_path, desc_path)
+
+    assert result.returncode == 1
+    assert '✗ This .twb is already wired.' in result.stderr
+
+
+def test_wired_file_twb_packages_with_its_data(tmp_path):
+    import zipfile
+    workspace = tmp_path / 'Sales Demo'
+    ext_dir = workspace / 'Packages' / 'com.tableau.mcp.sales-demo' / 'extensions'
+    ext_dir.mkdir(parents=True)
+    (ext_dir / 'data-app.trex').write_text('<manifest/>')
+    add_data_file(workspace)
+    add_data_file(workspace, 'Data/orders.csv', b'Profit,Ship Date\n')
+    twb_path = write_twb(workspace, filename='Sales Demo.twb')
+    descriptor = {"datasources": [excel_descriptor(), csv_descriptor()]}
+    assert run_wire(twb_path, write_descriptor(tmp_path, descriptor)).returncode == 0
+
+    package = os.path.join(os.path.dirname(SCRIPT), 'package_twbx.py')
+    result = subprocess.run([sys.executable, package, str(workspace)], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    with zipfile.ZipFile(result.stdout.strip()) as archive:
+        entries = archive.namelist()
+    assert XLS_PATH in entries
+    assert 'Data/orders.csv' in entries

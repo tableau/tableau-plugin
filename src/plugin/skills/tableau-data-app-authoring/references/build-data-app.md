@@ -8,9 +8,10 @@
 
 ## Live-query model (read this first)
 
-**The data app queries its datasource live via the Tableau Extensions API — there is NO local data
-snapshot.** The shipped app calls `readMetadataAsync()` / `queryAsync()` at view time against the
-published datasource, so it always reflects current data. Two consequences:
+**The data app queries its datasource live via the Tableau Extensions API: no data is baked into
+the app code.** The shipped app calls `readMetadataAsync()` / `queryAsync()` at view time against the
+wired datasource. A published datasource always reflects current data; an embedded file is
+packed into the `.twbx` and is current only as of packaging. Two consequences:
 
 1. **The app reaches datasources through the workbook, and queries them directly.** It is a viz
    extension hosted on a worksheet, so it uses
@@ -40,7 +41,9 @@ published datasource, so it always reflects current data. Two consequences:
 2. **Identify the datasource(s).** Find the target published datasource and its LUID with
    `list-datasources` (ask the user which one if ambiguous). You can wire any number if the app
    genuinely needs them — all in one 'Wire a datasource in' run, primary first. Each LUID drives
-   both the `.twb` wiring and your introspection queries. In `app.js`, find each datasource by
+   both the `.twb` wiring and your introspection queries. If the user supplies a data file
+   instead, copy it into `Data/` and wire it as an embedded file; the SKILL's
+   'Embedded file datasource' covers it. In `app.js`, find each datasource by
    `name` (its caption) in `getAllDataSourcesAsync()`, not by position. Query each separately and
    combine results in `app.js` — Tableau data blending doesn't apply, so don't add blend XML.
 3. **Introspect the datasource before writing `app.js`.**
