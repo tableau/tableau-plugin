@@ -521,7 +521,7 @@ def test_unsupported_file_type_is_rejected(tmp_path):
     result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file='Data/orders.json')))
 
     assert result.returncode == 1
-    assert result.stderr.strip() == '✗ "file" must be an Excel (.xls, .xlsx, .xlsm) or CSV (.csv) file (got "Data/orders.json").'
+    assert result.stderr.strip() == '✗ "file" must end in .xls, .xlsx, .xlsm, .csv (got "Data/orders.json").'
 
 
 def test_excel_requires_a_table_and_csv_rejects_one(tmp_path):

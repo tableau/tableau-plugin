@@ -72,6 +72,23 @@ def referenced_data_files(workspace, twb):
     return referenced
 
 
+def collect_packed_dirs(workspace, twb):
+    referenced = referenced_data_files(workspace, twb)
+    entries_by_top = {}
+    for top in PACKED_DIRS:
+        if os.path.isdir(os.path.join(workspace, top)):
+            entries = collect_entries(workspace, top, referenced if top == 'Data' else None)
+            if entries:
+                entries_by_top[top] = entries
+
+    packed = {rel for entries in entries_by_top.values() for _, rel in entries}
+    missing = sorted(referenced - packed)
+    if missing:
+        die(f'{twb} references files missing from the workspace (no data at runtime): '
+            + ', '.join(missing))
+    return entries_by_top
+
+
 def main():
     argv = sys.argv
     if len(argv) < 2 or len(argv) > 3:
@@ -98,19 +115,7 @@ def main():
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
 
-    referenced = referenced_data_files(workspace, twb)
-    entries_by_top = {}
-    for top in PACKED_DIRS:
-        if os.path.isdir(os.path.join(workspace, top)):
-            entries = collect_entries(workspace, top, referenced if top == 'Data' else None)
-            if entries:
-                entries_by_top[top] = entries
-
-    packed = {rel for entries in entries_by_top.values() for _, rel in entries}
-    missing = sorted(referenced - packed)
-    if missing:
-        die(f'{twb} references files missing from the workspace (no data at runtime): '
-            + ', '.join(missing))
+    entries_by_top = collect_packed_dirs(workspace, twb)
 
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:

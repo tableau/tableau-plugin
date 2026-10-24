@@ -41,7 +41,7 @@ or an embedded file (the file must already be in the workspace):
   {
     "type":     "file",
     "caption":  "Sample - Superstore",
-    "file":     "Data/Datasources/Sample - Superstore.xls",  // .xls, .xlsx, .xlsm, or .csv
+    "file":     "Data/Datasources/Sample - Superstore.xls",  // Excel or CSV
     "table":    "Orders",                                    // Excel only: the sheet
     "fields": [ ...as above... ]
   }
@@ -56,11 +56,10 @@ import string
 import sys
 import xml.etree.ElementTree as ET
 
+from file_formats import FORMAT_BY_EXTENSION, bracket
+
 # The exact empty anchor emitted by the scaffold template. Matched literally.
 EMPTY_ANCHOR = '<datasources />'
-
-CONNECTION_CLASS_BY_EXTENSION = {'.xls': 'excel-direct', '.xlsx': 'excel-direct', '.xlsm': 'excel-direct', '.csv': 'textscan'}
-
 
 def die(message):
     print(f'✗ {message}', file=sys.stderr)
@@ -175,16 +174,13 @@ def parse_file_datasource(descriptor, error_prefix):
     if len(parts) < 2 or parts[0] != 'Data' or any(part in ('', '.', '..') for part in parts):
         die(f'{error_prefix}"file" must be a path inside the workspace Data/ folder, '
             f'e.g. "Data/Datasources/Sales.xlsx" (got "{descriptor["file"]}").')
-    file_class = CONNECTION_CLASS_BY_EXTENSION.get(os.path.splitext(file_path)[1].lower())
-    if not file_class:
-        die(f'{error_prefix}"file" must be an Excel (.xls, .xlsx, .xlsm) or CSV (.csv) file (got "{file_path}").')
-
-    table = descriptor.get('table')
-    if file_class == 'excel-direct':
-        if not isinstance(table, str) or not table:
-            die(f'{error_prefix}Excel datasources need "table": the name of the sheet to query.')
-    elif table is not None:
-        die(f'{error_prefix}"table" applies only to Excel files; a CSV file is its own table.')
+    file_format = FORMAT_BY_EXTENSION.get(os.path.splitext(file_path)[1].lower())
+    if not file_format:
+        die(f'{error_prefix}"file" must end in {", ".join(FORMAT_BY_EXTENSION)} (got "{file_path}").')
+    try:
+        source = file_format(file_path, descriptor.get('table'))
+    except ValueError as error:
+        die(f'{error_prefix}{error}')
 
     fields = parse_fields(descriptor, error_prefix)
 
@@ -192,8 +188,7 @@ def parse_file_datasource(descriptor, error_prefix):
         'type': 'file',
         'caption': descriptor['caption'],
         'file': file_path,
-        'class': file_class,
-        'table': table,
+        'source': source,
         'fields': fields,
         'connectionName': None,  # always generated
     }
@@ -244,7 +239,7 @@ def parse_descriptor(descriptor):
         if ds['type'] == 'published':
             ds['relationConnection'] = ds['connectionName']
         else:
-            ds['relationConnection'] = f"{ds['class']}.{ds['connectionName'].split('.', 1)[1]}"
+            ds['relationConnection'] = f"{ds['source'].connection_class}.{ds['connectionName'].split('.', 1)[1]}"
     return datasources
 
 
@@ -259,27 +254,18 @@ def root_datasource_xml(ds):
     return published_datasource_xml(ds) if ds['type'] == 'published' else file_datasource_xml(ds)
 
 
-def bracket(name):
-    return '[' + name.replace(']', ']]') + ']'
+def file_connection_xml(source):
+    attrs = ' '.join(f"{name}='{esc(value)}'" for name, value in source.connection_attrs().items())
+    return f"<connection class='{source.connection_class}' {attrs} />"
 
 
 def file_datasource_xml(ds):
-    if ds['class'] == 'excel-direct':
-        relation_name, table = ds['table'], bracket(f"{ds['table']}$")
-        connection = (f"<connection class='excel-direct' cleaning='no' compat='no' dataRefreshTime='' "
-                      f"filename='{esc(ds['file'])}' interpretationMode='0' password='' server='' validate='no' />")
-    else:
-        directory, filename = ds['file'].rsplit('/', 1)
-        stem, extension = filename.rsplit('.', 1)
-        relation_name, table = filename, bracket(f'{stem}#{extension}')
-        connection = (f"<connection class='textscan' directory='{esc(directory)}' "
-                      f"filename='{esc(filename)}' password='' server='' />")
     metadata_records = '\n'.join(
         f"""          <metadata-record class='column'>
             <remote-name>{esc(f['name'])}</remote-name>
             <remote-type>{5 if f['type'] == 'quantitative' else 129}</remote-type>
             <local-name>{esc(f['localName'])}</local-name>
-            <parent-name>{esc(bracket(relation_name))}</parent-name>
+            <parent-name>{esc(bracket(ds['source'].relation_name))}</parent-name>
             <remote-alias>{esc(f['name'])}</remote-alias>
             <ordinal>{f['ordinal']}</ordinal>
             <local-type>{esc(f['datatype'])}</local-type>
@@ -292,10 +278,10 @@ def file_datasource_xml(ds):
       <connection class='federated'>
         <named-connections>
           <named-connection caption='{esc(ds['caption'])}' name='{esc(ds['relationConnection'])}'>
-            {connection}
+            {file_connection_xml(ds['source'])}
           </named-connection>
         </named-connections>
-        <relation connection='{esc(ds['relationConnection'])}' name='{esc(relation_name)}' table='{esc(table)}' type='table' />
+        <relation connection='{esc(ds['relationConnection'])}' name='{esc(ds['source'].relation_name)}' table='{esc(ds['source'].relation_table)}' type='table' />
         <metadata-records>
 {metadata_records}
         </metadata-records>

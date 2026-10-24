@@ -270,19 +270,17 @@ Trust that failure over patching the XML by hand. `datatype` maps to the column
 `type` (`real`/`integer` → quantitative, `date`/`datetime` → ordinal, else
 nominal); `role: "measure"` gets a `Sum` aggregation, `dimension` a `Count`.
 
-**Embedded file datasource:** use this when the user hands you an Excel
-(`.xls`, `.xlsx`, `.xlsm`) or CSV file instead of naming a published
-datasource. The same script wires it; the descriptor just has `"type": "file"`.
+**Embedded file datasource:** use this when the user hands you a data file
+instead of naming a published datasource. The same script wires it (and rejects
+file types it can't); the descriptor just has `"type": "file"`.
 
 1. **Copy the file into the workspace** under `Data/`, conventionally
    `Data/Datasources/<file>`. The script fails if the file isn't there, or if
    its path is outside `Data/`.
-2. **Write a descriptor.** `file` is the path relative to the `.twb`. For
-   Excel, `table` is the sheet to query (sheet `Orders` → `"table": "Orders"`);
-   CSV has no `table`. Field names must match the column names Tableau gives
-   the file: usually the header row, but for CSV Tableau changes `[`/`]` to
-   `(`/`)`, names the columns of a file with no header row F1, F2…, and reads
-   decimal commas (`100,5`) as text. No server, site, or `repositoryId`:
+2. **Write a descriptor.** `file` is the path relative to the `.twb`. `table`
+   picks the table in a file that holds several (an Excel sheet); the script
+   says when it's needed. Field names must match the column names Tableau reads
+   from the file, usually its header row. No server, site, or `repositoryId`:
 
    ```bash
    cat > "$WORK/descriptor.json" <<'DS_JSON'
