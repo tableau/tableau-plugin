@@ -329,3 +329,45 @@ def test_warns_about_runtime_problems(tmp_path):
     assert 'package-relative path' in result.stderr
     assert 'secret-looking keys in com.tableau.mcp.sales-demo/content/src/config.js' in result.stderr
     assert 'abcdef0123456789' not in result.stderr
+
+
+def test_template_literal_fetch_and_placeholder_values_stay_quiet(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_manifest(workspace, {'id': 'x', 'requestedOrigins': 'https://api.example.com'})
+    (workspace / PACKAGE / 'content' / 'src' / 'app.js').write_text(
+        "const API_BASE = 'https://api.example.com';\n"
+        "fetch(`${API_BASE}/v1/rows`);\n"
+        'const csrfToken = "placeholder-token";\n'
+        'const apiKey = "YOUR_API_KEY_HERE";\n')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert '⚠' not in result.stderr
+
+
+def test_secret_scan_covers_every_file_in_the_package(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / PACKAGE / 'content' / 'config.json').write_text('{"client_secret": "abcdef0123456789"}')
+    (workspace / PACKAGE / 'notes.txt').write_text('api_key = "abcdef0123456789"')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert 'com.tableau.mcp.sales-demo/content/config.json' in result.stderr
+    assert 'com.tableau.mcp.sales-demo/notes.txt' in result.stderr
+
+
+def test_bundled_code_counts_only_request_targets_and_bare_origins(tmp_path):
+    workspace = make_workspace(tmp_path)
+    minified = ('var a="https://react.dev/errors/"+e;var b="https://github.com/facebook/react/issues";'
+                'var API="https://api.example.com";img.src="https://cdn.example.com/x.png";' * 40)
+    (workspace / PACKAGE / 'content' / 'src' / 'index-abc123.js').write_text(minified)
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert 'https://api.example.com' in result.stderr
+    assert 'https://cdn.example.com' in result.stderr
+    assert 'react.dev' not in result.stderr
+    assert 'github.com' not in result.stderr

@@ -16,8 +16,11 @@ is a script, not a hand edit.
 
 Safe to run at any point in a session (fresh scaffold or an already-built and
 published app), and re-runnable: it merges with what the manifest already
-declares, de-duplicates, and keeps any other manifest keys. A missing manifest
-is created from the `.trex` (id, version, name, author).
+declares, de-duplicates, and keeps any other manifest keys. Origins already in
+the manifest are read leniently (case and trailing slashes are cleaned up, and
+anything else is kept as-is with a warning) so one bad entry never blocks a run.
+If an older workspace has no manifest, one is created from the `.trex` (id,
+version, name, author).
 
 Usage:
   python3 declare_origins.py <workspaceDir> --allowed <allowed.json> --add <origin> [<origin> ...]
@@ -30,7 +33,9 @@ must be on it. `--unverified` (instead of --allowed) skips that check and warns:
 the origin stays blocked until a site admin allows it.
 
 An origin is scheme + host (+ optional port): `https://api.example.com`. No
-path, query, or trailing slash.
+path, query, or trailing slash. A wildcard host (`https://*.example.com`) can be
+declared when the site allow-list has that same entry, and a wildcard on the
+allow-list covers every subdomain under it for --add.
 
 Prints the manifest path on stdout (the declared origins, one per line, for --list).
 """
@@ -43,7 +48,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-ORIGIN_RE = re.compile(r'^(https?)://([a-z0-9-]+(?:\.[a-z0-9-]+)*)(:\d{1,5})?$')
+ORIGIN_RE = re.compile(r'^(https?)://((?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*)(:\d{1,5})?$')
 ADMIN_HINT = ('A site admin must add it under Settings > Extensions > Extension Package Allowed Origins, '
               'then re-run scaffold-data-app for the updated allowedOrigins list.')
 
@@ -64,6 +69,27 @@ def normalize_origin(value, where):
         die(f'{where}: "{origin}" is not an origin. Use scheme + host only, e.g. https://api.example.com '
             '(no path, query, or trailing slash).')
     return lowered
+
+
+def clean_origin(value):
+    return str(value).strip().rstrip('/').lower()
+
+
+# CSP host-source rules: `*.example.com` matches any subdomain (not example.com itself);
+# scheme and port must match exactly.
+def on_allow_list(origin, allowed):
+    if origin in allowed:
+        return True
+    scheme, host, port = ORIGIN_RE.match(origin).groups()
+    for entry in allowed:
+        match = ORIGIN_RE.match(entry)
+        if not match:
+            continue
+        a_scheme, a_host, a_port = match.groups()
+        if (a_host.startswith('*.') and a_scheme == scheme and a_port == port
+                and host.endswith(a_host[1:]) and not host.startswith('*.')):
+            return True
+    return False
 
 
 def find_package(workspace):
@@ -139,7 +165,17 @@ def declared(manifest, path):
         parts = value.split()
     else:
         die(f'{path}: requestedOrigins must be a space-separated string (got {type(value).__name__}).')
-    return [normalize_origin(p, f'{path} requestedOrigins') for p in parts]
+    origins = []
+    for part in parts:
+        origin = clean_origin(part)
+        if not ORIGIN_RE.match(origin):
+            warn(f'{path}: requestedOrigins entry "{part}" is not a plain origin; keeping it as-is. '
+                 'Remove it with --remove if Tableau should not request it.')
+            origin = str(part).strip()
+        elif origin != str(part).strip():
+            warn(f'{path}: rewriting requestedOrigins entry "{part}" as {origin}.')
+        origins.append(origin)
+    return unique(origins)
 
 
 def read_allowed(path):
@@ -153,7 +189,7 @@ def read_allowed(path):
     if not isinstance(data, list):
         die(f'{path} must be the scaffold-data-app allowedOrigins array (or the whole result object).')
     # The site list may carry trailing slashes or mixed case; compare normalized.
-    return {str(o).strip().rstrip('/').lower() for o in data}
+    return {clean_origin(o) for o in data}
 
 
 def unique(seq):
@@ -175,6 +211,8 @@ def main():
     check.add_argument('--allowed', metavar='ALLOWED_JSON')
     check.add_argument('--unverified', action='store_true')
     args = parser.parse_args()
+    if (args.allowed or args.unverified) and not args.add:
+        parser.error('--allowed and --unverified only apply to --add.')
 
     workspace = os.path.abspath(args.workspace)
     if not os.path.isdir(workspace):
@@ -195,7 +233,7 @@ def main():
         adding = unique(normalize_origin(o, '--add') for o in args.add)
         if args.allowed:
             allowed = read_allowed(args.allowed)
-            blocked = [o for o in adding if o not in allowed]
+            blocked = [o for o in adding if not on_allow_list(o, allowed)]
             if blocked:
                 die(f'Not on the site allow-list: {", ".join(blocked)}. {ADMIN_HINT}')
         elif args.unverified:
@@ -206,11 +244,12 @@ def main():
                 '(or --unverified to skip the check).')
         result = unique(current + adding)
     else:
-        removing = {normalize_origin(o, '--remove') for o in args.remove}
-        missing = sorted(removing - set(current))
+        # Match on the cleaned form so a malformed stored entry can still be removed.
+        removing = {clean_origin(o) for o in args.remove}
+        missing = sorted(removing - {clean_origin(o) for o in current})
         if missing:
             warn('Not declared, nothing to remove: ' + ', '.join(missing))
-        result = [o for o in current if o not in removing]
+        result = [o for o in current if clean_origin(o) not in removing]
 
     if manifest is None:
         manifest = identity_from_trex(trex, package)

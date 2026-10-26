@@ -176,6 +176,63 @@ def test_rejects_malformed_origins(tmp_path):
         assert 'is not an origin' in result.stderr
 
 
+def test_cleans_up_stored_trailing_slash_instead_of_failing(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / PACKAGE / 'manifest.json').write_text(json.dumps({'id': 'x', 'requestedOrigins': API + '/'}))
+    allowed = write_allowed(tmp_path, [AUTH])
+
+    listed = run(str(workspace), '--list')
+    added = run(str(workspace), '--allowed', allowed, '--add', AUTH)
+
+    assert listed.returncode == 0, listed.stderr
+    assert listed.stdout.split() == [API]
+    assert added.returncode == 0, added.stderr
+    assert 'rewriting requestedOrigins entry' in added.stderr
+    assert manifest(workspace)['requestedOrigins'] == f'{API} {AUTH}'
+
+
+def test_keeps_and_can_remove_a_malformed_stored_entry(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / PACKAGE / 'manifest.json').write_text(
+        json.dumps({'id': 'x', 'requestedOrigins': f'{API} https://api.example.com/v1'}))
+
+    listed = run(str(workspace), '--list')
+    removed = run(str(workspace), '--remove', 'https://api.example.com/v1')
+
+    assert listed.returncode == 0, listed.stderr
+    assert 'not a plain origin; keeping it' in listed.stderr
+    assert removed.returncode == 0, removed.stderr
+    assert manifest(workspace)['requestedOrigins'] == API
+
+
+def test_wildcard_on_allow_list_covers_subdomains(tmp_path):
+    workspace = make_workspace(tmp_path)
+    allowed = write_allowed(tmp_path, ['https://*.example.com'])
+
+    sub = run(str(workspace), '--allowed', allowed, '--add', API, 'https://a.b.example.com')
+    wildcard = run(str(workspace), '--allowed', allowed, '--add', 'https://*.example.com')
+    apex = run(str(workspace), '--allowed', allowed, '--add', 'https://example.com')
+    wrong_scheme = run(str(workspace), '--allowed', allowed, '--add', 'http://api.example.com')
+    wrong_port = run(str(workspace), '--allowed', allowed, '--add', 'https://api.example.com:8443')
+
+    assert sub.returncode == 0, sub.stderr
+    assert wildcard.returncode == 0, wildcard.stderr
+    assert manifest(workspace)['requestedOrigins'] == f'{API} https://a.b.example.com https://*.example.com'
+    for refused in (apex, wrong_scheme, wrong_port):
+        assert refused.returncode == 1
+        assert 'Not on the site allow-list' in refused.stderr
+
+
+def test_allow_list_flags_only_apply_to_add(tmp_path):
+    workspace = make_workspace(tmp_path)
+    allowed = write_allowed(tmp_path, [API])
+
+    for args in (('--allowed', allowed, '--list'), ('--unverified', '--remove', API)):
+        result = run(str(workspace), *args)
+        assert result.returncode == 2, args
+        assert 'only apply to --add' in result.stderr
+
+
 def test_fails_without_trex(tmp_path):
     workspace = make_workspace(tmp_path, with_trex=False)
 

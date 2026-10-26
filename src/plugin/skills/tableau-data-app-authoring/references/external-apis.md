@@ -35,10 +35,12 @@ The `requestedOrigins` value must be **one space-separated string**:
 A JSON array is silently ignored, and so is a key named `allowedOrigins`. In both cases the CSP
 falls back to package-only and every external call is blocked with no error from Tableau. Don't
 edit this file by hand; use `scripts/declare_origins.py`, which writes the right shape, checks
-each origin against the site list, and creates the manifest from the `.trex` if it's missing.
-`package_twbx.py` hard-fails on an array value.
+and checks each origin against the site list. (Current scaffolds ship `manifest.json`; for an
+older workspace without one, the script creates it from the `.trex`.) `package_twbx.py`
+hard-fails on an array value.
 
 An origin is scheme + host (+ port): `https://api.example.com`. No path, query, or trailing slash.
+A wildcard on the site list (`https://*.example.com`) covers its subdomains when you add one.
 
 ## Origin `null` and CORS
 
