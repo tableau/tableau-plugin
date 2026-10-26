@@ -15,7 +15,7 @@ tool whose name ends in the name given here.
 
 - Find the content → `search-content` — see [`../../references/search.md`](../../references/search.md) for the call shape and how to disambiguate multiple matches. Reuse an already-resolved LUID/URL instead of searching again for the same content.
 - Get a render-ready URL → `get-view` (resolved `luid` as `viewId`) or `get-workbook` (as `workbookId`, only when no specific view matched). `search-content` never returns a URL — this call is required.
-- Render → `render-interactive-viz` with the resolved `luid` and matching `objectType`. If unavailable, open the direct `/t/SITE/views/...` URL in the in-app browser (`navigate`); failing that, give the URL as a hyperlink and show a `get-view-image` PNG inline — see [`../../references/rendering.md`](../../references/rendering.md).
+- Render → `render-interactive-viz` with the resolved `luid` and matching `objectType`. If unavailable, open the direct `/t/SITE/views/...` URL in the in-app browser (`navigate`, or the next available fallback); failing that, give the URL as a hyperlink and show a `get-view-image` PNG inline — see [`../../references/rendering.md`](../../references/rendering.md).
 
 # Requirements
 

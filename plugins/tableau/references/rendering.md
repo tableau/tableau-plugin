@@ -6,37 +6,30 @@ already resolved during the current task.
 
 ## Choose the render path
 
-Use one render attempt per available path and reuse workbook IDs, view IDs,
-and URLs already resolved during the current task.
+Rendering: try these in order. Move to the next step only if the current one
+is unavailable or fails. Reuse workbook IDs, view IDs, and URLs already
+resolved during the current task.
 
-1. If `render-interactive-viz` is callable, call it once:
-   - use the resolved view LUID with `objectType: "view"` when a specific
-     view is known;
-   - use the workbook LUID with `objectType: "workbook"` only when no
-     specific view can be resolved.
+1. `render-interactive-viz`, with the resolved `luid` and matching
+   `objectType` (`"view"` when a specific view is known, `"workbook"` only
+   when none can be resolved).
+2. Built-in browser. If step 1 isn’t in the tool list, call `get-view`
+   for the URL, then open it (as a direct `/t/SITE/views/...` URL; see
+   [Build a direct view URL](#build-a-direct-view-url)) with `navigate` or `preview_start`.
+   This is the expected path whenever step 1 is missing.
+   If Tableau asks the user to sign in, tell them to sign in there; that
+   still counts as success.
+3. Static image (last resort). Use `get-view-image` only if step 2 fails.
+   A site-approval prompt isn’t a failure, so call `request_access`
+   and retry.
+   Give the user the full direct `/t/SITE/views/...` URL as a Markdown
+   hyperlink, e.g. `[<view name>](https://HOST/t/SITE/views/WORKBOOK/VIEW?...)`,
+   then call `get-view-image` once with `viewId` (the resolved
+   view LUID) and `format: "PNG"` and handle the result as described in
+   [Download the PNG immediately](#download-the-png-immediately).
 
-   Return a successful interactive render as-is.
-2. If the interactive-render tool is missing, unknown, disabled, or fails,
-   open the direct `/t/SITE/views/...` URL (see
-   [Build a direct view URL](#build-a-direct-view-url)) in the in-app browser.
-   Use the first available tool, in this order. Don't call a later one once
-   an earlier one succeeds, and skip any that report unknown, unavailable, or
-   disabled:
-   - `navigate`: Claude's built-in (in-app) browser
-
-   Return a successful in-app render as-is. If the page asks the user to sign
-   in to Tableau, tell them to sign in there; that still counts as success.
-3. If no in-app browser is available or it fails, fall back to a static
-   image:
-   - give the user the full direct `/t/SITE/views/...` URL as a Markdown
-     hyperlink, e.g. `[<view name>](https://HOST/t/SITE/views/WORKBOOK/VIEW?...)`;
-   - call `get-view-image` once with `viewId` (the resolved
-     view LUID) and `format: "PNG"`, then handle the result as described in
-     [Download the PNG immediately](#download-the-png-immediately).
-
-Do not retry an unavailable rendering tool or repeat a failed path. The
-static image is the final fallback, even for "render," "show," and "preview"
-requests.
+Never use `get-view-image` for a “show/open/render” request unless the
+user asks for an image or both steps above have failed.
 
 ## Download the PNG immediately
 
@@ -227,7 +220,7 @@ exhaustive testing.
 
 - Attempt each available render path at most once.
 - Use this fallback order:
-  `render-interactive-viz` → in-app browser (`navigate`) → hyperlink plus `get-view-image` PNG.
+  `render-interactive-viz` → in-app browser (`navigate`, `preview_start`) → hyperlink plus `get-view-image` PNG.
 - Do not retry tools that report unknown, unavailable, or disabled.
 - If the PNG also fails, still give the direct URL hyperlink and briefly
   identify which rendering capabilities were unavailable.
