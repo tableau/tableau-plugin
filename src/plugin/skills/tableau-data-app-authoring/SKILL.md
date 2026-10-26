@@ -24,6 +24,10 @@ starter as-is to prove packaging works does not need it.)
 actually wired (not empty) and the package layout is correct, since none of
 this skill's tooling has run against it.
 
+**Modifying an existing app?** Read every file in its `Resources/.agents/`
+first (unzip a `.twbx` to reach it). Those docs hold the app's spec, design,
+and past decisions; if `README.md` is the only file, none have been written yet.
+
 **Division of labor: you write ALL the code, every stage, always — including
 `app.js`.** The human "vibe codes" by describing what they want (criteria,
 theme, vibe, target insights) — they do not write `app.js` themselves. Read
@@ -343,6 +347,13 @@ rules in its `AUTHOR YOUR APP HERE` comment) and follow that workflow; it is
 not restated here. There is no local preview — the visual review happens live
 in Tableau, after publish.
 
+**Record context in `Resources/.agents/`** when it would help whoever edits the
+app next: `spec.md` (what it does, for whom), `design.md` (datasources, queries,
+chart choices), `memories.md` (decisions, gotchas, the user's preferences).
+Update them when you change the app. Follow the folder's `README.md`: no
+secrets, tokens, or personal data (anyone who can download the workbook can
+read them), and never put these docs under `Packages/<id>/content/`.
+
 **Exception — the human wants to write `app.js` themselves:** only skip
 authoring if the human explicitly says they want to write `app.js` themselves
 for this app — an override of the default, not the norm. Stop and hand off:
@@ -371,6 +382,11 @@ python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized work
 It also packs `Data/` and `Resources/.agents/` at the archive root. Under
 `Data/`, only the files the `.twb` references are packed. Hidden files are
 never packed.
+
+Before publishing, confirm `Resources/.agents/` made it in: the `✓ Packaged`
+line lists it, or check `unzip -l "<App Name>.twbx" | grep Resources/.agents/`.
+If it's missing, the workspace lost the folder; restore at least its
+`README.md` from a fresh scaffold and repackage.
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
