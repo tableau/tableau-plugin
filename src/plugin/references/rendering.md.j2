@@ -6,47 +6,55 @@ already resolved during the current task.
 
 ## Choose the render path
 
-Use one render attempt per available path and reuse workbook IDs, view IDs,
-and URLs already resolved during the current task.
-
-1. If `{{ mcp_prefix }}render-interactive-viz` is callable, call it once:
-   - use the resolved view LUID with `objectType: "view"` when a specific
-     view is known;
-   - use the workbook LUID with `objectType: "workbook"` only when no
-     specific view can be resolved.
-
-   Return a successful interactive render as-is.
-{% if capabilities.native_render %}
-2. If the interactive-render tool is missing, unknown, disabled, or fails,
-   open the direct `/t/SITE/views/...` URL (see
-   [Build a direct view URL](#build-a-direct-view-url)) in the in-app browser.
-   Use the first available tool, in this order. Don't call a later one once
-   an earlier one succeeds, and skip any that report unknown, unavailable, or
-   disabled:
-{% for t in tools.render_native %}
-   - `{{ t.name }}`: {{ t.context }}
-{% endfor %}
-{% if capabilities.js_repl %}
-   - `{{ tools.js_repl }}` with the direct view URL, if no tool above worked
-{% endif %}
-
-   Return a successful in-app render as-is. If the page asks the user to sign
-   in to Tableau, tell them to sign in there; that still counts as success.
-3. If no in-app browser is available or it fails, fall back to a static
-   image:
+{# Steps are numbered at build time so a platform can drop the interactive or
+   browser step via capabilities.interactive_viz / capabilities.native_render. #}
+{% set step = namespace(n=0, viz=0, browser=0) %}
+{% if capabilities.interactive_viz %}{% set step.n = step.n + 1 %}{% set step.viz = step.n %}{% endif %}
+{% if capabilities.native_render %}{% set step.n = step.n + 1 %}{% set step.browser = step.n %}{% endif %}
+{% set step.n = step.n + 1 %}
+{% if step.n > 1 %}
+Rendering: try these in order. Move to the next step only if the current one
+is unavailable or fails. Reuse workbook IDs, view IDs, and URLs already
+resolved during the current task.
 {% else %}
-2. If the interactive-render tool is missing, unknown, disabled, or fails,
-   fall back to a static image:
+Rendering: use a static image. Reuse workbook IDs, view IDs, and URLs already
+resolved during the current task.
 {% endif %}
-   - give the user the full direct `/t/SITE/views/...` URL as a Markdown
-     hyperlink, e.g. `[<view name>](https://HOST/t/SITE/views/WORKBOOK/VIEW?...)`;
-   - call `{{ mcp_prefix }}get-view-image` once with `viewId` (the resolved
-     view LUID) and `format: "PNG"`, then handle the result as described in
-     [Download the PNG immediately](#download-the-png-immediately).
 
-Do not retry an unavailable rendering tool or repeat a failed path. The
-static image is the final fallback, even for "render," "show," and "preview"
-requests.
+{% if step.viz %}
+{{ step.viz }}. `{{ mcp_prefix }}render-interactive-viz`, with the resolved `luid` and matching
+   `objectType` (`"view"` when a specific view is known, `"workbook"` only
+   when none can be resolved).
+{% endif %}
+{% if step.browser %}
+{{ step.browser }}. Built-in browser. {% if step.viz %}If step {{ step.viz }} isn’t in the tool list, call{% else %}Call{% endif %} `{{ mcp_prefix }}get-view`
+   for the URL, then open it (as a direct `/t/SITE/views/...` URL; see
+   [Build a direct view URL](#build-a-direct-view-url)) with {% for t in tools.render_native %}`{{ t.name }}`{% if not loop.last %} or {% endif %}{% endfor %}{% if capabilities.js_repl %}, or `{{ tools.js_repl }}` if {% if tools.render_native | length > 1 %}none of those work{% else %}that doesn’t work{% endif %}{% endif %}.
+{% if step.viz %}
+   This is the expected path whenever step {{ step.viz }} is missing.
+{% endif %}
+   If Tableau asks the user to sign in, tell them to sign in there; that
+   still counts as success.
+{% endif %}
+{% if step.n > 1 %}
+{{ step.n }}. Static image (last resort). Use `{{ mcp_prefix }}get-view-image` only if step {{ step.n - 1 }} fails.
+{% if step.browser and tools.site_access %}
+   A site-approval prompt isn’t a failure, so call `{{ tools.site_access }}`
+   and retry.
+{% endif %}
+{% else %}
+{{ step.n }}. Static image.
+{% endif %}
+   Give the user the full direct `/t/SITE/views/...` URL as a Markdown
+   hyperlink, e.g. `[<view name>](https://HOST/t/SITE/views/WORKBOOK/VIEW?...)`,
+   then call `{{ mcp_prefix }}get-view-image` once with `viewId` (the resolved
+   view LUID) and `format: "PNG"` and handle the result as described in
+   [Download the PNG immediately](#download-the-png-immediately).
+{% if step.n > 1 %}
+
+Never use `{{ mcp_prefix }}get-view-image` for a “show/open/render” request unless the
+user asks for an image or {% if step.n > 2 %}both steps above have{% else %}the step above has{% endif %} failed.
+{% endif %}
 
 ## Download the PNG immediately
 
@@ -242,11 +250,7 @@ exhaustive testing.
 
 - Attempt each available render path at most once.
 - Use this fallback order:
-{% if capabilities.native_render %}
-  `{{ mcp_prefix }}render-interactive-viz` → in-app browser ({% for t in tools.render_native %}`{{ t.name }}`{% if not loop.last %}, {% endif %}{% endfor %}{% if capabilities.js_repl %}, `{{ tools.js_repl }}`{% endif %}) → hyperlink plus `{{ mcp_prefix }}get-view-image` PNG.
-{% else %}
-  `{{ mcp_prefix }}render-interactive-viz` → hyperlink plus `{{ mcp_prefix }}get-view-image` PNG.
-{% endif %}
+  {%+ if capabilities.interactive_viz %}`{{ mcp_prefix }}render-interactive-viz` → {% endif %}{% if capabilities.native_render %}in-app browser ({% for t in tools.render_native %}`{{ t.name }}`{% if not loop.last %}, {% endif %}{% endfor %}{% if capabilities.js_repl %}, `{{ tools.js_repl }}`{% endif %}) → {% endif %}hyperlink plus `{{ mcp_prefix }}get-view-image` PNG.
 - Do not retry tools that report unknown, unavailable, or disabled.
 - If the PNG also fails, still give the direct URL hyperlink and briefly
   identify which rendering capabilities were unavailable.
@@ -256,7 +260,9 @@ exhaustive testing.
 
 Rendering is complete when one of the following is true:
 
+{% if capabilities.interactive_viz %}
 - the requested Tableau view is displayed interactively;
+{% endif %}
 {% if capabilities.native_render %}
 - the direct view URL is open in the in-app browser;
 {% endif %}

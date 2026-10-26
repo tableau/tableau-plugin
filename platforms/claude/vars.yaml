@@ -26,6 +26,11 @@ tools:
   render_native:
     - name: navigate
       context: Claude's built-in (in-app) browser
+    - name: preview_start
+      context: Claude's built-in (in-app) browser, opened in a new tab
+  # Tool that approves a site for the browser pane. A site-approval prompt is
+  # not a render failure: call this, then retry the browser step.
+  site_access: request_access
   js_repl: ""
   elicit: ""
 
@@ -43,6 +48,9 @@ show_image: >-
   doesn't open on its own
 
 capabilities:
+  # Offer the Tableau MCP server's render-interactive-viz tool as the first
+  # render path. Set false to skip straight to the browser / static-image paths.
+  interactive_viz: true
   native_render: true                 # render_native tools may exist on this host
   js_repl: false
   native_render_guaranteed: false     # the browser tool may be absent (e.g. web)
