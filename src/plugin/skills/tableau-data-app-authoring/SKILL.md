@@ -383,11 +383,6 @@ It also packs `Data/` and `Resources/.agents/` at the archive root. Under
 `Data/`, only the files the `.twb` references are packed. Hidden files are
 never packed.
 
-Before publishing, confirm `Resources/.agents/` made it in: the `✓ Packaged`
-line lists it, or check `unzip -l "<App Name>.twbx" | grep Resources/.agents/`.
-If it's missing, the workspace lost the folder; restore at least its
-`README.md` from a fresh scaffold and repackage.
-
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
 
