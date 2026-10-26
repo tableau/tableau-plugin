@@ -18,9 +18,9 @@ at least one `.trex` under `Packages/*/extensions/`, and every `Data/` file the
 anything but one space-separated string (Tableau silently ignores other shapes).
 
 Warns (never fails) about things that break or leak at runtime: external origins
-referenced in content/ but not declared with declare_origins.py, dotfiles in
-content/ (the package host 404s them), fetch() of package-relative paths (fails
-in the null-origin sandbox), and secret-looking keys anywhere in the package.
+referenced in content/ but not declared with declare_origins.py, fetch() of
+package-relative paths (fails in the null-origin sandbox), and secret-looking
+keys in any file that gets packaged (hidden files are skipped, so never shipped).
 In minified or bundled files, only origins used as a request target (fetch,
 src/href, url(), import, WebSocket, ...) or written as a bare origin string (an
 API base URL) count, so library doc links in a React or esbuild bundle don't
@@ -121,10 +121,6 @@ def collect_packed_dirs(workspace, twb):
     return entries_by_top
 
 
-def is_cruft(rel_path):
-    return any(part.endswith('.DS_Store') or part.startswith('__MACOSX') for part in rel_path.split('/'))
-
-
 def warn(message):
     print(f'⚠ {message}', file=sys.stderr)
 
@@ -161,51 +157,45 @@ def is_bundled(name, text):
     return '.min.' in name or any(len(line) > MINIFIED_LINE for line in text.splitlines())
 
 
-# Runtime problems a zip can't catch: undeclared external origins, unservable files, leaked secrets.
-def preflight(packages):
-    for package_dir in sorted(glob.glob(os.path.join(packages, '*'))):
-        content = os.path.join(package_dir, 'content')
-        if not os.path.isdir(content):
-            continue
-        declared = requested_origins(package_dir)
-        undeclared, dotfiles, relative_fetch, secrets = {}, [], [], []
-        # Every file ships in the .twbx, so the secret scan covers the whole package.
-        for root, dirs, files in os.walk(package_dir):
-            dirs.sort()
-            in_content = os.path.commonpath([root, content]) == content
-            for name in sorted(files):
-                full = os.path.join(root, name)
-                rel = os.path.relpath(full, packages).replace(os.sep, '/')
-                # The vendored Extensions API library is Tableau's own code.
-                if is_cruft(rel) or name.startswith('tableau.extensions.') or name.lower().endswith(BINARY_EXTENSIONS):
-                    continue
-                if in_content and name.startswith('.'):
-                    dotfiles.append(rel)
-                text = read_text(full)
-                if text is None:
-                    continue
-                if has_secret(text):
-                    secrets.append(rel)
-                if not in_content or not name.endswith(CODE_EXTENSIONS):
-                    continue
-                if is_bundled(name, text):
-                    found = NETWORK_ORIGIN.findall(text) + BARE_ORIGIN.findall(text)
-                else:
-                    found = ORIGIN_IN_CODE.findall(text)
-                for origin in found:
-                    origin = origin.lower()
-                    if origin not in declared and origin not in NON_NETWORK_ORIGINS:
-                        undeclared.setdefault(origin, rel)
-                if RELATIVE_FETCH.search(text):
-                    relative_fetch.append(rel)
-        pkg = os.path.basename(package_dir)
+# Runtime problems a zip can't catch: undeclared external origins and leaked secrets.
+# Checks exactly the Packages/ files that go into the .twbx.
+def preflight(workspace, entries):
+    by_package = {}
+    for path, rel in entries:
+        parts = rel.split('/')
+        if len(parts) > 2 and os.path.isfile(path):
+            by_package.setdefault(parts[1], []).append((path, parts))
+    for pkg, files in sorted(by_package.items()):
+        declared = requested_origins(os.path.join(workspace, 'Packages', pkg))
+        undeclared, relative_fetch, secrets = {}, [], []
+        for path, parts in files:
+            name, rel = parts[-1], '/'.join(parts[1:])
+            in_content = parts[2] == 'content'
+            # The vendored Extensions API library is Tableau's own code.
+            if name.startswith('tableau.extensions.') or name.lower().endswith(BINARY_EXTENSIONS):
+                continue
+            text = read_text(path)
+            if text is None:
+                continue
+            if has_secret(text):
+                secrets.append(rel)
+            if not in_content or not name.endswith(CODE_EXTENSIONS):
+                continue
+            if is_bundled(name, text):
+                found = NETWORK_ORIGIN.findall(text) + BARE_ORIGIN.findall(text)
+            else:
+                found = ORIGIN_IN_CODE.findall(text)
+            for origin in found:
+                origin = origin.lower()
+                if origin not in declared and origin not in NON_NETWORK_ORIGINS:
+                    undeclared.setdefault(origin, rel)
+            if RELATIVE_FETCH.search(text):
+                relative_fetch.append(rel)
         if undeclared:
             warn(f'{pkg}: content references origins not in requestedOrigins: ' +
                  ', '.join(f'{o} ({f})' for o, f in sorted(undeclared.items())) +
                  '. Requests, images, scripts, or styles from them are blocked by the CSP unless declared '
                  'with declare_origins.py (plain links that only navigate are fine).')
-        if dotfiles:
-            warn(f'{pkg}: dotfiles in content/ are not served (404): {", ".join(dotfiles)}.')
         if relative_fetch:
             warn(f'{pkg}: fetch() of a package-relative path in {", ".join(relative_fetch)} fails in the '
                  'sandbox (null origin, no CORS). Ship data/config as a .js file loaded with <script src>.')
@@ -240,8 +230,8 @@ def main():
     output = os.path.abspath(argv[2]) if len(argv) == 3 else os.path.join(
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
 
-    preflight(packages)
     entries_by_top = collect_packed_dirs(workspace, twb)
+    preflight(workspace, entries_by_top.get('Packages', []))
 
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:

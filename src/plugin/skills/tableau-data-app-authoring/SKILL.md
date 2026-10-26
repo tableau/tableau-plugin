@@ -479,8 +479,8 @@ never packed.
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
 It also prints `⚠` warnings for problems that only show up at runtime:
-undeclared external origins, dotfiles, package-relative `fetch()`, and
-secret-looking keys. They don't stop packaging, but fix them or tell the user
+undeclared external origins, package-relative `fetch()`, and secret-looking
+keys. They don't stop packaging, but fix them or tell the user
 about them before publishing.
 
 > The template these workspaces come from is already publish-valid (`.twb`
@@ -577,8 +577,8 @@ Read [Calling external APIs](references/external-apis.md) before building
 anything that leaves the package: it covers what the sandbox blocks no matter
 what, allowlisting, CORS, and how to debug a blocked call. What the package
 host serves is in [Build a data app](references/build-data-app.md), Sandbox and
-lifecycle rules. `package_twbx.py` warns about undeclared origins, unserved
-files, and package-relative `fetch()`.
+lifecycle rules. `package_twbx.py` warns about undeclared origins and
+package-relative `fetch()`.
 
 ## Security best practices
 

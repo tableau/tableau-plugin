@@ -319,13 +319,15 @@ def test_warns_about_runtime_problems(tmp_path):
     src = workspace / PACKAGE / 'content' / 'src'
     (src / 'app.js').write_text("fetch('https://api.example.com/v1/x');\nfetch('data/rows.json');\n")
     (src / 'config.js').write_text('window.ENV = { "SPOTIFY_CLIENT_SECRET": "abcdef0123456789" };\n')
-    (workspace / PACKAGE / 'content' / '.env').write_text('X=1')
+    (workspace / PACKAGE / 'content' / '.env').write_text('API_KEY="abcdef0123456789"')
 
     result = run_package(str(workspace))
 
     assert result.returncode == 0, result.stderr
     assert 'not in requestedOrigins: https://api.example.com' in result.stderr
-    assert 'dotfiles in content/' in result.stderr
+    # Hidden files are never packaged, so they're neither shipped nor flagged.
+    assert f'{PACKAGE}/content/.env' not in names(result.stdout.strip())
+    assert '.env' not in result.stderr
     assert 'package-relative path' in result.stderr
     assert 'secret-looking keys in com.tableau.mcp.sales-demo/content/src/config.js' in result.stderr
     assert 'abcdef0123456789' not in result.stderr
