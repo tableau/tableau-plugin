@@ -275,12 +275,31 @@ instead of naming a published datasource. The same script wires it (and rejects
 file types it can't); the descriptor just has `"type": "file"`.
 
 1. **Copy the file into the workspace** under `Data/`, conventionally
-   `Data/Datasources/<file>`. The script fails if the file isn't there, or if
-   its path is outside `Data/`.
-2. **Write a descriptor.** `file` is the path relative to the `.twb`. `table`
-   picks the table in a file that holds several (an Excel sheet); the script
-   says when it's needed. Field names must match the column names Tableau reads
-   from the file, usually its header row. No server, site, or `repositoryId`:
+   `Data/Datasources/<file>`, with the files it needs alongside (a shapefile's
+   `.shx`, `.dbf`, `.prj`; a MapInfo `.tab`'s `.map`, `.dat`, `.id`; a `.mif`'s
+   `.mid`; a `Schema.ini` next to a text file). The script fails if the file
+   isn't there, or if its path is outside `Data/`; packaging fails if a required
+   companion is missing.
+2. **Write a descriptor.** `file` is the path relative to the `.twb`. What
+   `table` means depends on the format:
+
+   | `format` | Extensions | `table` |
+   |---|---|---|
+   | `excel` | `.xls` `.xlsx` `.xlsm` | Required: the sheet name |
+   | `pdf` | `.pdf` | Required: the page table, e.g. `Page    1 Table  1` (ask the user which) |
+   | `hyper` | `.hyper` | Optional `schema.table`, default `Extract.Extract` |
+   | `text` | `.csv` `.txt` `.tsv` `.tab` | Omit |
+   | `json` | `.json` | Omit; flat JSON only (top-level keys become fields) |
+   | `statistical` | `.sas7bdat` `.sav` `.rda` `.rdata` | Omit |
+   | `spatial` | `.geojson` `.topojson` `.json` `.shp` `.tab` `.mif` | Omit |
+
+   `format` is needed only for `.json` (`json` or `spatial`) and `.tab`
+   (`text` or `spatial`); the script says when. List the fields the app
+   queries, with names read from the file's header where you can (ask the
+   user otherwise). The server reads the columns from the file itself and may
+   name them differently (case, trailing `_`), so `app.js` resolves the real
+   names at load time (see `references/build-data-app.md`). PDF columns arrive
+   as strings, numbers included. No server, site, or `repositoryId`:
 
    ```bash
    cat > "$WORK/descriptor.json" <<'DS_JSON'
