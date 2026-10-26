@@ -41,8 +41,9 @@ or an embedded file (the file must already be in the workspace):
   {
     "type":     "file",
     "caption":  "Sample - Superstore",
-    "file":     "Data/Datasources/Sample - Superstore.xls",  // Excel or CSV
-    "table":    "Orders",                                    // Excel only: the sheet
+    "file":     "Data/Datasources/Sample - Superstore.xls",  // see file_formats.py for extensions
+    "table":    "Orders",   // Excel sheet, PDF page table, or Hyper schema.table; omit for other files
+    "format":   "excel",    // only for .json (json/spatial) and .tab (text/spatial)
     "fields": [ ...as above... ]
   }
 or any number of either, primary first, wired in a single run:
@@ -56,7 +57,7 @@ import string
 import sys
 import xml.etree.ElementTree as ET
 
-from file_formats import FORMAT_BY_EXTENSION, bracket
+from file_formats import bracket, esc, format_for
 
 # The exact empty anchor emitted by the scaffold template. Matched literally.
 EMPTY_ANCHOR = '<datasources />'
@@ -64,18 +65,6 @@ EMPTY_ANCHOR = '<datasources />'
 def die(message):
     print(f'✗ {message}', file=sys.stderr)
     sys.exit(1)
-
-
-# XML attribute-value escaping (single-quoted attrs + element text).
-def esc(value):
-    return (
-        str(value)
-        .replace('&', '&amp;')
-        .replace('<', '&lt;')
-        .replace('>', '&gt;')
-        .replace("'", '&apos;')
-        .replace('"', '&quot;')
-    )
 
 
 # datatype -> Tableau column `type`.
@@ -174,11 +163,8 @@ def parse_file_datasource(descriptor, error_prefix):
     if len(parts) < 2 or parts[0] != 'Data' or any(part in ('', '.', '..') for part in parts):
         die(f'{error_prefix}"file" must be a path inside the workspace Data/ folder, '
             f'e.g. "Data/Datasources/Sales.xlsx" (got "{descriptor["file"]}").')
-    file_format = FORMAT_BY_EXTENSION.get(os.path.splitext(file_path)[1].lower())
-    if not file_format:
-        die(f'{error_prefix}"file" must end in {", ".join(FORMAT_BY_EXTENSION)} (got "{file_path}").')
     try:
-        source = file_format(file_path, descriptor.get('table'))
+        source = format_for(file_path, descriptor.get('format'))(file_path, descriptor.get('table'))
     except ValueError as error:
         die(f'{error_prefix}{error}')
 
@@ -256,6 +242,9 @@ def root_datasource_xml(ds):
 
 def file_connection_xml(source):
     attrs = ' '.join(f"{name}='{esc(value)}'" for name, value in source.connection_attrs().items())
+    children = source.connection_children()
+    if children:
+        return f"<connection class='{source.connection_class}' {attrs}>{children}</connection>"
     return f"<connection class='{source.connection_class}' {attrs} />"
 
 

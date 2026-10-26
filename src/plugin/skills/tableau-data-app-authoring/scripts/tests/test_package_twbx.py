@@ -170,6 +170,54 @@ def test_checks_directory_plus_filename_connections(tmp_path):
     assert 'Data/orders.csv' in names(result.stdout.strip())
 
 
+def write_files(workspace, *rels):
+    for rel in rels:
+        (workspace / rel).parent.mkdir(parents=True, exist_ok=True)
+        (workspace / rel).write_text('x')
+
+
+def test_packs_a_pdf_referenced_by_origfilename(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_files(workspace, 'Data/Datasources/Calcs.pdf')
+    (workspace / 'Sales Demo.twb').write_text(
+        "<workbook><connection class='pdf' origfilename='Data/Datasources/Calcs.pdf'/></workbook>")
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert 'Data/Datasources/Calcs.pdf' in names(result.stdout.strip())
+
+
+def test_packs_shapefile_companions_and_fails_without_required_ones(tmp_path):
+    workspace = make_workspace(tmp_path)
+    (workspace / 'Sales Demo.twb').write_text(
+        "<workbook><connection class='ogrdirect' directory='Data/Datasources' filename='polygons.shp'/></workbook>")
+    write_files(workspace, *(f'Data/Datasources/polygons.{e}' for e in ('shp', 'dbf', 'prj')))
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 1
+    assert 'Data/Datasources/polygons.shx' in result.stderr
+
+    write_files(workspace, 'Data/Datasources/polygons.shx', 'Data/Datasources/other.prj')
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(e for e in names(result.stdout.strip()) if e.startswith('Data/Datasources/') and not e.endswith('/')) == [
+        f'Data/Datasources/polygons.{e}' for e in ('dbf', 'prj', 'shp', 'shx')]
+
+
+def test_packs_schema_ini_next_to_a_text_file(tmp_path):
+    workspace = make_workspace(tmp_path)
+    write_files(workspace, 'Data/orders.csv', 'Data/Schema.ini')
+    (workspace / 'Sales Demo.twb').write_text(twb_referencing('Data/orders.csv'))
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    assert 'Data/Schema.ini' in names(result.stdout.strip())
+
+
 def test_packs_only_agents_under_resources(tmp_path):
     workspace = make_workspace(tmp_path)
     agents = workspace / 'Resources' / '.agents'

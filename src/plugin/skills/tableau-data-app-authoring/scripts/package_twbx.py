@@ -14,7 +14,8 @@ no extension .trex files under extensions/`.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 at least one `.trex` under `Packages/*/extensions/`, and every `Data/` file the
-`.twb` references.
+`.twb` references, with the files its format needs alongside (e.g. a shapefile's
+`.shx` and `.dbf`; `Schema.ini` next to a text file is packed when present).
 
 Output defaults to `<App Name>.twbx` next to the workspace dir; an existing
 file is overwritten. Prints the output path on stdout.
@@ -28,9 +29,11 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
+from file_formats import format_for_connection
+
 PACKED_DIRS = ('Packages', 'Data', 'Resources/.agents')
 
-FILE_PATH_ATTRS = ('filename', 'dbname')
+FILE_PATH_ATTRS = ('filename', 'dbname', 'origfilename')
 
 
 def die(message):
@@ -67,8 +70,14 @@ def referenced_data_files(workspace, twb):
             path = element.get(attr, '').replace('\\', '/')
             if attr == 'filename' and directory and path:
                 path = f'{directory}/{path}'
-            if path.startswith('Data/'):
-                referenced.add(path)
+            if not path.startswith('Data/'):
+                continue
+            referenced.add(path)
+            file_format = format_for_connection(element.get('class'), path)
+            if file_format:
+                required, optional = file_format.companions(path)
+                referenced.update(required)
+                referenced.update(p for p in optional if os.path.isfile(os.path.join(workspace, p)))
     return referenced
 
 

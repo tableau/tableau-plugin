@@ -518,10 +518,11 @@ def test_file_outside_data_folder_is_rejected(tmp_path):
 
 def test_unsupported_file_type_is_rejected(tmp_path):
     twb_path = write_twb(tmp_path)
-    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file='Data/orders.json')))
+    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file='Data/orders.parquet')))
 
     assert result.returncode == 1
-    assert result.stderr.strip() == '✗ "file" must end in .xls, .xlsx, .xlsm, .csv (got "Data/orders.json").'
+    assert result.stderr.strip().startswith('✗ "file" must end in .xls, .xlsx, .xlsm, .csv, ')
+    assert result.stderr.strip().endswith(' (got "Data/orders.parquet").')
 
 
 def test_excel_requires_a_table_and_csv_rejects_one(tmp_path):
@@ -534,7 +535,41 @@ def test_excel_requires_a_table_and_csv_rejects_one(tmp_path):
 
     result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(table='orders')))
     assert result.returncode == 1
-    assert result.stderr.strip() == '✗ "table" applies only to Excel files; a CSV file is its own table.'
+    assert result.stderr.strip() == '✗ "table" applies only to Excel, PDF, and Hyper files; a text file is its own table.'
+
+
+def test_json_file_writes_its_schema_inside_the_connection(tmp_path):
+    add_data_file(tmp_path, 'Data/Calcs.json', b'[{"key": "a"}]')
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file='Data/Calcs.json', format='json')))
+
+    assert result.returncode == 0, result.stderr
+    root, _ = view_of(open(twb_path).read())
+    connection = root.find('.//named-connection/connection')
+    assert connection.get('class') == 'semistructpassivestore-direct'
+    schema = connection.find('./semistruct-schemas/semistruct-schema')
+    assert schema.get('table') == '[Calcs.json]'
+    assert schema.find('./map').attrib == {'key': '{root}', 'value': 'true'}
+
+
+def test_ambiguous_extension_without_format_is_rejected(tmp_path):
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file='Data/Calcs.json')))
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == '✗ ".json" files need "format": "json" or "spatial".'
+
+
+def test_hyper_file_defaults_to_the_extract_table(tmp_path):
+    add_data_file(tmp_path, 'Data/sales.hyper', b'HyPe')
+    twb_path = write_twb(tmp_path)
+    result = run_wire(twb_path, write_descriptor(tmp_path, csv_descriptor(file='Data/sales.hyper')))
+
+    assert result.returncode == 0, result.stderr
+    root, _ = view_of(open(twb_path).read())
+    assert root.find('.//named-connection/connection').get('dbname') == 'Data/sales.hyper'
+    relation = root.find('./datasources/datasource/connection/relation')
+    assert (relation.get('name'), relation.get('table')) == ('Extract', '[Extract].[Extract]')
 
 
 def test_unknown_type_is_rejected(tmp_path):
