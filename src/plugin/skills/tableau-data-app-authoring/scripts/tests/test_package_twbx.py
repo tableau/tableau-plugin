@@ -52,6 +52,22 @@ def test_packages_twb_first_and_packages_at_root(tmp_path):
     assert '✓ Packaged Sales Demo.twb + Packages/' in result.stderr
 
 
+def test_packs_agent_docs_at_root(tmp_path):
+    workspace = make_workspace(tmp_path)
+    agents = workspace / 'Resources' / '.agents'
+    agents.mkdir(parents=True)
+    (agents / 'README.md').write_text('# docs')
+    (workspace / 'Resources' / 'other.txt').write_text('x')
+
+    result = run_package(str(workspace))
+
+    assert result.returncode == 0, result.stderr
+    entries = names(result.stdout.strip())
+    assert 'Resources/.agents/README.md' in entries
+    assert 'Resources/other.txt' not in entries
+    assert '✓ Packaged Sales Demo.twb + Packages/, Resources/.agents/' in result.stderr
+
+
 def test_excludes_ds_store_and_macosx(tmp_path):
     workspace = make_workspace(tmp_path)
     (workspace / '.DS_Store').write_text('x')

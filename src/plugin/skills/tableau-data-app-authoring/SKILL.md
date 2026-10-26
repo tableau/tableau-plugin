@@ -160,6 +160,7 @@ At the end of this stage you have a finalized workspace directory:
     content/src/app.js      ← the authoring surface
     content/src/styles.css
     content/src/tableau.extensions.1.latest.min.js
+  Resources/.agents/README.md   ← agent docs (see Agent docs)
 ```
 
 **Sheet name:** the worksheet is named after the app's display name. It's a
@@ -312,6 +313,23 @@ tell them the workspace path
 [Build a data app](references/build-data-app.md) as their own reference.
 Resume at Package into a .twbx once they say it's authored.
 
+## Agent docs
+
+`Resources/.agents/` holds docs for the next agent (or person) that changes
+this app. It's packed into the `.twbx`, so it travels with the workbook through
+publish and download.
+
+- **Before modifying an existing app, read every file there.** Follow
+  `spec.md` and `design.md` unless the user asks for something different.
+- **Write docs only when they help:** the user hands you context files, or the
+  request is vague or spans several steps. Use `spec.md` (what the app must
+  do), `design.md` (how it looks and behaves), and `memories.md` (dated
+  decisions and gotchas; add to the end). Skip docs for a clear one-shot
+  change.
+- **Never put secrets there:** anyone who can download the workbook can read
+  it. Never put docs under `Packages/<id>/content/`, which is served to the
+  browser.
+
 ## Package into a .twbx
 
 A `.twbx` is a zip of the workspace **contents** with the `.twb` and `Packages/`
@@ -330,6 +348,8 @@ python3 "$SKILL_DIR/scripts/package_twbx.py" "<App Name>"   # the finalized work
 
 It writes `<App Name>.twbx` next to the workspace dir (pass a second arg to
 override), overwriting any existing file, and prints the path for Publish.
+It also packs `Resources/.agents/`. Before publishing, check that its `✓` line
+lists `Resources/.agents/`.
 
 > The template these workspaces come from is already publish-valid (`.twb`
 > extension wired into a pane, `.trex` with `author email`, `<resources>` block,
@@ -394,7 +414,8 @@ Uses the MCP publish tools (not available to Slack clients).
 ## Non-negotiable limits
 
 - Don't zip the `.twbx` freehand. Use `scripts/package_twbx.py` — it keeps
-  `.twb` + `Packages/` at the archive root, never nested under `<App Name>/`.
+  `.twb`, `Packages/`, and `Resources/.agents/` at the archive root, never
+  nested under `<App Name>/`.
 - Don't apply a postUnzip plan freehand. Use `scripts/apply_plan.py` — edits
   before renames, renames deepest-first, verified; see its header comment for
   the full contract.
