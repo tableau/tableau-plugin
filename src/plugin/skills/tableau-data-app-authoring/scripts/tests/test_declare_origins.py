@@ -170,7 +170,8 @@ def test_rejects_malformed_origins(tmp_path):
     workspace = make_workspace(tmp_path)
     allowed = write_allowed(tmp_path, [API])
 
-    for bad in (API + '/', API + '/v1', 'api.example.com', 'https://api.example.com?x=1'):
+    for bad in (API + '/', API + '/v1', 'api.example.com', 'https://api.example.com?x=1',
+                'http://api.example.com', 'https://*.example.com'):
         result = run(str(workspace), '--allowed', allowed, '--add', bad)
         assert result.returncode == 1, bad
         assert 'is not an origin' in result.stderr
@@ -205,22 +206,14 @@ def test_keeps_and_can_remove_a_malformed_stored_entry(tmp_path):
     assert manifest(workspace)['requestedOrigins'] == API
 
 
-def test_wildcard_on_allow_list_covers_subdomains(tmp_path):
+def test_unverified_still_rejects_http_and_wildcards(tmp_path):
     workspace = make_workspace(tmp_path)
-    allowed = write_allowed(tmp_path, ['https://*.example.com'])
 
-    sub = run(str(workspace), '--allowed', allowed, '--add', API, 'https://a.b.example.com')
-    wildcard = run(str(workspace), '--allowed', allowed, '--add', 'https://*.example.com')
-    apex = run(str(workspace), '--allowed', allowed, '--add', 'https://example.com')
-    wrong_scheme = run(str(workspace), '--allowed', allowed, '--add', 'http://api.example.com')
-    wrong_port = run(str(workspace), '--allowed', allowed, '--add', 'https://api.example.com:8443')
-
-    assert sub.returncode == 0, sub.stderr
-    assert wildcard.returncode == 0, wildcard.stderr
-    assert manifest(workspace)['requestedOrigins'] == f'{API} https://a.b.example.com https://*.example.com'
-    for refused in (apex, wrong_scheme, wrong_port):
-        assert refused.returncode == 1
-        assert 'Not on the site allow-list' in refused.stderr
+    for bad in ('http://api.example.com', 'https://*.example.com'):
+        result = run(str(workspace), '--unverified', '--add', bad)
+        assert result.returncode == 1, bad
+        assert 'is not an origin' in result.stderr
+    assert not (workspace / PACKAGE / 'manifest.json').exists()
 
 
 def test_allow_list_flags_only_apply_to_add(tmp_path):

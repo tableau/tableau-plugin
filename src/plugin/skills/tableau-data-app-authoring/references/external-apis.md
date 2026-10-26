@@ -33,21 +33,20 @@ The `requestedOrigins` value must be **one space-separated string**:
 ```
 
 A JSON array is silently ignored, and so is a key named `allowedOrigins`. In both cases the CSP
-falls back to package-only and every external call is blocked with no error from Tableau. Don't
-edit this file by hand; use `scripts/declare_origins.py`, which writes the right shape, checks
-and checks each origin against the site list. (Current scaffolds ship `manifest.json`; for an
-older workspace without one, the script creates it from the `.trex`.) `package_twbx.py`
-hard-fails on an array value.
+falls back to package-only and every external call is blocked with no error from Tableau.
 
-An origin is scheme + host (+ port): `https://api.example.com`. No path, query, or trailing slash.
-A wildcard on the site list (`https://*.example.com`) covers its subdomains when you add one.
+An origin is `https` + host (+ port): `https://api.example.com`. No path, query, or trailing
+slash. Tableau rejects `http` and wildcard (`*`) origins at publish, and matches each requested
+origin exactly against the site list.
 
 ## Origin `null` and CORS
 
 The extension's origin is `null`, so every external request is cross-origin. Allowlisting only
 gets the request past the CSP; the API must also answer with `Access-Control-Allow-Origin: *`
 (or echo `null`). APIs that only allow specific origins, or send no CORS headers, can't be called
-from a data app no matter what is allowlisted. Check with:
+from a data app no matter what is allowlisted. The same goes for the package's own files:
+`fetch()` of anything in `content/` is cross-origin and fails, because the package host sends no
+CORS headers. `<script src>` and `<link>` still load. Check an API with:
 
 ```bash
 curl -sI -X OPTIONS -H 'Origin: null' -H 'Access-Control-Request-Method: GET' https://api.example.com/<path> | grep -i access-control

@@ -32,10 +32,9 @@ either its `allowedOrigins` array or the whole result object. Every --add origin
 must be on it. `--unverified` (instead of --allowed) skips that check and warns:
 the origin stays blocked until a site admin allows it.
 
-An origin is scheme + host (+ optional port): `https://api.example.com`. No
-path, query, or trailing slash. A wildcard host (`https://*.example.com`) can be
-declared when the site allow-list has that same entry, and a wildcard on the
-allow-list covers every subdomain under it for --add.
+An origin is https + host (+ optional port): `https://api.example.com`. No
+path, query, or trailing slash. Tableau rejects http and wildcard (`*`) origins
+at publish, and checks each origin for exact membership in the site list.
 
 Prints the manifest path on stdout (the declared origins, one per line, for --list).
 """
@@ -48,7 +47,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-ORIGIN_RE = re.compile(r'^(https?)://((?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*)(:\d{1,5})?$')
+ORIGIN_RE = re.compile(r'^https://[a-z0-9-]+(?:\.[a-z0-9-]+)*(?::\d{1,5})?$')
 ADMIN_HINT = ('A site admin must add it under Settings > Extensions > Extension Package Allowed Origins, '
               'then re-run scaffold-data-app for the updated allowedOrigins list.')
 
@@ -66,30 +65,13 @@ def normalize_origin(value, where):
     origin = str(value).strip()
     lowered = origin.lower()
     if not ORIGIN_RE.match(lowered):
-        die(f'{where}: "{origin}" is not an origin. Use scheme + host only, e.g. https://api.example.com '
-            '(no path, query, or trailing slash).')
+        die(f'{where}: "{origin}" is not an origin. Use https + host only, e.g. https://api.example.com '
+            '(no http, wildcard, path, query, or trailing slash).')
     return lowered
 
 
 def clean_origin(value):
     return str(value).strip().rstrip('/').lower()
-
-
-# CSP host-source rules: `*.example.com` matches any subdomain (not example.com itself);
-# scheme and port must match exactly.
-def on_allow_list(origin, allowed):
-    if origin in allowed:
-        return True
-    scheme, host, port = ORIGIN_RE.match(origin).groups()
-    for entry in allowed:
-        match = ORIGIN_RE.match(entry)
-        if not match:
-            continue
-        a_scheme, a_host, a_port = match.groups()
-        if (a_host.startswith('*.') and a_scheme == scheme and a_port == port
-                and host.endswith(a_host[1:]) and not host.startswith('*.')):
-            return True
-    return False
 
 
 def find_package(workspace):
@@ -233,7 +215,7 @@ def main():
         adding = unique(normalize_origin(o, '--add') for o in args.add)
         if args.allowed:
             allowed = read_allowed(args.allowed)
-            blocked = [o for o in adding if not on_allow_list(o, allowed)]
+            blocked = [o for o in adding if o not in allowed]
             if blocked:
                 die(f'Not on the site allow-list: {", ".join(blocked)}. {ADMIN_HINT}')
         elif args.unverified:

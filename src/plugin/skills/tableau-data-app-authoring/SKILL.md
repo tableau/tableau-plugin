@@ -422,9 +422,9 @@ Resume at Package into a .twbx once they say it's authored.
 
 Run this whenever the app needs to reach a host outside its package: the user
 asks for an external API (at the start of the session or after the app is
-published), or `app.js` calls one. Without it, Tableau's CSP blocks every
-external request, image, script, and style, and the failure is silent. Full
-rules: [Calling external APIs](references/external-apis.md).
+published), or `app.js` calls one. The rules behind these steps (two-part
+allowlisting, origin format, CORS) live in
+[Calling external APIs](references/external-apis.md).
 
 1. **Get a fresh site allow-list.** Call `scaffold-data-app` again with the
    app's name and use only its `allowedOrigins`; ignore the zip and plan. The
@@ -447,18 +447,14 @@ rules: [Calling external APIs](references/external-apis.md).
      --add https://api.example.com https://auth.example.com
    ```
 
-   It writes `requestedOrigins` into `Packages/<package id>/manifest.json`
-   (creating the file from the `.trex` if needed), merges with origins already
-   declared, and fails if an origin isn't on the allow-list. Use `--list` to
-   see what's declared and `--remove` to drop an origin the app no longer uses.
-   An origin is scheme + host only: `https://api.example.com`.
+   It writes `requestedOrigins` into `Packages/<package id>/manifest.json`,
+   merges with origins already declared, and fails if an origin isn't on the
+   allow-list or isn't a plain `https` origin. Use `--list` to see what's
+   declared and `--remove` to drop an origin the app no longer uses.
 
 4. **Re-package and republish** (Package into a .twbx, then Publish with
    `overwrite: true` if the app is already published). The new policy takes
    effect only after republishing.
-
-The API must also allow cross-origin requests from origin `null`
-(`Access-Control-Allow-Origin: *`); allowlisting can't fix an API that doesn't.
 
 ## Package into a .twbx
 
@@ -575,32 +571,14 @@ constraints:
   `queryAsync()` and combine the rows in `app.js`. Don't add blend or
   relationship XML.
 
-### External origins
+### External origins and package hosting
 
-- **The site setting alone does nothing.** An origin must be on the site
-  allow-list *and* in the package's `requestedOrigins`, as one space-separated
-  string. An array or an `allowedOrigins` key is silently ignored and every
-  external call stays blocked. Use `declare_origins.py`.
-- **Some things stay blocked regardless.** `frame-src 'none'` rules out
-  iframes and embeds, and pop-ups aren't available, so interactive OAuth
-  sign-in inside the app doesn't work.
-- **The API must allow origin `null`.** The extension's origin is `null`, so
-  the API has to send `Access-Control-Allow-Origin: *`.
-- **When a call fails, read the live policy** rather than guessing; see
-  [Calling external APIs](references/external-apis.md).
-- `package_twbx.py` warns about origins referenced in `content/` that aren't
-  declared.
-
-### Package hosting
-
-- **Only `content/` is served**, and only web asset types. Files at the
-  package root, dotfiles, and other file types return 404.
-- **`fetch()` of the package's own files fails** (origin `null`, no CORS
-  headers). Ship static data or config as a `.js` file that sets a global and
-  load it with `<script src>`.
-- `package_twbx.py` warns about dotfiles and package-relative `fetch()` calls.
-  Details: [Build a data app](references/build-data-app.md), Sandbox and
-  lifecycle rules.
+Read [Calling external APIs](references/external-apis.md) before building
+anything that leaves the package: it covers what the sandbox blocks no matter
+what, allowlisting, CORS, and how to debug a blocked call. What the package
+host serves is in [Build a data app](references/build-data-app.md), Sandbox and
+lifecycle rules. `package_twbx.py` warns about undeclared origins, unserved
+files, and package-relative `fetch()`.
 
 ## Security best practices
 
