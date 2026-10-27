@@ -6,6 +6,7 @@
     "name": "Salesforce, Inc."
   },
   "repository": "https://github.com/tableau/tableau-plugin",
+  "privacyPolicyUrl": "https://www.salesforce.com/company/legal/privacy/",
   "license": "MIT",
   "keywords": [
     "tableau",
