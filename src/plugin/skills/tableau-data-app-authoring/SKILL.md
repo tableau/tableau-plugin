@@ -74,8 +74,10 @@ callable:
 - `publish-workbook`;
 - `request-workbook-upload`
 
-Interactive rendering must also be available for the required post-publish
-verification.
+Interactive rendering is not required. It's the recommended way to verify the
+published app with the user, but never block on it: when it isn't available,
+have the user open the published app in an embedded browser or their own
+browser instead.
 
 When the app will use a published datasource, also verify that the tools needed
 to resolve that datasource and inspect its metadata are callable.
