@@ -140,7 +140,10 @@ def pick_produced_view(client, workbook_id, task_prompt=None, view_hint=None):
     """Best-effort: the view most likely produced by this run.
 
     1. If view_hint (see extract_view_hint) matches a view by name, and that view isn't
-       a known reference/verification sheet, use it directly.
+       a known reference/verification sheet, use it directly -- unless it's the first of
+       several views. A link to the first view is usually just the workbook's landing
+       page (models link "the workbook" that way after adding a sheet to an existing
+       one), not the view they authored, so it falls through to step 2.
     2. Otherwise, Tableau stamps every sheet in a workbook with the same publish-batch
        timestamp, so "most recently updated" alone can't tell a newly authored sheet
        apart from a pre-existing one that just rode along in the same publish -- ties
@@ -159,7 +162,8 @@ def pick_produced_view(client, workbook_id, task_prompt=None, view_hint=None):
     if view_hint:
         hint_norm = _slugify(view_hint)
         hinted = next((v for v in views if _slugify(v.get("name")) == hint_norm), None)
-        if hinted and not _is_reference_sheet(hinted.get("name")):
+        landing_page = hinted is views[0] and len(views) > 1
+        if hinted and not _is_reference_sheet(hinted.get("name")) and not landing_page:
             return hinted, None
 
     views = [v for v in views if not _is_reference_sheet(v.get("name"))]
@@ -250,8 +254,12 @@ def build_judge_prompt(task_prompt, reference_data_path, produced_data_path, pro
 
 def _run_judge_once(cmd, out_path, harness, stdin_text=None, cwd=None):
     out_path.unlink(missing_ok=True)
-    proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True,
-                          timeout=JUDGE_TIMEOUT[harness], cwd=cwd)
+    try:
+        proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True,
+                              timeout=JUDGE_TIMEOUT[harness], cwd=cwd)
+    except subprocess.TimeoutExpired:
+        # A hung judge CLI fails this run's grade, not the whole grading pass.
+        return None, {"error": f"judge call timed out after {JUDGE_TIMEOUT[harness]}s"}
     if harness == "claude":
         # `claude -p --output-format json` returns the schema-validated answer as
         # `structured_output` on stdout, where codex writes it to its -o file.
@@ -411,6 +419,7 @@ def main():
     ap.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     ap.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
     ap.add_argument("--only", help="Grade only the test with this id")
+    ap.add_argument("--harness", choices=("codex", "claude"), help="Grade only runs from this harness")
     ap.add_argument("--judge-model", help="Model for the codex judge (`codex exec -m`), used on codex runs")
     ap.add_argument("--claude-judge-model", help="Model for the claude judge (`claude -p --model`), used on claude runs")
     ap.add_argument("--regrade", action="store_true", help="Re-grade runs that already have a judge_result.json")
@@ -447,6 +456,8 @@ def main():
                     model_label = summary["model"]
                     # Summaries from before the claude harness existed are all codex runs.
                     harness = summary.get("harness") or "codex"
+                    if args.harness and harness != args.harness:
+                        continue
                     rep = int(run_dir.name.split("_")[1])
 
                     judge_out_path = run_dir / "grading" / "judge_result.json"
