@@ -22,15 +22,16 @@ fails at query time. The first datasource is the primary (it alone gets
 
 Usage: python3 wire_datasource.py <path-to.twb> <descriptor.json>
 
-descriptor.json (Claude assembles from list-datasources + get-datasource-metadata;
-list ONLY the fields the app will query). Either one datasource:
+descriptor.json (Claude assembles from list-datasources + get-datasource-metadata,
+with site/server/channel/port copied verbatim from the scaffold-data-app result's
+`wiring` when present; list ONLY the fields the app will query). Either one datasource:
   {
     "caption":      "Superstore Datasource",
     "repositoryId": "SuperstoreDatasource",   // published DS contentUrl (== repo-location id / dbname)
-    "site":         "mcp-test",                // "" for the Default site
-    "server":       "10ax.online.tableau.com",
-    "channel":      "https",   // optional, default https
-    "port":         443,       // optional, default 443 (use http/80 for on-prem)
+    "site":         "mcp-test",                // wiring.site; "" for the Default site
+    "server":       "10ax.online.tableau.com", // wiring.server
+    "channel":      "https",   // wiring.channel; optional, default https
+    "port":         443,       // wiring.port; optional, default 443 (use http/80 for on-prem)
     "connectionName": "sqlproxy.<hash>",  // optional, generated if omitted
     "fields": [
       { "name": "Profit", "datatype": "real",   "role": "measure"   },
