@@ -6,17 +6,10 @@ from Claude, through Tableau's hosted MCP server.
 ## What it does
 
 This plugin connects Claude to your Tableau Cloud or Tableau Server site and
-adds skills for common Tableau work:
-
-| Skill | Use it to |
-|---|---|
-| `tableau-about` | Learn what the plugin is for and when to use it. |
-| `tableau-content-viewer` | Find an existing view, dashboard, or workbook by name or keyword and show it. |
-| `tableau-workbook-authoring` | Create, edit, copy, or republish a workbook, then publish it to your site. |
-| `tableau-data-app-authoring` | Build and publish a data app: a custom web viz that queries a published datasource live. |
-| `tableau-dashboard-advisor` | Get design advice on chart choice, layout, KPIs, filters, and accessibility. |
-| `tableau-viz-critique` | Get an evidence-based score and prioritized fixes for an existing dashboard or view. |
-| `tableau-data-quality-sentinel` | Check a published datasource's metadata for naming, typing, documentation, and freshness issues. |
+adds skills for common Tableau work: finding and showing existing views and
+dashboards, creating and publishing workbooks and data apps, and reviewing
+dashboard design and datasource quality. Each skill's `SKILL.md` describes
+what it covers.
 
 ## How to use it
 
