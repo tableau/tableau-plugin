@@ -81,6 +81,9 @@ TABLE = TableDefinition(
         TableDefinition.Column("end_offset_s", SqlType.double(), NULLABLE),
         TableDefinition.Column("status", SqlType.text(), NULLABLE),
         TableDefinition.Column("error", SqlType.text(), NULLABLE),
+        # Tool calls only: whether this call overlapped another one. NULL on segments
+        # and on summaries from before overlap tracking.
+        TableDefinition.Column("concurrent", SqlType.bool(), NULLABLE),
     ],
 )
 
@@ -197,6 +200,7 @@ def flatten_file(path: Path):
                 entry.get("end_offset_s"),
                 _text(entry.get("status")),
                 _text(entry.get("error")),
+                entry.get("concurrent"),
             ]
 
 

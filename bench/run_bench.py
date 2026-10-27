@@ -11,6 +11,7 @@ Usage:
   python3 bench/run_bench.py --only cold_bar_chart
   python3 bench/run_bench.py --models gpt-5.6-sol,o3   # sweep the same tests across models
   python3 bench/run_bench.py --harness claude     # same tests through Claude Code
+  python3 bench/run_bench.py --harness codex,claude   # both, in one sweep and one report
   python3 bench/run_bench.py --reps 2 --dry-run   # sanity-check commands first
   python3 bench/run_bench.py --report-only        # rebuild report.md from saved results/
 """
@@ -66,6 +67,16 @@ def read_config_default_model():
         return None
     match = re.search(r'(?m)^model\s*=\s*["\'](.+?)["\']', CODEX_CONFIG_TOML.read_text())
     return match.group(1) if match else None
+
+
+def parse_harnesses(value):
+    """argparse type for --harness: one harness or a comma-separated list of them."""
+    harnesses = list(dict.fromkeys(h.strip() for h in value.split(",") if h.strip()))
+    unknown = [h for h in harnesses if h not in HARNESSES]
+    if unknown or not harnesses:
+        raise argparse.ArgumentTypeError(
+            f"unknown harness {', '.join(unknown) or value!r} (choose from {', '.join(HARNESSES)})")
+    return harnesses
 
 
 def sanitize_label(label):
@@ -576,6 +587,45 @@ def _tool_name(item):
     return f"{item.get('server')}::{item.get('tool')}"
 
 
+def mark_concurrent_tool_calls(step_results):
+    """Flag every tool call whose time span overlaps another's. Agents can run several
+    tools at once (Claude often does), and each call's duration is timed on its own, so
+    summing durations double-counts the overlap -- see tool_time_once."""
+    calls = sorted(
+        (e for step in step_results for e in step.get("timeline", [])
+         if e["segment_type"] == "tool_call" and e.get("start_offset_s") is not None),
+        key=lambda e: e["start_offset_s"],
+    )
+    for e in calls:
+        e["concurrent"] = False
+    latest_end, latest = None, None
+    for e in calls:
+        if latest is not None and e["start_offset_s"] < latest_end:
+            e["concurrent"] = latest["concurrent"] = True
+        if latest_end is None or e["end_offset_s"] > latest_end:
+            latest_end, latest = e["end_offset_s"], e
+
+
+def tool_time_once(summary):
+    """Wall-clock time a rep spent with at least one tool call running, so overlapping
+    calls count once. Summaries without offsets fall back to summing durations."""
+    calls = [e for step in summary["steps"] for e in step.get("timeline", [])
+             if e["segment_type"] == "tool_call"]
+    if any(e.get("start_offset_s") is None for e in calls):
+        return sum(e["duration"] for e in calls)
+    total, cur_start, cur_end = 0.0, None, None
+    for start, end in sorted((e["start_offset_s"], e["end_offset_s"]) for e in calls):
+        if cur_end is None or start > cur_end:
+            if cur_end is not None:
+                total += cur_end - cur_start
+            cur_start, cur_end = start, end
+        else:
+            cur_end = max(cur_end, end)
+    if cur_end is not None:
+        total += cur_end - cur_start
+    return total
+
+
 def record_created_assets(test_id, harness, model_label, rep, step_results, ledger_path):
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with _LEDGER_LOCK, ledger_path.open("a") as fh:
@@ -673,6 +723,7 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
                 resume_id = result["thread_id"]
 
         record_created_assets(test["id"], cfg["harness"], model_label, rep, step_results, ledger_path)
+        mark_concurrent_tool_calls(step_results)
 
         # Stamp a rep-global sequence number and the name of the most recent tool
         # call onto every timeline entry, in chronological order across all steps.
@@ -718,7 +769,7 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
-def aggregate_test(test_id, model_label, rep_summaries, out_path):
+def aggregate_test(test_id, harness, model_label, rep_summaries, out_path):
     all_tool_calls = []
     all_non_tool = []
     wall_times = []
@@ -758,17 +809,22 @@ def aggregate_test(test_id, model_label, rep_summaries, out_path):
         by_kind.setdefault(seg["kind"], []).append(seg["duration"])
     non_tool_stats = {kind: stats(durs) for kind, durs in sorted(by_kind.items())}
 
-    total_tool_time = sum(tc["duration"] for tc in all_tool_calls)
+    total_tool_time = sum(tool_time_once(s) for s in rep_summaries)
     total_non_tool_time = sum(seg["duration"] for seg in all_non_tool)
 
     aggregate = {
         "test_id": test_id,
+        "harness": harness,
         "model": model_label,
         "reps": len(rep_summaries),
         "wall_time": stats(wall_times),
         "total_tool_time_mean": total_tool_time / max(len(rep_summaries), 1),
         "total_non_tool_time_mean": total_non_tool_time / max(len(rep_summaries), 1),
         "tool_call_stats": tool_stats,
+        "concurrent_tool_calls": {
+            name: n for name in by_tool
+            if (n := sum(1 for tc in all_tool_calls if tc["name"] == name and tc.get("concurrent")))
+        },
         "non_tool_stats": non_tool_stats,
         "final_message_lengths": [len(m) for m in final_messages],
         "errors_seen": errors_seen,
@@ -790,11 +846,11 @@ def render_report(aggregates, out_path):
             lines.append("")
             lines.append("**Model comparison:**")
             lines.append("")
-            lines.append("| model | n | wall time mean (s) | tool time mean (s) | non-tool time mean (s) |")
-            lines.append("|---|---|---|---|---|")
+            lines.append("| harness | model | n | wall time mean (s) | tool time mean (s) | non-tool time mean (s) |")
+            lines.append("|---|---|---|---|---|---|")
             for agg in sorted(aggs, key=lambda a: a["wall_time"]["mean"]):
                 lines.append(
-                    f"| {agg['model']} | {agg['reps']} | {agg['wall_time']['mean']:.1f} | "
+                    f"| {agg.get('harness', 'codex')} | {agg['model']} | {agg['reps']} | {agg['wall_time']['mean']:.1f} | "
                     f"{agg['total_tool_time_mean']:.1f} | {agg['total_non_tool_time_mean']:.1f} |"
                 )
             lines.append("")
@@ -807,17 +863,19 @@ def render_report(aggregates, out_path):
 
 
 def render_model_section(lines, agg):
-        lines.append(f"### model: {agg['model']}  (n={agg['reps']})")
+        lines.append(f"### model: {agg['model']} ({agg.get('harness', 'codex')})  (n={agg['reps']})")
         wt = agg["wall_time"]
         lines.append(f"- Wall time: mean {wt['mean']:.1f}s (min {wt['min']:.1f}s, max {wt['max']:.1f}s, stdev {wt['stdev']:.1f}s)")
-        lines.append(f"- Tool-call time (avg per run): {agg['total_tool_time_mean']:.1f}s")
+        lines.append(f"- Tool-call time (avg per run, overlapping calls counted once): {agg['total_tool_time_mean']:.1f}s")
         lines.append(f"- Non-tool-call time (avg per run): {agg['total_non_tool_time_mean']:.1f}s")
 
         lines.append("")
         lines.append("**Tool calls (avg duration, count across all runs):**")
         if agg["tool_call_stats"]:
             for name, st in sorted(agg["tool_call_stats"].items(), key=lambda kv: -kv[1]["mean"]):
-                lines.append(f"- `{name}`: {st['mean']:.2f}s avg, {st['n']} calls, range {st['min']:.2f}-{st['max']:.2f}s")
+                concurrent = agg.get("concurrent_tool_calls", {}).get(name)
+                note = f", {concurrent} alongside another call" if concurrent else ""
+                lines.append(f"- `{name}`: {st['mean']:.2f}s avg, {st['n']} calls{note}, range {st['min']:.2f}-{st['max']:.2f}s")
         else:
             lines.append("- (no tool calls)")
 
@@ -846,7 +904,8 @@ def render_model_section(lines, agg):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--harness", choices=HARNESSES, default="codex", help="Agent CLI to drive (default codex)")
+    ap.add_argument("--harness", type=parse_harnesses, default=["codex"],
+                    help=f"Agent CLI(s) to drive, comma-separated to sweep several in one run ({', '.join(HARNESSES)}; default codex)")
     ap.add_argument("--claude-plugin-dir", type=Path, default=DEFAULT_CLAUDE_PLUGIN_DIR,
                     help="Built Claude plugin loaded via --plugin-dir (default: dist/claude-dev/plugins/tableau)")
     ap.add_argument("--prompts-file", type=Path, default=DEFAULT_PROMPTS_FILE)
@@ -863,6 +922,9 @@ def main():
                     help="Path of the Tableau .hyper extract built at the end of a run (default: bench/bench_results.hyper)")
     ap.add_argument("--no-hyper", action="store_true", help="Skip building the .hyper extract at the end of the run")
     args = ap.parse_args()
+    if args.models and len(args.harness) > 1:
+        # Model ids are harness-specific, so one --models list can't apply to several.
+        ap.error("--models needs a single --harness; use a {harness: [...]} model mapping in prompts.json instead")
 
     spec = json.loads(args.prompts_file.read_text())
     defaults = spec.get("defaults", {})
@@ -874,11 +936,11 @@ def main():
             sys.exit(f"No test with id {args.only!r}")
 
     # Codex's own default model is only a label; Claude's isn't read, so it's "default".
-    config_default_model = read_config_default_model() if args.harness == "codex" else "default"
+    default_model_label = {"codex": read_config_default_model(), "claude": "default"}
     ledger_path = args.results_dir / "created_assets.jsonl"
 
     aggregates = []
-    # First pass: resolve every (test, model) unit's config. Dry-run and report-only are
+    # First pass: resolve every (test, harness, model) unit's config. Dry-run and report-only are
     # handled immediately here since neither needs the shared executor below; everything
     # else is queued into `units` so its reps can run alongside every other unit's reps.
     units = []  # (test, cfg, model_label, test_dir, reps)
@@ -888,22 +950,26 @@ def main():
 
         # Model resolution, highest precedence first: --models CLI flag (applies to every
         # test) > this test's own "model" > defaults.model. Any of these may be a single
-        # model string or a list of models to sweep this test across.
-        if args.models:
-            model_overrides = [m.strip() for m in args.models.split(",") if m.strip()]
-        else:
-            model_overrides = resolve_model_list(test.get("model", defaults.get("model")), args.harness) or [None]
+        # model string or a list of models to sweep this test across, or a mapping from
+        # harness to either.
+        units_for_test = []
+        for harness in args.harness:
+            if args.models:
+                model_overrides = [m.strip() for m in args.models.split(",") if m.strip()]
+            else:
+                model_overrides = resolve_model_list(test.get("model", defaults.get("model")), harness) or [None]
+            units_for_test += [(harness, m) for m in model_overrides]
 
-        for model_override in model_overrides:
-            cfg = {**defaults, **test_overrides, "harness": args.harness}
+        for harness, model_override in units_for_test:
+            cfg = {**defaults, **test_overrides, "harness": harness}
             if model_override:
                 cfg["model"] = model_override
-            model_label = cfg.get("model") or config_default_model or "unknown"
+            model_label = cfg.get("model") or default_model_label[harness] or "unknown"
 
             test_dir = args.results_dir / test["id"] / sanitize_label(model_label)
 
             if args.dry_run:
-                print(f"[{test['id']}] harness={args.harness} model={model_label} {reps} reps, {len(test['steps'])} step(s):")
+                print(f"[{test['id']}] harness={harness} model={model_label} {reps} reps, {len(test['steps'])} step(s):")
                 if preamble:
                     print(f"    -> [preamble] {preamble!r}")
                 for step in test["steps"]:
@@ -919,7 +985,7 @@ def main():
                     if sf.exists():
                         rep_summaries.append(json.loads(sf.read_text()))
                 if rep_summaries:
-                    aggregates.append(aggregate_test(test["id"], model_label, rep_summaries, test_dir / "aggregate.json"))
+                    aggregates.append(aggregate_test(test["id"], harness, model_label, rep_summaries, test_dir / "aggregate.json"))
                 continue
 
             # Wipe any prior runs for this test+model before starting fresh ones, so a lower
@@ -945,13 +1011,15 @@ def main():
     ]
     results_by_unit = {i: {} for i in range(len(units))}
     claude_auth_dir = None
-    if args.harness == "claude":
+    if "claude" in args.harness:
         if not (args.claude_plugin_dir / ".claude-plugin" / "plugin.json").exists():
             sys.exit(f"{args.claude_plugin_dir} is not a built plugin -- run "
                      "`python3 build/build.py --variant dev claude` first")
         claude_auth_dir = tempfile.mkdtemp(prefix="claude-bench-auth-")
         claude_settings = write_claude_auth_settings(claude_auth_dir)
         for _, cfg, *_ in units:
+            if cfg["harness"] != "claude":
+                continue
             cfg["claude_settings"] = claude_settings
             cfg["claude_plugin_dir"] = args.claude_plugin_dir.resolve()
     try:
@@ -975,7 +1043,7 @@ def main():
     for unit_index, (test, cfg, model_label, test_dir, reps) in enumerate(units):
         rep_summaries = [results_by_unit[unit_index][r] for r in sorted(results_by_unit[unit_index])]
         if rep_summaries:
-            aggregates.append(aggregate_test(test["id"], model_label, rep_summaries, test_dir / "aggregate.json"))
+            aggregates.append(aggregate_test(test["id"], cfg["harness"], model_label, rep_summaries, test_dir / "aggregate.json"))
 
     if aggregates:
         report_path = args.results_dir / "report.md"
