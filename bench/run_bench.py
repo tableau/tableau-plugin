@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Repeatedly run codex exec against a set of test cases (from prompts.json),
+Repeatedly run an agent CLI -- `codex exec` (default) or Claude Code's `claude -p`
+(--harness claude) -- against a set of test cases (from prompts.json),
 recording every tool call (shell + MCP) with its duration, and every
 non-tool-call ("thinking") interval between decision points. Produces a
 per-run JSON record, a per-test aggregate, and a Markdown report.
@@ -9,12 +10,14 @@ Usage:
   python3 bench/run_bench.py                     # run everything in prompts.json
   python3 bench/run_bench.py --only cold_bar_chart
   python3 bench/run_bench.py --models gpt-5.6-sol,o3   # sweep the same tests across models
+  python3 bench/run_bench.py --harness claude     # same tests through Claude Code
   python3 bench/run_bench.py --reps 2 --dry-run   # sanity-check commands first
   python3 bench/run_bench.py --report-only        # rebuild report.md from saved results/
 """
 import argparse
 import concurrent.futures
 import json
+import os
 import re
 import shutil
 import statistics
@@ -35,6 +38,15 @@ DEFAULT_RESULTS_DIR = ROOT / "results"
 DEFAULT_STAGING_DIR = ROOT / "tableau"
 DEFAULT_HYPER_OUTPUT = ROOT / "bench_results.hyper"
 CODEX_CONFIG_TOML = Path.home() / ".codex" / "config.toml"
+HARNESSES = ("codex", "claude")
+# Claude dev build, from `python3 build/build.py --variant dev claude`. Loaded per run via
+# --plugin-dir, so there's no install step (and nothing to reinstall after a rebuild).
+DEFAULT_CLAUDE_PLUGIN_DIR = ROOT.parent / "dist" / "claude-dev" / "plugins" / "tableau"
+CLAUDE_USER_SETTINGS = Path.home() / ".claude" / "settings.json"
+# The only user settings a Claude run keeps: whatever authenticates the CLI (e.g. a
+# gateway's apiKeyHelper, env and model overrides). Everything else in user settings --
+# other plugins, hooks, CLAUDE.md -- is skipped so runs see only the Tableau plugin.
+CLAUDE_AUTH_KEYS = ("apiKeyHelper", "env", "modelOverrides")
 
 # Guards created_assets.jsonl appends when reps run concurrently (--parallel).
 _LEDGER_LOCK = threading.Lock()
@@ -60,9 +72,12 @@ def sanitize_label(label):
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", label)
 
 
-def resolve_model_list(value):
+def resolve_model_list(value, harness):
     """`model` (in defaults or a test override) may be a single model string, a list of
-    models to sweep across, or None/empty to leave it up to codex's own default."""
+    models to sweep across, a {harness: string-or-list} mapping, or None/empty to leave
+    it up to the CLI's own default."""
+    if isinstance(value, dict):
+        value = value.get(harness)
     if not value:
         return None
     if isinstance(value, str):
@@ -120,22 +135,63 @@ def build_resume_step_args(cfg):
     return args
 
 
+def write_claude_auth_settings(out_dir):
+    """Copy just the auth-related user settings into a private file for --settings.
+
+    Claude runs pass `--setting-sources project` so the user's other plugins, hooks and
+    CLAUDE.md don't leak into the benchmark, which also drops whatever authenticates the
+    CLI -- this hands those keys back. `out_dir` comes from mkdtemp (0700); the caller
+    deletes it at the end of the sweep."""
+    user = json.loads(CLAUDE_USER_SETTINGS.read_text()) if CLAUDE_USER_SETTINGS.exists() else {}
+    path = Path(out_dir) / "auth-settings.json"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump({k: user[k] for k in CLAUDE_AUTH_KEYS if k in user}, fh)
+    return path
+
+
+def build_claude_cmd(cfg, resume_id, add_dirs):
+    # Unlike `codex exec resume`, `claude -p --resume` takes every flag, so each step gets
+    # the same args. The prompt goes over stdin: --add-dir is variadic and would swallow a
+    # trailing positional prompt.
+    cmd = [
+        "claude", "-p", "--output-format", "stream-json", "--verbose",
+        "--setting-sources", "project",
+        "--settings", str(cfg["claude_settings"]),
+        "--plugin-dir", str(cfg["claude_plugin_dir"]),
+        "--permission-mode", cfg.get("permission_mode") or "auto",
+    ]
+    if add_dirs:
+        cmd += ["--add-dir", *add_dirs]
+    if cfg.get("model"):
+        cmd += ["--model", cfg["model"]]
+    if resume_id:
+        cmd += ["--resume", resume_id]
+    return cmd
+
+
 def run_codex_step(prompt, resume_id, step_args, raw_log_fh, cwd=None):
     if resume_id is None:
         cmd = ["codex", "exec", "--json", *step_args, prompt]
     else:
         cmd = ["codex", "exec", "resume", "--json", *step_args, resume_id, prompt]
+    return run_agent_step(cmd, raw_log_fh, cwd=cwd)
 
+
+def run_agent_step(cmd, raw_log_fh, cwd=None, stdin_text=None):
     events = []  # (monotonic_ts, parsed_json_or_None, raw_line)
     proc = subprocess.Popen(
         cmd,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL if stdin_text is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
         cwd=cwd,
     )
+    if stdin_text is not None:
+        proc.stdin.write(stdin_text)
+        proc.stdin.close()
     t_launch = time.monotonic()
     for line in proc.stdout:
         ts = time.monotonic()
@@ -157,18 +213,24 @@ def _extract_published_asset(item):
     """If this completed mcp_tool_call published a workbook, pull out its identity."""
     if item.get("tool") not in PUBLISHING_TOOLS:
         return None
-    result = item.get("result") or {}
     try:
-        text = result["content"][0]["text"]
-        payload = json.loads(text)
-    except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+        text = (item.get("result") or {})["content"][0]["text"]
+    except (KeyError, IndexError, TypeError):
         return None
-    if payload.get("status") != "published":
+    return _published_asset(item.get("tool"), item.get("server"), text)
+
+
+def _published_asset(tool, server, text):
+    try:
+        payload = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("status") != "published":
         return None
     data = payload.get("data") or {}
     return {
-        "tool": item.get("tool"),
-        "server": item.get("server"),
+        "tool": tool,
+        "server": server,
         "workbook_id": data.get("id"),
         "name": data.get("name"),
         "content_url": data.get("contentUrl"),
@@ -312,6 +374,182 @@ def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
     }
 
 
+def analyze_claude_step_events(t_launch, events, step_index, prompt, wall_start):
+    """`claude -p --output-format stream-json` counterpart of analyze_step_events,
+    producing the same step record so reporting, the .hyper build and grading don't
+    care which harness ran.
+
+    Claude emits no item.started/item.completed pair: a tool call starts when its
+    assistant `tool_use` block arrives and ends at the matching user `tool_result`
+    (same id). `thread_id` holds the session id, which `--resume` takes."""
+    timeline = []
+    warnings = []
+    errors = []
+    created_assets = []
+    session_id = None
+    final_message = None
+    usage = None
+
+    prev_ts = t_launch
+    open_calls = {}  # tool_use_id -> (start_ts, tool_use block)
+
+    def segment(kind, operation, label, ts):
+        timeline.append({
+            "step": step_index, "segment_type": "non_tool_segment",
+            "kind": kind, "operation": operation,
+            "name": None, "label": label,
+            "duration": ts - prev_ts,
+            "start_offset_s": prev_ts - wall_start,
+            "end_offset_s": ts - wall_start,
+            "status": None, "error": None,
+        })
+
+    for ts, obj, raw in events:
+        if obj is None:
+            continue
+        etype = obj.get("type")
+
+        if etype == "system":
+            if obj.get("subtype") == "init":
+                session_id = obj.get("session_id")
+                prev_ts = ts
+            continue
+
+        if etype == "result":
+            session_id = obj.get("session_id") or session_id
+            usage = _claude_usage(obj)
+            if obj.get("is_error"):
+                errors.append(str(obj.get("result") or obj.get("subtype")))
+            continue
+
+        # A subagent's own turns; its Task call is timed as one tool call instead.
+        if obj.get("parent_tool_use_id"):
+            continue
+
+        content = (obj.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            btype = block.get("type")
+            if etype == "assistant" and btype == "tool_use":
+                if ts - prev_ts > 0:
+                    segment("pre_tool_call", "pre_tool_call", f"deciding to call {_claude_tool_name(block)}", ts)
+                open_calls[block.get("id")] = (ts, block)
+                prev_ts = ts
+            elif etype == "user" and btype == "tool_result":
+                start_ts, call = open_calls.pop(block.get("tool_use_id"), (prev_ts, {}))
+                server, tool = _claude_tool_parts(call.get("name") or "")
+                text = _claude_result_text(block)
+                failed = bool(block.get("is_error"))
+                timeline.append({
+                    "step": step_index, "segment_type": "tool_call",
+                    "kind": _claude_tool_kind(call.get("name") or ""),
+                    "operation": classify_claude_operation(call),
+                    "name": _claude_tool_name(call), "label": None,
+                    "duration": ts - start_ts,
+                    "start_offset_s": start_ts - wall_start,
+                    "end_offset_s": ts - wall_start,
+                    "status": "failed" if failed else "completed",
+                    "error": text[:2000] if failed else None,
+                })
+                if server and not failed and tool in PUBLISHING_TOOLS:
+                    asset = _published_asset(tool, server, text)
+                    if asset:
+                        created_assets.append(asset)
+                prev_ts = ts
+            elif etype == "assistant" and btype == "thinking":
+                segment("reasoning", "reasoning", (block.get("thinking") or "")[:80], ts)
+                prev_ts = ts
+            elif etype == "assistant" and btype == "text":
+                segment("agent_message", "message", (block.get("text") or "")[:80], ts)
+                final_message = block.get("text")
+                prev_ts = ts
+
+    for seg in reversed(timeline):
+        if seg["kind"] == "agent_message":
+            seg["kind"] = "final_message"
+            break
+
+    return {
+        "step": step_index,
+        "prompt": prompt,
+        "thread_id": session_id,
+        "timeline": timeline,
+        "final_message": final_message,
+        "usage": usage,
+        "warnings": warnings,
+        "errors": errors,
+        "created_assets": created_assets,
+    }
+
+
+def _claude_tool_parts(name):
+    """mcp__plugin_tableau-dev_TableauDev__publish-workbook -> ("TableauDev", "publish-workbook").
+    Built-in tools (Bash, Read, ...) have no server."""
+    if not name.startswith("mcp__"):
+        return None, name
+    server, _, tool = name[len("mcp__"):].rpartition("__")
+    return server.rsplit("_", 1)[-1], tool
+
+
+def _claude_tool_kind(name):
+    if name.startswith("mcp__"):
+        return "mcp_tool_call"
+    return "command_execution" if name == "Bash" else "builtin_tool"
+
+
+def _claude_tool_name(block):
+    """Same naming as _tool_name: server::tool for MCP calls, the command for shell."""
+    server, tool = _claude_tool_parts(block.get("name") or "")
+    if server:
+        return f"{server}::{tool}"
+    args = block.get("input") or {}
+    if tool == "Bash":
+        return (args.get("command") or "")[:80]
+    detail = next((args[k] for k in ("file_path", "pattern", "skill", "query", "url", "description") if args.get(k)), "")
+    return f"{tool} {detail}".strip()[:80]
+
+
+def _claude_result_text(block):
+    content = block.get("content")
+    if isinstance(content, list):
+        return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+    return content if isinstance(content, str) else ""
+
+
+def _claude_usage(result):
+    """Map Claude's usage onto the codex-style keys build_hyper reads. Like codex's,
+    input_tokens counts cached input too."""
+    u = result.get("usage") or {}
+    cached = u.get("cache_read_input_tokens") or 0
+    written = u.get("cache_creation_input_tokens") or 0
+    return {
+        "input_tokens": (u.get("input_tokens") or 0) + cached + written,
+        "cached_input_tokens": cached,
+        "cache_write_input_tokens": written,
+        "output_tokens": u.get("output_tokens"),
+        "cost_usd": result.get("total_cost_usd"),
+    }
+
+
+def classify_claude_operation(block):
+    """classify_operation for Claude tool calls. Claude reads and writes files with its
+    own tools where codex shells out, so those map onto the same categories."""
+    server, tool = _claude_tool_parts(block.get("name") or "")
+    args = block.get("input") or {}
+    if server:
+        return tool or "mcp"
+    if tool == "Bash":
+        return classify_operation("command_execution", args)
+    if tool in ("Read", "Grep", "Glob"):
+        return "inspect"
+    if tool in ("Write", "Edit", "NotebookEdit"):
+        path = (args.get("file_path") or "").lower()
+        return "xml-write" if path.endswith((".twb", ".twbx", ".xml")) else "file-write"
+    return {"ToolSearch": "tool-search", "Skill": "skill-load", "Task": "subagent",
+            "Agent": "subagent", "WebFetch": "download"}.get(tool, tool.lower() or "tool")
+
+
 def classify_operation(itype, item):
     """Normalize a tool call into a coarse operation category, so analysis can
     ask 'which operations are slow / fail most' with a single GROUP BY."""
@@ -338,13 +576,14 @@ def _tool_name(item):
     return f"{item.get('server')}::{item.get('tool')}"
 
 
-def record_created_assets(test_id, model_label, rep, step_results, ledger_path):
+def record_created_assets(test_id, harness, model_label, rep, step_results, ledger_path):
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with _LEDGER_LOCK, ledger_path.open("a") as fh:
         for step in step_results:
             for asset in step.get("created_assets", []):
                 entry = {
                     "test_id": test_id,
+                    "harness": harness,
                     "model": model_label,
                     "rep": rep,
                     "step": step["step"],
@@ -371,8 +610,23 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
     if cfg.get("cd"):
         run_cfg = cfg
     else:
-        work_dir = tempfile.mkdtemp(prefix=f"codex-bench-{sanitize_label(test['id'])}-")
+        work_dir = tempfile.mkdtemp(prefix=f"{cfg['harness']}-bench-{sanitize_label(test['id'])}-")
         run_cfg = {**cfg, "cd": work_dir}
+
+    def run_step(prompt, resume_id, all_dirs, raw_log_fh):
+        if run_cfg["harness"] == "claude":
+            # Every step re-grants the file dirs: unlike codex's, claude's resume takes --add-dir.
+            cmd = build_claude_cmd(run_cfg, resume_id, all_dirs)
+            return (*run_agent_step(cmd, raw_log_fh, cwd=run_cfg["cd"], stdin_text=prompt),
+                    analyze_claude_step_events)
+        if resume_id is None:
+            step_args = build_first_step_args(run_cfg)
+            for d in all_dirs:
+                step_args += ["--add-dir", d]
+        else:
+            step_args = build_resume_step_args(run_cfg)
+        return (*run_codex_step(prompt, resume_id, step_args, raw_log_fh, cwd=run_cfg["cd"]),
+                analyze_step_events)
 
     try:
         step_results = []
@@ -394,13 +648,10 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
             # of what a test is measuring, so they're excluded from step_results/summary
             # entirely rather than showing up as a numbered step in tool/timing stats.
             preamble_start = time.monotonic()
-            step_args = build_first_step_args(run_cfg)
-            for d in all_dirs:
-                step_args += ["--add-dir", d]
             raw_log_path = rep_dir / "step_preamble.jsonl"
             with raw_log_path.open("w") as fh:
-                t_launch, events, returncode = run_codex_step(preamble, resume_id, step_args, fh, cwd=run_cfg["cd"])
-            preamble_result = analyze_step_events(t_launch, events, -1, preamble, wall_start)
+                t_launch, events, returncode, analyze = run_step(preamble, resume_id, all_dirs, fh)
+            preamble_result = analyze(t_launch, events, -1, preamble, wall_start)
             if preamble_result["thread_id"]:
                 resume_id = preamble_result["thread_id"]
             if returncode != 0:
@@ -411,24 +662,17 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
             resolved_files = all_resolved_files[i]
             prompt_text = build_prompt_with_files(step["prompt"], resolved_files)
 
-            if resume_id is None:
-                step_args = build_first_step_args(run_cfg)
-                for d in all_dirs:
-                    step_args += ["--add-dir", d]
-            else:
-                step_args = build_resume_step_args(run_cfg)
-
             raw_log_path = rep_dir / f"step_{i}.jsonl"
             with raw_log_path.open("w") as fh:
-                t_launch, events, returncode = run_codex_step(prompt_text, resume_id, step_args, fh, cwd=run_cfg["cd"])
-            result = analyze_step_events(t_launch, events, i, step["prompt"], wall_start)
+                t_launch, events, returncode, analyze = run_step(prompt_text, resume_id, all_dirs, fh)
+            result = analyze(t_launch, events, i, step["prompt"], wall_start)
             result["files"] = [str(p) for p in resolved_files]
             result["returncode"] = returncode
             step_results.append(result)
             if result["thread_id"]:
                 resume_id = result["thread_id"]
 
-        record_created_assets(test["id"], model_label, rep, step_results, ledger_path)
+        record_created_assets(test["id"], cfg["harness"], model_label, rep, step_results, ledger_path)
 
         # Stamp a rep-global sequence number and the name of the most recent tool
         # call onto every timeline entry, in chronological order across all steps.
@@ -447,6 +691,7 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
         wall_time = time.monotonic() - wall_start
         summary = {
             "test_id": test["id"],
+            "harness": cfg["harness"],
             "model": model_label,
             "preamble_wall_time": preamble_wall_time,
             "wall_time": wall_time,
@@ -533,7 +778,7 @@ def aggregate_test(test_id, model_label, rep_summaries, out_path):
 
 
 def render_report(aggregates, out_path):
-    lines = ["# Codex bench report", ""]
+    lines = ["# Bench report", ""]
 
     by_test = {}
     for agg in aggregates:
@@ -601,6 +846,9 @@ def render_model_section(lines, agg):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--harness", choices=HARNESSES, default="codex", help="Agent CLI to drive (default codex)")
+    ap.add_argument("--claude-plugin-dir", type=Path, default=DEFAULT_CLAUDE_PLUGIN_DIR,
+                    help="Built Claude plugin loaded via --plugin-dir (default: dist/claude-dev/plugins/tableau)")
     ap.add_argument("--prompts-file", type=Path, default=DEFAULT_PROMPTS_FILE)
     ap.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     ap.add_argument("--only", help="Run only the test with this id")
@@ -625,7 +873,8 @@ def main():
         if not tests:
             sys.exit(f"No test with id {args.only!r}")
 
-    config_default_model = read_config_default_model()
+    # Codex's own default model is only a label; Claude's isn't read, so it's "default".
+    config_default_model = read_config_default_model() if args.harness == "codex" else "default"
     ledger_path = args.results_dir / "created_assets.jsonl"
 
     aggregates = []
@@ -635,7 +884,7 @@ def main():
     units = []  # (test, cfg, model_label, test_dir, reps)
     for test in tests:
         reps = args.reps or test.get("repeats", defaults.get("repeats", 10))
-        test_overrides = {k: v for k, v in test.items() if k in ("sandbox", "approve_for_me", "cd")}
+        test_overrides = {k: v for k, v in test.items() if k in ("sandbox", "approve_for_me", "permission_mode", "cd")}
 
         # Model resolution, highest precedence first: --models CLI flag (applies to every
         # test) > this test's own "model" > defaults.model. Any of these may be a single
@@ -643,10 +892,10 @@ def main():
         if args.models:
             model_overrides = [m.strip() for m in args.models.split(",") if m.strip()]
         else:
-            model_overrides = resolve_model_list(test.get("model", defaults.get("model"))) or [None]
+            model_overrides = resolve_model_list(test.get("model", defaults.get("model")), args.harness) or [None]
 
         for model_override in model_overrides:
-            cfg = {**defaults, **test_overrides}
+            cfg = {**defaults, **test_overrides, "harness": args.harness}
             if model_override:
                 cfg["model"] = model_override
             model_label = cfg.get("model") or config_default_model or "unknown"
@@ -654,7 +903,7 @@ def main():
             test_dir = args.results_dir / test["id"] / sanitize_label(model_label)
 
             if args.dry_run:
-                print(f"[{test['id']}] model={model_label} {reps} reps, {len(test['steps'])} step(s):")
+                print(f"[{test['id']}] harness={args.harness} model={model_label} {reps} reps, {len(test['steps'])} step(s):")
                 if preamble:
                     print(f"    -> [preamble] {preamble!r}")
                 for step in test["steps"]:
@@ -695,19 +944,33 @@ def main():
         for rep in range(1, reps + 1)
     ]
     results_by_unit = {i: {} for i in range(len(units))}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as executor:
-        futures = {}
-        for unit_index, rep in work_items:
-            test, cfg, model_label, test_dir, reps = units[unit_index]
-            rep_dir = test_dir / f"run_{rep:02d}"
-            fut = executor.submit(run_test_once, test, cfg, model_label, rep_dir, rep, reps, ledger_path, preamble=preamble, staging_dir=args.staging_dir)
-            futures[fut] = (unit_index, rep)
-        for fut in concurrent.futures.as_completed(futures):
-            unit_index, rep = futures[fut]
-            test, cfg, model_label, test_dir, reps = units[unit_index]
-            summary = fut.result()
-            results_by_unit[unit_index][rep] = summary
-            print(f"[{test['id']}] model={model_label} run {rep}/{reps} done in {summary['wall_time']:.1f}s", flush=True)
+    claude_auth_dir = None
+    if args.harness == "claude":
+        if not (args.claude_plugin_dir / ".claude-plugin" / "plugin.json").exists():
+            sys.exit(f"{args.claude_plugin_dir} is not a built plugin -- run "
+                     "`python3 build/build.py --variant dev claude` first")
+        claude_auth_dir = tempfile.mkdtemp(prefix="claude-bench-auth-")
+        claude_settings = write_claude_auth_settings(claude_auth_dir)
+        for _, cfg, *_ in units:
+            cfg["claude_settings"] = claude_settings
+            cfg["claude_plugin_dir"] = args.claude_plugin_dir.resolve()
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as executor:
+            futures = {}
+            for unit_index, rep in work_items:
+                test, cfg, model_label, test_dir, reps = units[unit_index]
+                rep_dir = test_dir / f"run_{rep:02d}"
+                fut = executor.submit(run_test_once, test, cfg, model_label, rep_dir, rep, reps, ledger_path, preamble=preamble, staging_dir=args.staging_dir)
+                futures[fut] = (unit_index, rep)
+            for fut in concurrent.futures.as_completed(futures):
+                unit_index, rep = futures[fut]
+                test, cfg, model_label, test_dir, reps = units[unit_index]
+                summary = fut.result()
+                results_by_unit[unit_index][rep] = summary
+                print(f"[{test['id']}] model={model_label} run {rep}/{reps} done in {summary['wall_time']:.1f}s", flush=True)
+    finally:
+        if claude_auth_dir:
+            shutil.rmtree(claude_auth_dir, ignore_errors=True)
 
     for unit_index, (test, cfg, model_label, test_dir, reps) in enumerate(units):
         rep_summaries = [results_by_unit[unit_index][r] for r in sorted(results_by_unit[unit_index])]
