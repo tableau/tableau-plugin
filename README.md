@@ -44,6 +44,7 @@ python3 build/build.py openai          # build one platform -> dist/openai/
 python3 build/build.py --zip claude    # also write dist/claude-tableau.zip
 python3 build/build.py --check         # CI: fail if dist/ is stale
 python3 build/build.py --variant dev openai   # local-development build
+python3 build/build.py --slim --zip claude   # size-reduced build for the Claude plugin directory
 ```
 
 ### Variants
