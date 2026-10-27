@@ -5,7 +5,9 @@ Grade bench run outputs against the reference fixtures in bench/fixtures/<ACxx>/
 data.csv). A perfect match is NOT expected: chart/dashboard design choices are
 subjective, so each run is judged by asking a model to compare the produced view's
 image + underlying data to the reference and score whether it satisfies the same
-analytical intent -- not diffed exactly.
+analytical intent -- not diffed exactly. The judge runs on the same harness as the run
+being graded (the summary's `harness`): codex runs are judged by `codex exec`, claude
+runs by `claude -p`.
 
 For each completed run, the workbook it published is looked up in
 bench/results/created_assets.jsonl (by test_id/model/rep), then queried directly via
@@ -18,18 +20,22 @@ the final grading step calls a model.
 Usage:
   python3 bench/grade_results.py                      # grade every ungraded completed run
   python3 bench/grade_results.py --only AC01_cold
-  python3 bench/grade_results.py --judge-model gpt-5.6-sol
+  python3 bench/grade_results.py --judge-model gpt-5.6-sol    # codex judge's model
+  python3 bench/grade_results.py --claude-judge-model claude-opus-5-5
   python3 bench/grade_results.py --regrade             # re-grade runs that already have a score
 """
 import argparse
 import base64
 import json
 import re
+import shutil
 import statistics
 import subprocess
+import tempfile
 from pathlib import Path
 
 from mcp_client import McpStdioClient, load_tableau_server_config, result_text
+from run_bench import write_claude_auth_settings
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_PROMPTS_FILE = ROOT / "prompts.json"
@@ -38,6 +44,9 @@ DEFAULT_LEDGER = DEFAULT_RESULTS_DIR / "created_assets.jsonl"
 FIXTURES_DIR = ROOT / "fixtures"
 JUDGE_SCHEMA = ROOT / "judge_schema.json"
 DATA_INLINE_LIMIT = 6000  # chars of CSV inlined into the judge prompt, each side
+# Claude reads the images with its Read tool (one turn each) rather than getting them
+# attached up front, so it gets longer than codex.
+JUDGE_TIMEOUT = {"codex": 180, "claude": 300}
 
 
 def fixture_dir_for_test(test_id):
@@ -239,9 +248,19 @@ def build_judge_prompt(task_prompt, reference_data_path, produced_data_path, pro
     return "\n".join(parts)
 
 
-def _run_judge_once(cmd, out_path):
+def _run_judge_once(cmd, out_path, harness, stdin_text=None, cwd=None):
     out_path.unlink(missing_ok=True)
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True,
+                          timeout=JUDGE_TIMEOUT[harness], cwd=cwd)
+    if harness == "claude":
+        # `claude -p --output-format json` returns the schema-validated answer as
+        # `structured_output` on stdout, where codex writes it to its -o file.
+        try:
+            structured = json.loads(proc.stdout).get("structured_output")
+        except (json.JSONDecodeError, AttributeError):
+            structured = None
+        if structured:
+            out_path.write_text(json.dumps(structured))
     if out_path.exists():
         try:
             return json.loads(out_path.read_text()), None
@@ -254,7 +273,7 @@ def _run_judge_once(cmd, out_path):
     }
 
 
-def run_judge(prompt, images, model, out_path):
+def build_codex_judge_cmd(prompt, images, model, out_path):
     cmd = ["codex", "exec", "--json", "--skip-git-repo-check"]
     if model:
         cmd += ["-m", model]
@@ -262,19 +281,50 @@ def run_judge(prompt, images, model, out_path):
         cmd += ["-i", str(img)]
     cmd += ["--output-schema", str(JUDGE_SCHEMA), "-o", str(out_path)]
     cmd.append(prompt)
+    return cmd
 
-    result, err = _run_judge_once(cmd, out_path)
+
+def build_claude_judge_cmd(images, model, settings_path):
+    # Isolated like run_bench's claude runs (auth-only settings, no user plugins), and
+    # limited to Read: the judge only needs to open the two images. The prompt goes
+    # over stdin, since --add-dir is variadic.
+    cmd = [
+        "claude", "-p", "--output-format", "json",
+        "--setting-sources", "project", "--settings", str(settings_path),
+        "--tools", "Read", "--allowedTools", "Read", "--no-session-persistence",
+        "--json-schema", JUDGE_SCHEMA.read_text(),
+    ]
+    dirs = sorted({str(Path(img).parent) for img in images})
+    if dirs:
+        cmd += ["--add-dir", *dirs]
+    if model:
+        cmd += ["--model", model]
+    return cmd
+
+
+def run_judge(prompt, images, harness, model, out_path, claude_settings=None):
+    stdin_text = cwd = None
+    if harness == "claude":
+        # claude -p has no image-attach flag, so point it at the files instead.
+        listing = "\n".join(f"[{i}] {img}" for i, img in enumerate(images, 1))
+        stdin_text = f"{prompt}\n\nThe images are files on disk. Read each one with the Read tool, in this order:\n{listing}"
+        cmd = build_claude_judge_cmd(images, model, claude_settings)
+        cwd = Path(claude_settings).parent  # empty dir, so no project settings get picked up
+    else:
+        cmd = build_codex_judge_cmd(prompt, images, model, out_path)
+
+    result, err = _run_judge_once(cmd, out_path, harness, stdin_text, cwd)
     if result is not None:
         return result
-    # codex exec's connection to its backend is occasionally flaky (model-list refresh
-    # / websocket 404s) independent of anything about this particular run -- one retry
-    # clears most of those without masking a persistent failure.
+    # The judge CLI's connection to its backend is occasionally flaky (e.g. codex's
+    # model-list refresh / websocket 404s) independent of anything about this
+    # particular run -- one retry clears most of those without masking a persistent failure.
     print(f"    judge call failed ({err['error']}), retrying once ...", flush=True)
-    result, err = _run_judge_once(cmd, out_path)
+    result, err = _run_judge_once(cmd, out_path, harness, stdin_text, cwd)
     return result if result is not None else err
 
 
-def grade_run(client, test, run_dir, model_label, rep, ledger_by_run, judge_model):
+def grade_run(client, test, run_dir, model_label, rep, ledger_by_run, harness, judge_model, claude_settings=None):
     grading_dir = run_dir / "grading"
     fixture_dir = fixture_dir_for_test(test["id"])
     ref_image_svg, ref_data = find_reference(fixture_dir)
@@ -303,8 +353,10 @@ def grade_run(client, test, run_dir, model_label, rep, ledger_by_run, judge_mode
     prompt = build_judge_prompt(task_prompt, ref_data, data_path, view["name"])
 
     judge_out_path = grading_dir / "judge_result.json"
-    verdict = run_judge(prompt, images, judge_model, judge_out_path)
+    verdict = run_judge(prompt, images, harness, judge_model, judge_out_path, claude_settings)
     verdict.update({
+        "judge_harness": harness,
+        "judge_model": judge_model,
         "workbook_id": workbook_id,
         "view_id": view["id"],
         "view_name": view["name"],
@@ -328,7 +380,7 @@ def render_grading_report(all_verdicts, out_path):
         lines.append(f"## {test_id}")
         by_model = {}
         for v in verdicts:
-            by_model.setdefault(v["model"], []).append(v)
+            by_model.setdefault(f"{v['model']} ({v.get('harness', 'codex')})", []).append(v)
         for model, vs in by_model.items():
             graded = [v for v in vs if "visual_match" in v]
             skipped = [v for v in vs if "skipped" in v]
@@ -359,7 +411,8 @@ def main():
     ap.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     ap.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
     ap.add_argument("--only", help="Grade only the test with this id")
-    ap.add_argument("--judge-model", help="Model to pass to the judge's `codex exec -m`")
+    ap.add_argument("--judge-model", help="Model for the codex judge (`codex exec -m`), used on codex runs")
+    ap.add_argument("--claude-judge-model", help="Model for the claude judge (`claude -p --model`), used on claude runs")
     ap.add_argument("--regrade", action="store_true", help="Re-grade runs that already have a judge_result.json")
     ap.add_argument("--server-cmd", nargs="+", default=None)
     ap.add_argument("--server-cwd", default=None)
@@ -376,6 +429,7 @@ def main():
     client = McpStdioClient(args.server_cmd or default_cmd, args.server_cwd or default_cwd, env=server_env)
 
     all_verdicts = []
+    claude_auth_dir = claude_settings = None
     try:
         client.initialize()
         for test_id, test in tests_by_id.items():
@@ -391,6 +445,8 @@ def main():
                         continue
                     summary = json.loads(summary_path.read_text())
                     model_label = summary["model"]
+                    # Summaries from before the claude harness existed are all codex runs.
+                    harness = summary.get("harness") or "codex"
                     rep = int(run_dir.name.split("_")[1])
 
                     judge_out_path = run_dir / "grading" / "judge_result.json"
@@ -398,15 +454,23 @@ def main():
                         verdict = json.loads(judge_out_path.read_text())
                     else:
                         print(f"[{test_id}] model={model_label} run {rep:02d}: grading ...", flush=True)
-                        verdict = grade_run(client, test, run_dir, model_label, rep, ledger_by_run, args.judge_model)
+                        if harness == "claude" and claude_auth_dir is None:
+                            claude_auth_dir = tempfile.mkdtemp(prefix="claude-judge-auth-")
+                            claude_settings = write_claude_auth_settings(claude_auth_dir)
+                        judge_model = args.claude_judge_model if harness == "claude" else args.judge_model
+                        verdict = grade_run(client, test, run_dir, model_label, rep, ledger_by_run,
+                                            harness, judge_model, claude_settings)
                         print(f"[{test_id}] model={model_label} run {rep:02d}: {verdict.get('skipped') or verdict.get('error') or 'graded'}", flush=True)
 
                     verdict["test_id"] = test_id
+                    verdict["harness"] = harness
                     verdict["model"] = model_label
                     verdict["rep"] = rep
                     all_verdicts.append(verdict)
     finally:
         client.close()
+        if claude_auth_dir:
+            shutil.rmtree(claude_auth_dir, ignore_errors=True)
 
     report_path = args.results_dir / "grading_report.md"
     render_grading_report(all_verdicts, report_path)
