@@ -45,8 +45,10 @@ needed by the requested workflow are callable:
 - for an existing workbook, `{{ mcp_prefix }}search-content` and
   `{{ mcp_prefix }}download-workbook`.
 
-Interactive rendering must also be available for the required post-publish
-verification.
+Interactive rendering is not required. It's the recommended way to verify the
+published workbook with the user, but never block on it: when it isn't
+available, have the user open the published workbook in an embedded browser or
+their own browser instead.
 
 Check only the capabilities relevant to the current request. A capability is
 not unavailable merely because it has not yet been loaded; perform one focused
