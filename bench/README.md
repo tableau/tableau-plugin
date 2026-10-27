@@ -58,7 +58,14 @@ records its `harness`.
 .build-venv/bin/python build/build.py --variant dev claude   # -> dist/claude-dev/plugins/tableau
 python3 bench/run_bench.py --harness claude --dry-run
 python3 bench/run_bench.py --harness claude --only AC06_cold --reps 1
+python3 bench/run_bench.py --harness codex,claude   # both platforms in one sweep
 ```
+
+`--harness codex,claude` puts every harness/model pair into the same
+`--parallel` pool and writes one combined report, whose comparison table has a
+harness column. Each harness uses its own entry of a `{harness: [...]}` `model`
+mapping in `prompts.json`. `--models` can't be combined with more than one
+harness, since model ids only work on their own CLI.
 
 - **No install step.** Each run loads the built plugin with `--plugin-dir`
   (override with `--claude-plugin-dir`), so a rebuild takes effect on the next
@@ -80,9 +87,9 @@ python3 bench/run_bench.py --harness claude --only AC06_cold --reps 1
 - **Token usage and cost.** Claude reports cache reads and writes separately.
   `input_tokens` includes both, matching Codex. Each step's `usage` also
   carries `cost_usd`, the CLI's own estimate.
-- **Grading and cleanup** still use the Codex judge and
-  `dist/openai-dev/.../.mcp.json`, so the OpenAI dev build must exist too. Using
-  the same judge keeps scores comparable across harnesses.
+- **Grading** uses a Claude judge for Claude runs (see below). Grading and
+  cleanup both reach Tableau through `dist/openai-dev/.../.mcp.json`, so the
+  OpenAI dev build must exist too.
 
 ## Running tests
 
@@ -124,6 +131,13 @@ all reps for that test+model.
 tests finish (or by `--report-only`). If a test ran under 2+ models, its
 section starts with a comparison table (wall time / tool time / non-tool
 time per model, fastest first) before the per-model detail.
+
+Agents sometimes run several tool calls at once (Claude does this often). Each
+call's own `duration` is accurate. The report's per-run tool-call time counts
+overlapping spans once, though, so it never exceeds wall time. Every tool call in
+`summary.json` has a `concurrent` flag marking whether it overlapped another
+call. The same flag is a column in the `.hyper` extract, and the report shows how
+many of each tool's calls overlapped.
 
 Non-tool-call time is split into:
 
@@ -273,7 +287,8 @@ not diff it exactly.
 ```bash
 python3 bench/grade_results.py                  # grade every completed, ungraded run
 python3 bench/grade_results.py --only AC01_cold
-python3 bench/grade_results.py --judge-model gpt-5.6-sol
+python3 bench/grade_results.py --judge-model gpt-5.6-sol            # codex judge's model
+python3 bench/grade_results.py --claude-judge-model claude-opus-5-5  # claude judge's model
 python3 bench/grade_results.py --regrade         # re-grade runs that already have a score
 ```
 
@@ -282,9 +297,23 @@ For each run, it looks up the workbook that run published (from
 workbook's most recently updated view — a best-effort proxy for "the view this run
 produced," not a guarantee on workbooks with many pre-existing sheets — and fetches
 its rendered image + underlying data. It then rasterizes the reference SVG (via
-macOS's `qlmanage`) and calls `codex exec` with both images attached plus the
-reference/produced data inlined, using `--output-schema` to get back a structured
-`{visual_match, visual_rationale, data_match, data_rationale}` score (1-5 each).
+macOS's `qlmanage`) and asks a judge to score the run. The judge
+runs on the same harness as the run, taken from the summary's `harness`:
+
+- **Codex runs** are judged by `codex exec`, with both images attached, using
+  `--output-schema`.
+- **Claude runs** are judged by `claude -p --json-schema`. Claude has no
+  image-attach flag, so the judge opens the two image files with its Read tool,
+  the only tool it gets. It is isolated the same way benchmark runs are.
+
+Both judges get the reference and produced data inlined and return the same
+structured `{visual_match, visual_rationale, data_match, data_rationale}` score
+(1-5 each). Each `judge_result.json` records `judge_harness` and `judge_model`.
+Without `--judge-model` / `--claude-judge-model`, each CLI uses its own default
+model.
+
+Scores are only directly comparable within a harness. A Codex run and a Claude
+run are graded by different judges, which may score differently.
 
 Output per run: `results/<test_id>/<model>/run_NN/grading/{reference.png, produced.png, produced_data.csv, judge_result.json}`. Aggregated scores land in
 `results/grading_report.md`. Runs with no published asset, or a fixture with no
