@@ -76,8 +76,8 @@ callable:
 
 Interactive rendering is not required. It's the recommended way to verify the
 published app with the user, but never block on it: when it isn't available,
-have the user open the published app in an embedded browser or their own
-browser instead.
+open the published app in an embedded browser if you have one available or
+encourage the user to open and verify it in their own browser instead.
 
 When the app will use a published datasource, also verify that the tools needed
 to resolve that datasource and inspect its metadata are callable.
