@@ -27,12 +27,19 @@ next to the published plugin without colliding with it (see VARIANTS):
   dev   a local tableau-mcp checkout over stdio       -> dist/<platform>-dev/
         (TABLEAU_MCP_DIR from this repo's .env, overridable in the host env)
 
+`--slim` builds a size-reduced copy for hosts with package limits, from the
+platform's `slim:` block in vars.yaml (-> dist/<platform>-slim/). It keeps the
+published names, adds the `slim.exclude` globs, keeps only the newest
+`slim.keep_latest_schemas` schema versions, and drops catalog.json entries
+whose files no longer ship.
+
 Usage:
     python3 build/build.py                 # build every platform under platforms/
     python3 build/build.py openai          # build only the named platform(s)
     python3 build/build.py --zip claude    # also write dist/claude-tableau.zip
     python3 build/build.py --check openai  # fail if dist/ is stale vs a fresh build
     python3 build/build.py --variant dev openai
+    python3 build/build.py --slim claude   # -> dist/claude-slim/
 """
 
 from __future__ import annotations
@@ -40,6 +47,7 @@ from __future__ import annotations
 import argparse
 import filecmp
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -252,13 +260,55 @@ def apply_variant(dist: Path, name: str, variant: dict, server_key: str,
             rewrite_json(plugin_dir / config_name, edit_mcp)
 
 
-def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "prod") -> Path:
+SCHEMA_VERSION_RE = re.compile(r"^(\d{4})_(\d+)$")  # resources/schemas/<YYYY_R>/
+
+
+def prune_schemas(plugin_dir: Path, keep: int) -> None:
+    """Keep only the newest `keep` version dirs in each skill's resources/schemas/."""
+    for schemas in sorted(plugin_dir.glob("skills/*/resources/schemas")):
+        versions = []
+        for entry in schemas.iterdir():
+            m = SCHEMA_VERSION_RE.match(entry.name)
+            if not (m and entry.is_dir()):
+                # A renamed or stray entry must not silently ship or vanish.
+                sys.exit(f"error: unexpected entry in {schemas}: {entry.name}")
+            versions.append(((int(m[1]), int(m[2])), entry))
+        versions.sort()
+        dropped = versions[:-keep] if keep else versions
+        for _, entry in dropped:
+            shutil.rmtree(entry)
+        kept = ", ".join(e.name for _, e in versions[len(dropped):])
+        log(f"  {schemas.relative_to(plugin_dir)}: kept {kept} (dropped {len(dropped)})")
+
+
+def prune_catalog(plugin_dir: Path) -> None:
+    """Drop catalog.json entries whose files no longer ship."""
+    for catalog in sorted(plugin_dir.glob("skills/*/resources/catalog.json")):
+        resources = catalog.parent
+        total = kept = 0
+
+        def edit(data: dict) -> None:
+            nonlocal total, kept
+            total = len(data["resources"])
+            data["resources"] = [r for r in data["resources"]
+                                 if (resources / r["path"]).is_file()]
+            kept = len(data["resources"])
+
+        rewrite_json(catalog, edit)
+        log(f"  {catalog.relative_to(plugin_dir)}: kept {kept} of {total} entries")
+
+
+def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "prod",
+                   slim: bool = False) -> Path:
     platform_dir = PLATFORMS_DIR / platform
     if not platform_dir.is_dir():
         sys.exit(f"error: unknown platform '{platform}' (no {platform_dir})")
 
     variables = load_vars(platform_dir)
     variables.setdefault("platform", platform)
+    slim_spec = variables.get("slim") if slim else None
+    if slim and not slim_spec:
+        sys.exit(f"error: platform '{platform}' has no slim: block in vars.yaml")
 
     spec = VARIANTS[variant]
     server_key = "Tableau" + (spec["label"] if spec else "")
@@ -266,13 +316,20 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
         # Skills address tools by server key on hosts with a fixed prefix.
         variables["mcp_prefix"] = f"mcp__{server_key}__"
 
-    dist = out_root / (platform if not spec else f"{platform}-{variant}")
+    name = platform if not spec else f"{platform}-{variant}"
+    dist = out_root / (f"{name}-slim" if slim else name)
     if dist.exists():
         shutil.rmtree(dist)
 
     # 1. shared payload -> dist/<platform>/plugins/tableau/
     exclude = tuple(variables.get("exclude", ()))
+    if slim_spec:
+        exclude += tuple(slim_spec.get("exclude", ()))
     c1, r1 = copy_tree(SRC_PAYLOAD, dist / PAYLOAD_DEST_SUBPATH, variables, exclude)
+    if slim_spec:
+        if "keep_latest_schemas" in slim_spec:
+            prune_schemas(dist / PAYLOAD_DEST_SUBPATH, int(slim_spec["keep_latest_schemas"]))
+        prune_catalog(dist / PAYLOAD_DEST_SUBPATH)
 
     # 2. platform overlay -> dist/<platform>/ (root); overrides payload on collision
     overlay = platform_dir / "overlay"
@@ -332,6 +389,9 @@ def main() -> None:
                     help="also zip each built plugin to dist/<platform>-tableau.zip")
     ap.add_argument("--variant", choices=VARIANTS, default="prod",
                     help="local-development variant to build (default: prod)")
+    ap.add_argument("--slim", action="store_true",
+                    help="size-reduced build from the platform's slim: vars "
+                         "(-> dist/<platform>-slim/)")
     args = ap.parse_args()
 
     targets = args.platforms or discover_platforms()
@@ -343,7 +403,8 @@ def main() -> None:
         for platform in targets:
             with tempfile.TemporaryDirectory() as tmp:
                 # Build into a scratch dir, leaving dist/ untouched, and compare.
-                fresh = build_platform(platform, out_root=Path(tmp), variant=args.variant)
+                fresh = build_platform(platform, out_root=Path(tmp), variant=args.variant,
+                                       slim=args.slim)
                 staged = DIST_DIR / fresh.name
                 if not (staged.exists() and dirs_equal(staged, fresh)):
                     log(f"[{platform}] CHECK FAILED: dist is stale")
@@ -351,7 +412,7 @@ def main() -> None:
         sys.exit(0 if ok else 1)
 
     for platform in targets:
-        dist = build_platform(platform, variant=args.variant)
+        dist = build_platform(platform, variant=args.variant, slim=args.slim)
         if args.zip:
             zip_plugin(dist)
 

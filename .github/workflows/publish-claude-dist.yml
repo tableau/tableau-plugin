@@ -1,7 +1,10 @@
 name: Publish Claude distribution
 
-# Builds the Claude plugin from main and commits it to the dist/claude branch,
-# so consumers (e.g. the Salesforce AI Marketplace) can install it without a build step.
+# Builds the Claude plugin from main and commits it to a dist branch, so
+# consumers can install it without a build step:
+# - dist/claude: the full build (e.g. for the Salesforce AI Marketplace).
+# - dist-claude-slim: the size-reduced `--slim` build for the Claude plugin
+#   directory, which times out validating the full package.
 
 on:
   push:
@@ -11,14 +14,23 @@ on:
 permissions:
   contents: write
 
-# Never run two publishes at once: each one appends to dist/claude.
-concurrency:
-  group: publish-claude-dist
-  cancel-in-progress: false
-
 jobs:
   publish:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: claude, flags: "", branch: dist/claude }
+          - { name: claude-slim, flags: "--slim", branch: dist-claude-slim }
+    # Never run two publishes to one branch at once: each one appends to it.
+    concurrency:
+      group: publish-${{ matrix.name }}
+      cancel-in-progress: false
+    env:
+      BUILD_FLAGS: ${{ matrix.flags }}
+      DIST_DIR: dist/${{ matrix.name }}
+      TARGET_BRANCH: ${{ matrix.branch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,23 +44,23 @@ jobs:
         run: |
           pip install -r build/requirements.txt
           # Pin prod: test/stage/dev variants rename the plugin and repoint its MCP server.
-          python3 build/build.py --variant prod claude
-          cp LICENSE.txt dist/claude/plugins/tableau/LICENSE.txt
+          python3 build/build.py --variant prod $BUILD_FLAGS claude
+          cp LICENSE.txt "$DIST_DIR/plugins/tableau/LICENSE.txt"
 
-      - name: Commit to dist/claude
+      - name: Commit to ${{ matrix.branch }}
         run: |
           set -euo pipefail
           SRC_SHA="$(git rev-parse HEAD)"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if git ls-remote --exit-code --heads origin dist/claude >/dev/null; then
-            git worktree add -B dist/claude ../out origin/dist/claude
+          if git ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null; then
+            git worktree add -B "$TARGET_BRANCH" ../out "origin/$TARGET_BRANCH"
           else
-            git worktree add --orphan -b dist/claude ../out
+            git worktree add --orphan -b "$TARGET_BRANCH" ../out
           fi
 
-          rsync -a --delete --exclude .git dist/claude/ ../out/
+          rsync -a --delete --exclude .git "$DIST_DIR/" ../out/
           cd ../out
           git add -A
           if git diff --cached --quiet; then
@@ -58,4 +70,4 @@ jobs:
           git commit \
             -m "Build of main@${SRC_SHA:0:10}" \
             -m "Source: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${SRC_SHA}"
-          git push origin dist/claude
+          git push origin "$TARGET_BRANCH"

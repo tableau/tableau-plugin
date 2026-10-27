@@ -67,3 +67,13 @@ capabilities:
 # Payload paths (globs relative to src/plugin/) not shipped on this platform.
 exclude:
   - "skills/*/agents/openai.yaml"   # OpenAI-only skill metadata
+
+# Size-reduced build for hosts with package limits (the Claude plugin
+# directory times out validating the full ~25 MB package). Built with
+# `build.py --slim`; published to the dist-claude-slim branch.
+slim:
+  # Globs match from the right, so "*.tbm" drops every chart template.
+  exclude:
+    - "*.tbm"
+  # Keep only the newest N resources/schemas/<YYYY_R>/ versions.
+  keep_latest_schemas: 2
