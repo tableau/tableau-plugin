@@ -104,44 +104,67 @@ The preflight must establish that `scaffold-data-app` is callable. If the tool
 is present but the scaffold call fails, report the error and stop. Do not
 hand-build the template or substitute another scaffold.
 
-The result carries an un-substituted template **zip** plus a `postUnzip` plan,
-and either `filePath` (the zip on local disk) or `s3URL` (download it first).
-Branch on whichever is present; past the fetch step the steps are identical.
-It also returns `allowedOrigins: string[]` — any external origin the app
-fetches from must be in that list.
+The result carries an un-substituted template **zip** plus a `postUnzip` plan.
+The zip arrives one of three ways — branch on whichever field is present;
+past the fetch step the steps are identical:
+
+- `downloadUrl` — a short-lived blob-storage link (newer servers).
+- `s3URL` — the same thing on older servers.
+- `filePath` — the zip already on local disk (no blob storage); skip the
+  download.
+
+A `downloadUrl`/`s3URL` link expires about 60 seconds after the call, so
+download it **immediately**, before doing anything else. If the download fails
+with an expired-link error, call `scaffold-data-app` again for a fresh link.
+
+The result also carries:
+
+- `wiring` (newer servers) — `server`, `site`, `channel`, and `port` for the
+  Tableau site this session is signed in to. Keep it: Wire a datasource in
+  copies these into every datasource descriptor. Older servers omit it.
+- `allowedOrigins: string[]` — the external origins the site lets data apps
+  reach. May be empty, in which case the app can't fetch any external origin.
+- `requestedOrigins` — which file declares the origins the app requests
+  (`file`) and how to write them (`instructions`). Every origin you put there
+  must also appear in `allowedOrigins`; see External origins below.
 
 Apply the plan deterministically with the bundled script — applying it freehand
 leaves half-replaced `TODO-MANIFEST-ID` / `TODO App Name` / `TODO Sheet Name` tokens or interleaves
 edits and renames in the wrong order.
 
-Finalize the plan (save, fetch, apply). Scripts referenced
-below live under `scripts/`, relative to this skill directory (`$SKILL_DIR`):
+Finalize the plan (fetch, save, apply). Fetch first — the link expires. Scripts
+referenced below live under `scripts/`, relative to this skill directory
+(`$SKILL_DIR`):
 
-1. Save the plan:
+1. Fetch the template — with `downloadUrl` (or `s3URL` on older servers),
+   download right away, then unzip:
 
    ```bash
    SKILL_DIR="<absolute path to this skill directory>"
    WORK="$(mktemp -d -t dataapp)"
 
-   # Save the postUnzip object verbatim (do NOT reformat — find tokens must match byte-for-byte)
-   cat > "$WORK/plan.json" <<'PLAN_JSON'
-   { …paste the result's postUnzip object here… }
-   PLAN_JSON
-   ```
-
-2. Fetch the template — with `s3URL`, download then unzip:
-
-   ```bash
-   curl -fsSL "<s3URL>" -o "$WORK/template.zip"
+   curl -fsSL "<downloadUrl or s3URL>" -o "$WORK/template.zip"
    mkdir -p "$WORK/unzipped"
    unzip -q "$WORK/template.zip" -d "$WORK/unzipped"
    ```
 
-   With `filePath`, unzip only:
+   With `filePath`, skip the download and unzip only:
 
    ```bash
+   SKILL_DIR="<absolute path to this skill directory>"
+   WORK="$(mktemp -d -t dataapp)"
+
    mkdir -p "$WORK/unzipped"
    unzip -q "<filePath>" -d "$WORK/unzipped"
+   ```
+
+2. Save the plan:
+
+   ```bash
+   # Save the postUnzip object verbatim (do NOT reformat — find tokens must match byte-for-byte)
+   cat > "$WORK/plan.json" <<'PLAN_JSON'
+   { …paste the result's postUnzip object here… }
+   PLAN_JSON
    ```
 
 3. Apply the plan (edits first, then renames; verifies no placeholders
@@ -161,6 +184,7 @@ At the end of this stage you have a finalized workspace directory:
 <App Name>/
   <App Name>.twb
   Packages/com.tableau.mcp.<slug>/
+    manifest.json           ← requestedOrigins lives here
     extensions/data-app.trex
     content/index.html
     content/src/app.js      ← the authoring surface
@@ -175,6 +199,18 @@ plain string with no hash/join-key involved, so it's freely hand-editable at
 any point before packaging — edit all 3 matching locations in the `.twb` to
 the same new value: the `<worksheet name='...'>` tag, the `<window class='worksheet'
 name='...'>` tag, and `<referenced-view ... viewId='...' />`.
+
+### External origins
+
+The extension sandbox blocks every external origin the package doesn't
+declare. To let the app reach one (an API, an image host), declare it in the
+file named by the scaffold result's `requestedOrigins.file`, in the format its
+`requestedOrigins.instructions` gives. Every origin you request must also
+appear in the result's `allowedOrigins` — the site blocks any other origin even
+when the manifest requests it. If `allowedOrigins` is empty, the app can't
+fetch any external origin: tell the user the site admin must allow the origin
+first, or design the app without it. Don't request origins the app doesn't
+use.
 
 ## Wire a datasource in
 
@@ -217,22 +253,33 @@ datasource placed only on some other sheet fails at query time. Don't move
 datasources onto separate sheets afterward.
 
 1. **Get the datasource's identity** with `list-datasources` (LUID, name/caption,
-   contentUrl, and the server host + site) and `get-datasource-metadata({ datasourceLuid })`
+   contentUrl) and `get-datasource-metadata({ datasourceLuid })`
    (field names + datatypes). The published DS **contentUrl** is the
    `repositoryId`. (To reuse an existing workbook's datasource instead, see
    Reuse an existing workbook's datasource below — it gets you here, then
    continues at step 2.)
+
+   **Server, site, channel, and port come from the scaffold result's
+   `wiring`.** Copy `wiring.server`, `wiring.site`, `wiring.channel`, and
+   `wiring.port` verbatim into every descriptor. Don't guess them, parse them
+   out of a URL, or ask the user. `wiring.site` is `""` for the Default site —
+   keep it empty, don't substitute a name.
+
+   **Older servers return no `wiring`.** Then use the server host and site from
+   `list-datasources` as before, with `"channel": "https", "port": 443`. If they
+   aren't there either, ask the user for the server host and site. Never invent
+   them.
 2. **Write a descriptor** listing *only the fields the app will query* (name +
-   datatype + role). Use `"site": ""` for the Default site. One datasource:
+   datatype + role). One datasource:
 
    ```bash
    cat > "$WORK/descriptor.json" <<'DS_JSON'
    {
      "caption": "<Friendly Name>",
      "repositoryId": "<published DS contentUrl>",
-     "site": "<site>",
-     "server": "<server host, e.g. 10ax.online.tableau.com>",
-     "channel": "https", "port": 443,
+     "site": "<wiring.site>",
+     "server": "<wiring.server>",
+     "channel": "<wiring.channel>", "port": <wiring.port>,
      "fields": [
        { "name": "Profit", "datatype": "real",   "role": "measure"   },
        { "name": "Region", "datatype": "string", "role": "dimension" }
@@ -323,8 +370,9 @@ have produced).
      the source data file, and wire the file as an Embedded file
      datasource above.
    - **`"published"`** — still run the rest of Published datasource step 1
-     (`list-datasources` filtered by this LUID, for `contentUrl`/site/server
-     — `get-workbook` doesn't carry those — plus
+     (`list-datasources` filtered by this LUID, for `contentUrl` — and
+     site/server only when the scaffold result had no `wiring`;
+     `get-workbook` doesn't carry those — plus
      `get-datasource-metadata({ datasourceLuid })` for fields, whose
      top-level `datasourceType` should also read `"published"` when present),
      then continue at step 2. Filter candidate fields to `columnClass: "COLUMN"`
@@ -463,9 +511,12 @@ Uses the MCP publish tools (not available to Slack clients).
 - Don't interpret `publish-workbook` permissions freehand. Use
   `scripts/summarize_publish_access.py` and relay its stdout verbatim.
 - Don't assume the scaffold result's zip is already substituted, or skip
-  unzip. Whether it arrives as `filePath` or `s3URL`, it's the same static,
-  un-substituted template **zip** — unzip it and apply the plan before
-  authoring.
+  unzip. Whether it arrives as `downloadUrl`, `s3URL`, or `filePath`, it's the
+  same static, un-substituted template **zip** — unzip it and apply the plan
+  before authoring.
+- Don't guess a descriptor's `server`, `site`, `channel`, or `port`. Copy them
+  from the scaffold result's `wiring`; without `wiring`, use `list-datasources`
+  or ask the user.
 - Don't hand off `app.js` to the human unprompted. Authoring `app.js` yourself
   is the fixed default — always write it from the human's stated
   criteria/vibe. Only hand off when the human explicitly says they want to
