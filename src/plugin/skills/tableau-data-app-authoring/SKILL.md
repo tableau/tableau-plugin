@@ -208,14 +208,13 @@ name='...'>` tag, and `<referenced-view ... viewId='...' />`.
 ### External origins
 
 The extension sandbox blocks every external origin the package doesn't
-declare. To let the app reach one (an API, an image host), declare it in the
-file named by the scaffold result's `requestedOrigins.file`, in the format its
-`requestedOrigins.instructions` gives. Every origin you request must also
-appear in the result's `allowedOrigins` — the site blocks any other origin even
-when the manifest requests it. If `allowedOrigins` is empty, the app can't
-fetch any external origin: tell the user the site admin must allow the origin
-first, or design the app without it. Don't request origins the app doesn't
-use.
+declare. To let the app reach one (an API, an image host), run Add external
+origins below: `declare_origins.py` writes it to the file named by the scaffold
+result's `requestedOrigins.file` (the package's `manifest.json`), in the format
+its `requestedOrigins.instructions` gives, and fails unless the origin is in the
+result's `allowedOrigins`. If `allowedOrigins` is empty, the app can't fetch any
+external origin: tell the user the site admin must allow the origin first, or
+design the app without it. Don't request origins the app doesn't use.
 
 ## Wire a datasource in
 
