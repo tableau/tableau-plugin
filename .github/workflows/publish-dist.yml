@@ -1,10 +1,11 @@
-name: Publish Claude distribution
+name: Publish plugin distributions
 
-# Builds the Claude plugin from main and commits it to a dist branch, so
+# Builds the plugin from main and commits each build to a dist branch, so
 # consumers can install it without a build step:
-# - dist/claude: the full build (e.g. for the Salesforce AI Marketplace).
-# - dist-claude-slim: the size-reduced `--slim` build for the Claude plugin
-#   directory, which times out validating the full package.
+# - dist/claude: the full Claude build (e.g. for the Salesforce AI Marketplace).
+# - dist-claude-slim: the size-reduced `--slim` Claude build for the Claude
+#   plugin directory, which times out validating the full package.
+# - dist/codex: the OpenAI build (ChatGPT and Codex).
 
 on:
   push:
@@ -21,13 +22,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: claude, flags: "", branch: dist/claude }
-          - { name: claude-slim, flags: "--slim", branch: dist-claude-slim }
+          # name is the build's dist/<name>/ output dir.
+          - { name: claude, platform: claude, flags: "", branch: dist/claude }
+          - { name: claude-slim, platform: claude, flags: "--slim", branch: dist-claude-slim }
+          - { name: openai, platform: openai, flags: "", branch: dist/codex }
     # Never run two publishes to one branch at once: each one appends to it.
     concurrency:
       group: publish-${{ matrix.name }}
       cancel-in-progress: false
     env:
+      PLATFORM: ${{ matrix.platform }}
       BUILD_FLAGS: ${{ matrix.flags }}
       DIST_DIR: dist/${{ matrix.name }}
       TARGET_BRANCH: ${{ matrix.branch }}
@@ -44,7 +48,7 @@ jobs:
         run: |
           pip install -r build/requirements.txt
           # Pin prod: test/stage/dev variants rename the plugin and repoint its MCP server.
-          python3 build/build.py --variant prod $BUILD_FLAGS claude
+          python3 build/build.py --variant prod $BUILD_FLAGS "$PLATFORM"
           cp LICENSE.txt "$DIST_DIR/plugins/tableau/LICENSE.txt"
 
       - name: Commit to ${{ matrix.branch }}
