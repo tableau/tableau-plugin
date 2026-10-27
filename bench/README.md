@@ -46,6 +46,44 @@ python3 bench/run_bench.py --dry-run
 calling codex — use it to sanity-check `prompts.json` before spending real
 runs.
 
+### Running against Claude
+
+`--harness claude` runs the same tests through Claude Code's headless mode
+(`claude -p --output-format stream-json`) instead of `codex exec`. Summaries,
+reports, the ledger, grading and the `.hyper` extract all use the same format, so
+Codex and Claude runs can be compared directly. Every summary and ledger entry
+records its `harness`.
+
+```bash
+.build-venv/bin/python build/build.py --variant dev claude   # -> dist/claude-dev/plugins/tableau
+python3 bench/run_bench.py --harness claude --dry-run
+python3 bench/run_bench.py --harness claude --only AC06_cold --reps 1
+```
+
+- **No install step.** Each run loads the built plugin with `--plugin-dir`
+  (override with `--claude-plugin-dir`), so a rebuild takes effect on the next
+  run.
+- **Isolation.** Runs pass `--setting-sources project`, so your user-level
+  plugins, hooks, MCP servers and `CLAUDE.md` stay out of the benchmark. Your
+  login still works: the harness copies only `apiKeyHelper`, `env` and
+  `modelOverrides` from `~/.claude/settings.json` into a private temp file
+  (mode 0600), passes it with `--settings`, and deletes it when the sweep ends.
+  Plugins your organization forces through managed settings still load.
+- **Claude Code version.** It must be new enough for the models you sweep.
+  Older CLIs get rejected by the gateway.
+- **Permissions.** Runs use `--permission-mode auto` by default. Override it
+  with `permission_mode` in `defaults` or on a test. `sandbox` and
+  `approve_for_me` are Codex-only.
+- **Multi-step tests.** Each step resumes the session with `--resume`, and
+  unlike `codex exec resume` every flag (including `--add-dir`) applies to
+  every step.
+- **Token usage and cost.** Claude reports cache reads and writes separately.
+  `input_tokens` includes both, matching Codex. Each step's `usage` also
+  carries `cost_usd`, the CLI's own estimate.
+- **Grading and cleanup** still use the Codex judge and
+  `dist/openai-dev/.../.mcp.json`, so the OpenAI dev build must exist too. Using
+  the same judge keeps scores comparable across harnesses.
+
 ## Running tests
 
 ```bash
@@ -190,9 +228,13 @@ above) — later steps inherit step 1's directory. Leave it `null` (the
 default) to run from wherever you invoke `run_bench.py`; set it if a test's
 prompt relies on relative paths or expects codex's shell commands to execute
 somewhere other than the repo root.
-- Per-test overrides: `repeats`, `sandbox`, `approve_for_me`, `model`, `cd`.
-`model` (in `defaults` or per-test) may be a string or a list — see Model
-tracking above for how a list triggers a sweep.
+- Per-test overrides: `repeats`, `sandbox`, `approve_for_me`,
+`permission_mode`, `model`, `cd`. `model` (in `defaults` or per-test) may be
+a string or a list (see Model tracking above for how a list triggers a sweep).
+It may also be a mapping from harness to either of those, e.g.
+`{"codex": ["gpt-6.1-sol"], "claude": ["claude-sonnet-5-5", "claude-opus-5-5"]}`,
+so one `prompts.json` serves both harnesses. A harness missing from the mapping
+falls back to its CLI's default model.
 
 
 
