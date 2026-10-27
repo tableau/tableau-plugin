@@ -16,7 +16,7 @@ or non-tool ("thinking") segments, distinguished by ``segment_type``. This
 script emits ONE ROW per timeline entry. Row ordering within a rep is preserved
 by ``seq`` and by the ``start_offset_s`` / ``end_offset_s`` columns (seconds
 from the rep's start), so you can see exactly what ran when and what followed a
-given tool call. The requested top-level properties (``test_id``, ``model``,
+given tool call. The requested top-level properties (``test_id``, ``harness``, ``model``,
 ``wall_time``, ``assetsCreated``) and step-level context (prompt, final message,
 token usage) are repeated on every row.
 
@@ -52,6 +52,7 @@ TABLE = TableDefinition(
         TableDefinition.Column("row_id", SqlType.big_int(), NULLABLE),
         # Repeated top-level metadata.
         TableDefinition.Column("test_id", SqlType.text(), NULLABLE),
+        TableDefinition.Column("harness", SqlType.text(), NULLABLE),
         TableDefinition.Column("model", SqlType.text(), NULLABLE),
         TableDefinition.Column("wall_time", SqlType.double(), NULLABLE),
         TableDefinition.Column("assetsCreated", SqlType.bool(), NULLABLE),
@@ -64,6 +65,8 @@ TABLE = TableDefinition(
         TableDefinition.Column("cache_write_input_tokens", SqlType.big_int(), NULLABLE),
         TableDefinition.Column("output_tokens", SqlType.big_int(), NULLABLE),
         TableDefinition.Column("reasoning_output_tokens", SqlType.big_int(), NULLABLE),
+        # Claude only: the CLI's own cost estimate for the step. Codex reports no cost.
+        TableDefinition.Column("cost_usd", SqlType.double(), NULLABLE),
         # Timeline entry (ordering + timing + detail).
         TableDefinition.Column("seq", SqlType.big_int(), NULLABLE),
         TableDefinition.Column("step", SqlType.int(), NULLABLE),
@@ -156,6 +159,8 @@ def flatten_file(path: Path):
         return
 
     test_id = data.get("test_id")
+    # Summaries from before the Claude harness existed are all codex runs.
+    harness = data.get("harness") or "codex"
     model = data.get("model")
     wall_time = data.get("wall_time")
     assets_created = data.get("assetsCreated")
@@ -170,13 +175,14 @@ def flatten_file(path: Path):
             usage.get("cache_write_input_tokens"),
             usage.get("output_tokens"),
             usage.get("reasoning_output_tokens"),
+            usage.get("cost_usd"),
         ]
         timeline = step.get("timeline")
         if timeline is None:
             timeline = _legacy_timeline(step)
         for entry in timeline or []:
             yield [
-                test_id, model, wall_time, assets_created, path.name,
+                test_id, harness, model, wall_time, assets_created, path.name,
                 prompt, final_message, *tokens,
                 entry.get("seq"),
                 entry.get("step"),
