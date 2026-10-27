@@ -3,9 +3,12 @@ Shared stdio JSON-RPC client for talking to the Tableau MCP server directly (no 
 involved -- deterministic tool calls with fixed arguments), used by bench scripts that
 need to read or clean up live Tableau content rather than going through codex.
 
-Launch config is read from plugins/tableau/.mcp.json -- the same file codex/the plugin
-uses -- rather than relying on the tableau-mcp checkout's own .env, which may be set up
-for a different transport (e.g. http) than the stdio transport this client speaks.
+Launch config is read from the built dev plugin's .mcp.json
+(dist/openai-dev/plugins/tableau/.mcp.json, written by `./reload-plugin.sh openai dev`)
+-- the same file codex runs the plugin from -- rather than relying on the tableau-mcp
+checkout's own .env, which may be set up for a different transport (e.g. http) than the
+stdio transport this client speaks. The hosted variants (prod/test/stage) are http-only,
+so only the dev variant can be driven from here.
 """
 import json
 import os
@@ -14,14 +17,22 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MCP_JSON = REPO_ROOT / "plugins" / "tableau" / ".mcp.json"
+DEFAULT_MCP_JSON = REPO_ROOT / "dist" / "openai-dev" / "plugins" / "tableau" / ".mcp.json"
 
 
 def load_tableau_server_config(mcp_json_path=None):
     path = Path(mcp_json_path) if mcp_json_path else DEFAULT_MCP_JSON
-    cfg = json.loads(path.read_text())["mcpServers"]["tableau"]
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found -- run `./reload-plugin.sh openai dev` first")
+    servers = json.loads(path.read_text())["mcpServers"]
+    # The server key follows the build variant (e.g. "TableauDev"), so take the stdio one.
+    stdio = [cfg for cfg in servers.values() if "command" in cfg]
+    if not stdio:
+        raise ValueError(f"{path} has no stdio MCP server (only {', '.join(servers)}); "
+                         "build the dev variant with `./reload-plugin.sh openai dev`")
+    cfg = stdio[0]
     cmd = [cfg["command"], *cfg.get("args", [])]
-    cwd = cfg["cwd"]
+    cwd = cfg.get("cwd")
     env = {**os.environ, **cfg.get("env", {})}
     return cmd, cwd, env
 

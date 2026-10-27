@@ -15,15 +15,25 @@ measure:
 1. Check out `benchmarking`.
 2. Rebase it onto the branch under test, so the plugin in this checkout is
    the version you're measuring.
-3. Reinstall the plugin (`./reload-plugin.sh` from the repo root, then start a
-   new Codex task). Codex copies plugin files into its cache at install time,
-   so a checkout/rebase has no effect until you reinstall.
+3. Build and reinstall the dev variant (`./reload-plugin.sh openai dev` from
+   the repo root). This builds `src/plugin/` + `platforms/openai/` into
+   `dist/openai-dev/` and installs it as `Tableau-dev`, running your local
+   tableau-mcp checkout (`TABLEAU_MCP_DIR` in `.env`) over stdio. Codex copies
+   plugin files into its cache at install time, so a checkout/rebase has no
+   effect until you rebuild and reinstall.
+4. Leave only one Tableau plugin enabled in Codex (`codex plugin list`), so runs
+   don't mix tools from the marketplace, test, or stage installs.
 
 ```bash
 git checkout benchmarking
 git rebase <branch-under-test>
-./reload-plugin.sh
+./reload-plugin.sh openai dev
 ```
+
+Use the `dev` variant: `grade_results.py` and `cleanup_assets.py` talk to the
+MCP server directly over stdio using `dist/openai-dev/plugins/tableau/.mcp.json`,
+and the hosted variants (prod/test/stage) are http-only. Pass `--server-cmd` to
+either script to override.
 
 No other dependencies beyond Python 3 stdlib and the `codex` CLI already being
 authenticated with the Tableau plugin installed. From the repo root:
@@ -108,9 +118,9 @@ limits the sweep to just that test.
 - gpt-5.6-sol
 - gpt-5.6-terra
 - gpt-5.6-luna
-- gpt-5.5
-- gpt-5.4
-- gpt-5.4-mini
+
+(`gpt-5.5`, `gpt-5.4` and `gpt-5.4-mini` now fail with `model_not_found` on a
+ChatGPT-account Codex login.)
 
 
 

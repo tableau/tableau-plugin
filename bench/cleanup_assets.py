@@ -64,9 +64,9 @@ def main():
     ap.add_argument("--state", type=Path, default=DEFAULT_STATE)
     ap.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     ap.add_argument("--server-cmd", nargs="+", default=None,
-                     help="Override the MCP server launch command (default: read from plugins/tableau/.mcp.json)")
+                     help="Override the MCP server launch command (default: read from dist/openai-dev/plugins/tableau/.mcp.json)")
     ap.add_argument("--server-cwd", default=None,
-                     help="Override the MCP server cwd (default: read from plugins/tableau/.mcp.json)")
+                     help="Override the MCP server cwd (default: read from dist/openai-dev/plugins/tableau/.mcp.json)")
     ap.add_argument("--yes", action="store_true", help="Actually delete. Without this, only lists tracked assets.")
     ap.add_argument("--limit", type=int, default=None, help="Max number of assets to delete this run.")
     args = ap.parse_args()
@@ -98,7 +98,8 @@ def main():
     if args.limit is not None:
         pending = pending[: args.limit]
 
-    client = McpStdioClient(args.server_cmd, args.server_cwd)
+    default_cmd, default_cwd, server_env = load_tableau_server_config()
+    client = McpStdioClient(args.server_cmd or default_cmd, args.server_cwd or default_cwd, env=server_env)
     report_lines = ["# Cleanup report", ""]
     try:
         client.initialize()
