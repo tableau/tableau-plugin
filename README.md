@@ -29,6 +29,7 @@ platforms/
       .claude-plugin/marketplace.json
       plugins/tableau/.claude-plugin/plugin.json
       plugins/tableau/.mcp.json
+      plugins/tableau/README.md                 # end-user docs; required by the Claude plugin directory
     vars.yaml
 build/
   build.py                  # assembles a platform distribution
