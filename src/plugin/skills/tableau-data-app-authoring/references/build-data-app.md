@@ -94,6 +94,17 @@ locally, no CDN** (mirroring how `tableau.extensions.1.latest.min.js` is already
 before `app.js`); prefer 2D (SVG/Canvas/DOM) over WebGL; use safe DOM APIs
 (`textContent` / `createElement`), never `innerHTML` with live values.
 
+**Package hosting.** Only web assets under the package's `content/` folder are served. Files at
+the package root still go into the `.twbx` but 404 at runtime; hidden files are never packaged.
+`fetch()` of package files also fails (see [external-apis.md](external-apis.md), Origin `null`
+and CORS), and `package_twbx.py` warns about it. Don't ship data in the package:
+publish it as a Tableau datasource and query it, so it refreshes and row-level security and user
+filters apply. Small static config can be a `.js` file that sets a global, loaded with
+`<script src>` before `app.js`.
+
+**External origins.** Rules: [external-apis.md](external-apis.md). Declare origins with
+`scripts/declare_origins.py` (SKILL.md, Add external origins).
+
 ## Review the live app in Tableau
 
 There is **no local preview** — the live query only runs inside Tableau. Open the published workbook
