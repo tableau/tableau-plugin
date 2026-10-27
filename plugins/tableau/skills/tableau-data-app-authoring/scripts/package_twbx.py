@@ -14,7 +14,17 @@ no extension .trex files under extensions/`.
 
 Hard-fails unless the workspace root has exactly one `.twb`, a `Packages/` dir,
 at least one `.trex` under `Packages/*/extensions/`, and every `Data/` file the
-`.twb` references.
+`.twb` references, or if a package `manifest.json` declares `requestedOrigins` as
+anything but one space-separated string (Tableau silently ignores other shapes).
+
+Warns (never fails) about things that break or leak at runtime: external origins
+referenced in content/ but not declared with declare_origins.py, fetch() of
+package-relative paths (fails in the null-origin sandbox), and secret-looking
+keys in any file that gets packaged (hidden files are skipped, so never shipped).
+In minified or bundled files, only origins used as a request target (fetch,
+src/href, url(), import, WebSocket, ...) or written as a bare origin string (an
+API base URL) count, so library doc links in a React or esbuild bundle don't
+trip the warning.
 
 Output defaults to `<App Name>.twbx` next to the workspace dir; an existing
 file is overwritten. Prints the output path on stdout.
@@ -23,7 +33,9 @@ Usage: python3 package_twbx.py <workspaceDir> [outputPath]
 """
 
 import glob
+import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
@@ -31,6 +43,26 @@ import zipfile
 PACKED_DIRS = ('Packages', 'Data', 'Resources/.agents')
 
 FILE_PATH_ATTRS = ('filename', 'dbname')
+
+ORIGIN_IN_CODE = re.compile(r'''https?://[A-Za-z0-9.-]+(?::\d+)?''')
+# Namespace URIs and other identifiers that never become network requests.
+NON_NETWORK_ORIGINS = {'http://www.w3.org', 'https://www.w3.org'}
+# The same origin used as a request target; the only kind counted in bundled code.
+NETWORK_ORIGIN = re.compile(r'''(?:fetch\(|new\s+(?:WebSocket|EventSource|Worker)\(|\.open\(\s*['"]\w+['"]\s*,|'''
+                            r'''\b(?:src|href|action|baseURL|baseUrl)\s*[:=]|url\(|@import|\bfrom|import\()\s*['"`]?'''
+                            r'''(https?://[A-Za-z0-9.-]+(?::\d+)?)''')
+# A string literal that is just an origin, like an API base URL (`const API = 'https://…'`).
+BARE_ORIGIN = re.compile(r'''['"`](https?://[A-Za-z0-9.-]+(?::\d+)?)/?['"`]''')
+# A package-relative fetch; skips URLs with a scheme and template literals that start with `${…}`.
+RELATIVE_FETCH = re.compile(r'''fetch\(\s*(?:['"](?![A-Za-z][A-Za-z0-9+.-]*:)|`(?!\$\{|[A-Za-z][A-Za-z0-9+.-]*:))''')
+# A secret-looking key assigned a long string literal (e.g. "SPOTIFY_CLIENT_SECRET": "…"), not `token = null`.
+SECRET_KEY = re.compile(r'''[\w-]*(?:secret|token|api[_-]?key|password|passwd|private[_-]?key)['"]?\s*[:=]\s*['"]([^'"\s]{8,})['"]''',
+                        re.IGNORECASE)
+PLACEHOLDER = re.compile(r'placeholder|example|changeme|replace|dummy|sample|your[_-]|xxxx|\*\*\*\*|^<.*>$', re.IGNORECASE)
+CODE_EXTENSIONS = ('.js', '.mjs', '.html', '.htm', '.css')
+BINARY_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.otf', '.eot',
+                     '.zip', '.hyper', '.pdf', '.mp3', '.mp4', '.wasm')
+MINIFIED_LINE = 1000
 
 
 def die(message):
@@ -89,6 +121,89 @@ def collect_packed_dirs(workspace, twb):
     return entries_by_top
 
 
+def warn(message):
+    print(f'⚠ {message}', file=sys.stderr)
+
+
+def requested_origins(package_dir):
+    path = os.path.join(package_dir, 'manifest.json')
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
+    except Exception as error:
+        die(f'Could not read/parse {path}: {error}')
+    value = manifest.get('requestedOrigins') if isinstance(manifest, dict) else None
+    if value is None:
+        return set()
+    if not isinstance(value, str):
+        die(f'{path}: requestedOrigins must be ONE space-separated string; Tableau ignores a '
+            f'{type(value).__name__} and blocks every external origin. Fix it with declare_origins.py.')
+    return {o.lower() for o in value.split()}
+
+
+def read_text(path):
+    with open(path, 'rb') as f:
+        data = f.read()
+    return None if b'\0' in data[:8192] else data.decode('utf-8', errors='replace')
+
+
+def has_secret(text):
+    return any(not PLACEHOLDER.search(value) for value in SECRET_KEY.findall(text))
+
+
+def is_bundled(name, text):
+    return '.min.' in name or any(len(line) > MINIFIED_LINE for line in text.splitlines())
+
+
+# Runtime problems a zip can't catch: undeclared external origins and leaked secrets.
+# Checks exactly the Packages/ files that go into the .twbx.
+def preflight(workspace, entries):
+    by_package = {}
+    for path, rel in entries:
+        parts = rel.split('/')
+        if len(parts) > 2 and os.path.isfile(path):
+            by_package.setdefault(parts[1], []).append((path, parts))
+    for pkg, files in sorted(by_package.items()):
+        declared = requested_origins(os.path.join(workspace, 'Packages', pkg))
+        undeclared, relative_fetch, secrets = {}, [], []
+        for path, parts in files:
+            name, rel = parts[-1], '/'.join(parts[1:])
+            in_content = parts[2] == 'content'
+            # The vendored Extensions API library is Tableau's own code.
+            if name.startswith('tableau.extensions.') or name.lower().endswith(BINARY_EXTENSIONS):
+                continue
+            text = read_text(path)
+            if text is None:
+                continue
+            if has_secret(text):
+                secrets.append(rel)
+            if not in_content or not name.endswith(CODE_EXTENSIONS):
+                continue
+            if is_bundled(name, text):
+                found = NETWORK_ORIGIN.findall(text) + BARE_ORIGIN.findall(text)
+            else:
+                found = ORIGIN_IN_CODE.findall(text)
+            for origin in found:
+                origin = origin.lower()
+                if origin not in declared and origin not in NON_NETWORK_ORIGINS:
+                    undeclared.setdefault(origin, rel)
+            if RELATIVE_FETCH.search(text):
+                relative_fetch.append(rel)
+        if undeclared:
+            warn(f'{pkg}: content references origins not in requestedOrigins: ' +
+                 ', '.join(f'{o} ({f})' for o, f in sorted(undeclared.items())) +
+                 '. Requests, images, scripts, or styles from them are blocked by the CSP unless declared '
+                 'with declare_origins.py (plain links that only navigate are fine).')
+        if relative_fetch:
+            warn(f'{pkg}: fetch() of a package-relative path in {", ".join(relative_fetch)} fails in the '
+                 'sandbox (null origin, no CORS). Ship data/config as a .js file loaded with <script src>.')
+        if secrets:
+            warn(f'{pkg}: secret-looking keys in {", ".join(secrets)}. Anyone who can open or download '
+                 'the workbook can read them; see Security best practices in SKILL.md.')
+
+
 def main():
     argv = sys.argv
     if len(argv) < 2 or len(argv) > 3:
@@ -116,6 +231,7 @@ def main():
         os.path.dirname(workspace), os.path.basename(workspace) + '.twbx')
 
     entries_by_top = collect_packed_dirs(workspace, twb)
+    preflight(workspace, entries_by_top.get('Packages', []))
 
     # Paths are workspace-relative so nothing lands under an <App Name>/ prefix.
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
