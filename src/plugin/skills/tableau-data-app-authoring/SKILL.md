@@ -124,9 +124,6 @@ with an expired-link error, call `scaffold-data-app` again for a fresh link.
 
 The result also carries:
 
-- `wiring` (newer servers) — `server`, `site`, `channel`, and `port` for the
-  Tableau site this session is signed in to. Keep it: Wire a datasource in
-  copies these into every datasource descriptor. Older servers omit it.
 - `allowedOrigins: string[]` — the external origins the site lets data apps
   reach. May be empty, in which case the app can't fetch any external origin.
 - `requestedOrigins` — which file declares the origins the app requests
@@ -263,16 +260,9 @@ datasources onto separate sheets afterward.
    Reuse an existing workbook's datasource below — it gets you here, then
    continues at step 2.)
 
-   **Server, site, channel, and port come from the scaffold result's
-   `wiring`.** Copy `wiring.server`, `wiring.site`, `wiring.channel`, and
-   `wiring.port` verbatim into every descriptor. Don't guess them, parse them
-   out of a URL, or ask the user. `wiring.site` is `""` for the Default site —
-   keep it empty, don't substitute a name.
-
-   **Older servers return no `wiring`.** Then use the server host and site from
-   `list-datasources` as before, with `"channel": "https", "port": 443`. If they
-   aren't there either, ask the user for the server host and site. Never invent
-   them.
+   The descriptor needs no server, site, channel, or port: publishing points
+   the connection at the publishing server and site. `repositoryId` is the one
+   value that has to be exact.
 2. **Write a descriptor** listing *only the fields the app will query* (name +
    datatype + role). One datasource:
 
@@ -281,9 +271,6 @@ datasources onto separate sheets afterward.
    {
      "caption": "<Friendly Name>",
      "repositoryId": "<published DS contentUrl>",
-     "site": "<wiring.site>",
-     "server": "<wiring.server>",
-     "channel": "<wiring.channel>", "port": <wiring.port>,
      "fields": [
        { "name": "Profit", "datatype": "real",   "role": "measure"   },
        { "name": "Region", "datatype": "string", "role": "dimension" }
@@ -337,7 +324,7 @@ file types it can't); the descriptor just has `"type": "file"`.
 2. **Write a descriptor.** `file` is the path relative to the `.twb`. `table`
    picks the table in a file that holds several (an Excel sheet); the script
    says when it's needed. Field names must match the column names Tableau reads
-   from the file, usually its header row. No server, site, or `repositoryId`:
+   from the file, usually its header row. No `repositoryId`:
 
    ```bash
    cat > "$WORK/descriptor.json" <<'DS_JSON'
@@ -374,9 +361,7 @@ have produced).
      the source data file, and wire the file as an Embedded file
      datasource above.
    - **`"published"`** — still run the rest of Published datasource step 1
-     (`list-datasources` filtered by this LUID, for `contentUrl` — and
-     site/server only when the scaffold result had no `wiring`;
-     `get-workbook` doesn't carry those — plus
+     (`list-datasources` filtered by this LUID, for `contentUrl`, plus
      `get-datasource-metadata({ datasourceLuid })` for fields, whose
      top-level `datasourceType` should also read `"published"` when present),
      then continue at step 2. Filter candidate fields to `columnClass: "COLUMN"`
@@ -619,9 +604,8 @@ package-relative `fetch()`.
   unzip. Whether it arrives as `downloadUrl`, `s3URL`, or `filePath`, it's the
   same static, un-substituted template **zip** — unzip it and apply the plan
   before authoring.
-- Don't guess a descriptor's `server`, `site`, `channel`, or `port`. Copy them
-  from the scaffold result's `wiring`; without `wiring`, use `list-datasources`
-  or ask the user.
+- Don't guess `repositoryId`. It's the datasource's `contentUrl` from
+  `list-datasources`, not its name or LUID; a wrong one fails at publish.
 - Don't hand off `app.js` to the human unprompted. Authoring `app.js` yourself
   is the fixed default — always write it from the human's stated
   criteria/vibe. Only hand off when the human explicitly says they want to

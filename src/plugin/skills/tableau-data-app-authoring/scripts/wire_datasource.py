@@ -22,16 +22,11 @@ fails at query time. The first datasource is the primary (it alone gets
 
 Usage: python3 wire_datasource.py <path-to.twb> <descriptor.json>
 
-descriptor.json (Claude assembles from list-datasources + get-datasource-metadata,
-with site/server/channel/port copied verbatim from the scaffold-data-app result's
-`wiring` when present; list ONLY the fields the app will query). Either one datasource:
+descriptor.json (Claude assembles from list-datasources + get-datasource-metadata;
+list ONLY the fields the app will query). Either one datasource:
   {
     "caption":      "Superstore Datasource",
     "repositoryId": "SuperstoreDatasource",   // published DS contentUrl (== repo-location id / dbname)
-    "site":         "mcp-test",                // wiring.site; "" for the Default site
-    "server":       "10ax.online.tableau.com", // wiring.server
-    "channel":      "https",   // wiring.channel; optional, default https
-    "port":         443,       // wiring.port; optional, default 443 (use http/80 for on-prem)
     "connectionName": "sqlproxy.<hash>",  // optional, generated if omitted
     "fields": [
       { "name": "Profit", "datatype": "real",   "role": "measure"   },
@@ -61,6 +56,7 @@ from file_formats import FORMAT_BY_EXTENSION, bracket
 
 # The exact empty anchor emitted by the scaffold template. Matched literally.
 EMPTY_ANCHOR = '<datasources />'
+
 
 def die(message):
     print(f'✗ {message}', file=sys.stderr)
@@ -138,13 +134,10 @@ def parse_datasource(descriptor, error_prefix=''):
         return parse_file_datasource(descriptor, error_prefix)
     if kind != 'published':
         die(f'{error_prefix}Descriptor "type" must be "published" or "file" (got {json.dumps(kind)}).')
-    for key in ('caption', 'repositoryId', 'site', 'server'):
+    for key in ('caption', 'repositoryId'):
         value = descriptor.get(key)
-        # site may be "" (the Default site); everything else must be non-empty.
-        if not isinstance(value, str) or (not value and key != 'site'):
+        if not isinstance(value, str) or not value:
             die(f'{error_prefix}Descriptor is missing required string "{key}".')
-    channel = descriptor.get('channel') or 'https'
-    port = descriptor.get('port') if descriptor.get('port') is not None else (443 if channel == 'https' else 80)
 
     fields = parse_fields(descriptor, error_prefix)
 
@@ -156,10 +149,6 @@ def parse_datasource(descriptor, error_prefix=''):
         'type': 'published',
         'caption': descriptor['caption'],
         'repositoryId': descriptor['repositoryId'],
-        'site': descriptor['site'],
-        'server': descriptor['server'],
-        'channel': channel,
-        'port': port,
         'fields': fields,
         'connectionName': connection_name,
     }
@@ -244,13 +233,6 @@ def parse_descriptor(descriptor):
     return datasources
 
 
-# The Default site has no /t/<site> path segment and no site attribute.
-def repository_location_xml(repository_id, site):
-    if not site:
-        return f"<repository-location id='{esc(repository_id)}' path='/datasources' revision='1.0' />"
-    return f"<repository-location id='{esc(repository_id)}' path='/t/{esc(site)}/datasources' revision='1.0' site='{esc(site)}' />"
-
-
 def root_datasource_xml(ds):
     return published_datasource_xml(ds) if ds['type'] == 'published' else file_datasource_xml(ds)
 
@@ -310,9 +292,11 @@ def published_datasource_xml(ds):
           </metadata-record>"""
         for f in ds['fields']
     )
+    # Publish fills in the site and swaps channel for the publishing server's data server,
+    # so only the repositoryId has to be right. Channel must be http(s) for that swap.
     return f"""    <datasource caption='{esc(ds['caption'])}' inline='true' name='{esc(ds['connectionName'])}' version='18.1'>
-      {repository_location_xml(ds['repositoryId'], ds['site'])}
-      <connection channel='{esc(ds['channel'])}' class='sqlproxy' dbname='{esc(ds['repositoryId'])}' directory='dataserver' port='{esc(ds['port'])}' server='{esc(ds['server'])}' server-ds-friendly-name='{esc(ds['caption'])}' username=''>
+      <repository-location id='{esc(ds['repositoryId'])}' path='/datasources' revision='1.0' />
+      <connection channel='https' class='sqlproxy' dbname='{esc(ds['repositoryId'])}' directory='dataserver' server-ds-friendly-name='{esc(ds['caption'])}' username=''>
         <relation type='collection'>
           <relation connection='{esc(ds['connectionName'])}' name='sqlproxy' table='[sqlproxy]' type='table' />
         </relation>
