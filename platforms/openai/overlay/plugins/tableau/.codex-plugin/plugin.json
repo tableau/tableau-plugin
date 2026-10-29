@@ -1,5 +1,5 @@
 {
-  "name": "Tableau",
+  "name": "app-6a5937013728819186b9de76e1f68de1",
   "version": "1.1.0",
   "description": "Explore Tableau content and generate/modify Tableau workbooks through the hosted Tableau MCP server.",
   "author": {
@@ -16,8 +16,12 @@
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/logo.png",
     "logoDark": "./assets/logoDark.png",
-    "shortDescription": "Explore Tableau data and generate/edit workbooks via the hosted Tableau MCP server",
+    "shortDescription": "See and understand data",
     "longDescription": "Connects Codex to Tableau's hosted MCP server (mcp.tableau.com) so you can search Tableau sites, inspect workbooks and data sources, query data with VizQL, read Pulse metrics, and generate or modify workbooks by editing their TWB XML and publishing it back — all scoped to the OAuth-authenticated user's own Tableau permissions. Workbook authoring requires the 'authoring-tools' and 'mcp-apps' feature gates to be enabled on the Tableau site.",
+    "websiteURL": "https://www.tableau.com/",
+    "supportURL": "https://www.tableau.com/about/contact/customer-service",
+    "privacyPolicyURL": "https://www.salesforce.com/company/legal/privacy/",
+    "termsOfServiceURL": "https://www.tableau.com/legal/eula",
     "developerName": "Salesforce, Inc.",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
