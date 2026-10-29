@@ -55,3 +55,25 @@ the raw field name.
    `<slices>` references resolve to declared datasource dependencies.
 5. Treat XSD validation as structural only. A passing XSD check does not verify
    field, filter, datasource, or dashboard cross-references.
+
+### Parameters in a worksheet
+
+A worksheet that uses a parameter lists the `Parameters` datasource in its
+`<view><datasources>`, but Tableau treats the first entry as the sheet's
+primary datasource. Always list the data datasource first and `Parameters`
+after it, the same order Tableau writes:
+
+```xml
+<view>
+  <datasources>
+    <datasource caption='Superstore' name='sqlproxy.1w05q7c0uf6jgq1gfw6pl0o3rfmw' />
+    <datasource name='Parameters' />
+  </datasources>
+  <datasource-dependencies datasource='Parameters'>...</datasource-dependencies>
+  <datasource-dependencies datasource='sqlproxy.1w05q7c0uf6jgq1gfw6pl0o3rfmw'>...</datasource-dependencies>
+```
+
+With `Parameters` first, the XSD check still passes but publish fails with
+error 400011 "The worksheet does not have a valid data source". On that error,
+check this order before changing connections, metadata records, or the
+object graph.
