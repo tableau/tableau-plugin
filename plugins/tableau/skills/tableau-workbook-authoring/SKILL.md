@@ -136,7 +136,7 @@ Reuse the extracted TWB/TWBX, published workbook ID, project ID, name, and view 
 4. Validate and publish (below).
 5. Render the result — see [`../../references/rendering.md`](../../references/rendering.md).
 
-If the downloaded package looks incomplete or a dependency is missing, read [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md). For a new XML construct or a validation failure, read [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md).
+If the downloaded package looks incomplete or a dependency is missing, read [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md). For a new XML construct (including adding a parameter to a worksheet), a validation failure, or a publish error such as "The worksheet does not have a valid data source", read [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md).
 
 ## Validate and publish
 
@@ -173,5 +173,5 @@ Record the workbook/project LUIDs, URL, and local artifact paths so a follow-up 
 - [`references/field-edits.md`](references/field-edits.md) — add a breakdown/color split or a filter to an existing worksheet via `inspect-workbook`/`add-encoding`/`add-filter`.
 - [`references/new-workbook.md`](references/new-workbook.md) — brand-new workbook, no starting point, no catalog match.
 - [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md) — incomplete TWBX package, or staged-upload steps and errors.
-- [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md) — new XML construct or validation failure.
+- [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md) — new XML construct (including adding a parameter to a worksheet) or validation/publish failure.
 - [`../../references/rendering.md`](../../references/rendering.md) — render the published/target view.
