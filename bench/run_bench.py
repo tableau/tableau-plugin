@@ -20,6 +20,7 @@ import concurrent.futures
 import json
 import os
 import re
+import secrets
 import shutil
 import statistics
 import subprocess
@@ -690,8 +691,14 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
         all_resolved_files = [resolve_step_files(step) for step in steps]
         all_dirs = sorted({str(p.parent) for files in all_resolved_files for p in files})
 
+        # A suffix no other run shares (parallel reps, other models, earlier sweeps), which the
+        # preamble's {run_tag} tells the model to end every workbook name with, so publishes
+        # can't collide on a name that already exists in the results project.
+        run_tag = f"{test['id'].split('_')[0]}-{sanitize_label(model_label)}-r{rep:02d}-{secrets.token_hex(2)}"
+
         preamble_wall_time = None
         if preamble:
+            preamble = preamble.replace("{run_tag}", run_tag)
             # Test-harness-only instructions, shared by every test, sent as their own turn
             # before the test's actual steps (via the same resume mechanism as a multi-step
             # test) so the model has them in context -- but they're fixed overhead, not part
@@ -744,6 +751,7 @@ def run_test_once(test, cfg, model_label, rep_dir, rep, reps, ledger_path, pream
             "test_id": test["id"],
             "harness": cfg["harness"],
             "model": model_label,
+            "run_tag": run_tag,
             "preamble_wall_time": preamble_wall_time,
             "wall_time": wall_time,
             "assetsCreated": any(step.get("created_assets") for step in step_results),
@@ -910,7 +918,7 @@ def main():
                     help="Built Claude plugin loaded via --plugin-dir (default: dist/claude-dev/plugins/tableau)")
     ap.add_argument("--prompts-file", type=Path, default=DEFAULT_PROMPTS_FILE)
     ap.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
-    ap.add_argument("--only", help="Run only the test with this id")
+    ap.add_argument("--only", help="Run only these tests (comma-separated ids)")
     ap.add_argument("--reps", type=int, help="Override repeats for all tests")
     ap.add_argument("--parallel", type=int, default=3, help="Max concurrent reps across the whole run, spanning tests/models (default 3)")
     ap.add_argument("--models", help="Comma-separated model ids to sweep the same tests across, e.g. gpt-5.6-sol,o3")
@@ -931,9 +939,11 @@ def main():
     preamble = spec.get("preamble")
     tests = spec["tests"]
     if args.only:
-        tests = [t for t in tests if t["id"] == args.only]
-        if not tests:
-            sys.exit(f"No test with id {args.only!r}")
+        only = [i.strip() for i in args.only.split(",") if i.strip()]
+        missing = [i for i in only if i not in {t["id"] for t in tests}]
+        if missing:
+            sys.exit(f"No test with id {', '.join(map(repr, missing))}")
+        tests = [t for t in tests if t["id"] in only]
 
     # Codex's own default model is only a label; Claude's isn't read, so it's "default".
     default_model_label = {"codex": read_config_default_model(), "claude": "default"}

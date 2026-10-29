@@ -96,6 +96,7 @@ harness, since model ids only work on their own CLI.
 ```bash
 python3 bench/run_bench.py                        # run every test in prompts.json
 python3 bench/run_bench.py --only AC10_cold        # just one test
+python3 bench/run_bench.py --only AC04_cold,AC09_cold   # several tests
 python3 bench/run_bench.py --only AC10_cold --reps 2   # override repeat count
 python3 bench/run_bench.py --models gpt-5.6-sol    # sweep the same tests across models (comma-separated)
 python3 bench/run_bench.py --report-only           # rebuild report.md from existing results/, no new runs
@@ -107,8 +108,16 @@ Every rep of every test+model in the sweep is queued into one shared thread pool
 within the same test. Each rep is an independent `codex exec` subprocess writing to its own
 `run_NN/`, so there's no shared state beyond the `created_assets.jsonl` ledger (append-guarded
 by a lock). Raise `--parallel` cautiously: it multiplies concurrent model/API usage and
-concurrent live Tableau site calls (the preamble's "use unique names" instruction is what
-keeps concurrent `publish-workbook` calls from colliding).
+concurrent live Tableau site calls.
+
+Workbook names can't collide across runs. Each run gets its own `run_tag`, such as
+`AC04-claude-opus-5-5-r06-3f9a`: the test, model and rep plus a random part. The tag
+replaces `{run_tag}` in the preamble, which tells the model to end every workbook name with
+it, to publish the first time without overwrite, and to republish under the same name with
+`overwrite: true`. Each run's `summary.json` records its `run_tag`. Without the tag, runs
+picked identical names (or names left over from earlier sweeps). Tableau rejects publishing
+over an existing name without overwrite with a 403, which tableau-mcp reports as a generic
+permission error, so models stopped instead of retrying.
 
 Each run's `codex exec`/`codex exec resume` subprocess has its OS working directory pinned to
 the same throwaway temp dir passed via `-C`, so shell commands the model runs (writing
