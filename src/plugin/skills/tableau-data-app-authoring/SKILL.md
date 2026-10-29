@@ -259,10 +259,6 @@ datasources onto separate sheets afterward.
    `repositoryId`. (To reuse an existing workbook's datasource instead, see
    Reuse an existing workbook's datasource below — it gets you here, then
    continues at step 2.)
-
-   The descriptor needs no server, site, channel, or port: publishing points
-   the connection at the publishing server and site. `repositoryId` is the one
-   value that has to be exact.
 2. **Write a descriptor** listing *only the fields the app will query* (name +
    datatype + role). One datasource:
 

@@ -46,8 +46,6 @@ packed into the `.twbx` and is current only as of packaging. Two consequences:
    'Embedded file datasource' covers it. In `app.js`, find each datasource by
    `name` (its caption) in `getAllDataSourcesAsync()`, not by position. Query each separately and
    combine results in `app.js` — Tableau data blending doesn't apply, so don't add blend XML.
-   The wiring descriptor needs only `caption`, `repositoryId` (the datasource's `contentUrl` from
-   `list-datasources`), and `fields`.
 3. **Introspect the datasource before writing `app.js`.**
    - `get-datasource-metadata({ datasourceLuid })` → fields, data model, parameters. This is the
      field list the app will match by name.
