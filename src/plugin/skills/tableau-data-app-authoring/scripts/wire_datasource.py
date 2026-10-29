@@ -57,7 +57,6 @@ from file_formats import FORMAT_BY_EXTENSION, bracket
 # The exact empty anchor emitted by the scaffold template. Matched literally.
 EMPTY_ANCHOR = '<datasources />'
 
-
 def die(message):
     print(f'✗ {message}', file=sys.stderr)
     sys.exit(1)
@@ -292,8 +291,6 @@ def published_datasource_xml(ds):
           </metadata-record>"""
         for f in ds['fields']
     )
-    # Publish fills in the site and swaps channel for the publishing server's data server,
-    # so only the repositoryId has to be right. Channel must be http(s) for that swap.
     return f"""    <datasource caption='{esc(ds['caption'])}' inline='true' name='{esc(ds['connectionName'])}' version='18.1'>
       <repository-location id='{esc(ds['repositoryId'])}' path='/datasources' revision='1.0' />
       <connection channel='https' class='sqlproxy' dbname='{esc(ds['repositoryId'])}' directory='dataserver' server-ds-friendly-name='{esc(ds['caption'])}' username=''>
