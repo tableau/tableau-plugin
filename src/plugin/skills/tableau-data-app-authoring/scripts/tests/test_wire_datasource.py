@@ -51,8 +51,6 @@ def descriptor_happy():
     return {
         "caption": "Superstore Datasource",
         "repositoryId": "SuperstoreDatasource",
-        "site": "mcp-test",
-        "server": "10ax.online.tableau.com",
         "connectionName": "sqlproxy.abc123",
         "fields": [
             {"name": "Profit", "datatype": "real", "role": "measure"},
@@ -101,13 +99,13 @@ def test_spatial_field_aggregates_with_collect(tmp_path):
 
 def test_missing_required_descriptor_field(tmp_path):
     descriptor = descriptor_happy()
-    del descriptor['site']
+    del descriptor['repositoryId']
     twb_path = write_twb(tmp_path)
     desc_path = write_descriptor(tmp_path, descriptor)
     result = run_wire(twb_path, desc_path)
 
     assert result.returncode == 1
-    assert result.stderr.strip() == '✗ Descriptor is missing required string "site".'
+    assert result.stderr.strip() == '✗ Descriptor is missing required string "repositoryId".'
 
 
 def test_empty_fields_array_is_rejected(tmp_path):
@@ -193,8 +191,6 @@ def datasource(n, **overrides):
     ds = {
         "caption": f"DS {n}",
         "repositoryId": f"DS{n}",
-        "site": "mcp-test",
-        "server": "10ax.online.tableau.com",
         "connectionName": f"sqlproxy.ds{n}",
         "fields": [{"name": f"Field{n}", "datatype": "string", "role": "dimension"}],
     }
@@ -282,12 +278,12 @@ def test_datasources_mixed_with_top_level_keys_is_rejected(tmp_path):
 
 def test_invalid_entry_error_names_its_index(tmp_path):
     bad = datasource(2)
-    del bad['site']
+    del bad['repositoryId']
     twb_path = write_twb(tmp_path)
     result = run_wire(twb_path, write_descriptor(tmp_path, {"datasources": [datasource(1), bad]}))
 
     assert result.returncode == 1
-    assert result.stderr.strip() == '✗ datasources[1]: Descriptor is missing required string "site".'
+    assert result.stderr.strip() == '✗ datasources[1]: Descriptor is missing required string "repositoryId".'
     assert open(twb_path).read() == TWB_TEMPLATE
 
 
@@ -372,16 +368,17 @@ def test_anchor_outside_the_view_is_rejected(tmp_path):
     assert open(twb_path).read() == content
 
 
-def test_default_site_omits_site_path_and_attribute(tmp_path):
+def test_server_site_channel_and_port_are_ignored(tmp_path):
     descriptor = descriptor_happy()
-    descriptor['site'] = ''
+    descriptor.update(site='mcp-test', server='10ax.online.tableau.com', channel='http', port=80)
     twb_path = write_twb(tmp_path)
     result = run_wire(twb_path, write_descriptor(tmp_path, descriptor))
 
     assert result.returncode == 0, result.stderr
     wired = open(twb_path).read()
     assert "<repository-location id='SuperstoreDatasource' path='/datasources' revision='1.0' />" in wired
-    assert 'site=' not in wired
+    assert "<connection channel='https' class='sqlproxy' dbname='SuperstoreDatasource' directory='dataserver' server-ds-friendly-name=" in wired
+    assert 'mcp-test' not in wired and '10ax' not in wired and 'port=' not in wired
 
 
 XLS_PATH = 'Data/Datasources/Sample - Superstore.xls'
