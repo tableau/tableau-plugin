@@ -150,6 +150,14 @@ Then:
 Codex copies the plugin into its own cache when installing it, so editing
 files under `src/` or `platforms/` has no effect until you re-run the script.
 
+**Install the published build instead.** CI builds the prod OpenAI plugin from
+`main` on every push and commits it to the `dist/codex` branch, so you can
+install it without building:
+
+```bash
+codex plugin marketplace add tableau/tableau-plugin --ref dist/codex
+```
+
 ## Install locally: Claude desktop
 
 The Claude apps (Desktop, web, Cowork) have no command line for installing
