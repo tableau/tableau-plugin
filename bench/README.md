@@ -156,7 +156,31 @@ moment the call starts
 - `agent_message` — interim assistant messages
 - `final_message` — the last assistant message of the step
 
+### Publish attempts
 
+Runs often call `publish-workbook` several times. Each publish row in the `.hyper`
+extract carries:
+
+- `publish_attempt` — 1 for the run's first publish, 2 for the next, ...
+- `publish_reason` — why this attempt was made:
+  - `first_attempt`
+  - `retry_after_<category>` — the previous publish failed
+  - `revision_after_review` — the previous publish succeeded, and the model then
+    looked at the result (`get-view-image` / `get-view-data`) before changing the
+    workbook
+  - `revision_without_review` — the previous publish succeeded, with no look at
+    the result
+- `publish_error_category` (failed publishes only):
+  - `invalid_workbook` — Tableau rejected the file itself (error 400011)
+  - `bad_request`, `permission`, `name_conflict`, `network`, `other`
+- `publish_rationale` — the model's own reasoning and messages since the previous
+  publish, up to the last 2000 characters. It's recorded per publish call as
+  `rationale` in `summary.json`. Runs from before that fall back to the 80-character
+  segment labels.
+
+Every row of a run also carries the run's `publish_attempts` and `publish_failures`
+totals. The run's grading scores (`visual_match`, `data_match`, and their
+rationales) are NULL until `grade_results.py` has graded it.
 
 ### Model tracking
 
@@ -327,6 +351,10 @@ run are graded by different judges, which may score differently.
 Output per run: `results/<test_id>/<model>/run_NN/grading/{reference.png, produced.png, produced_data.csv, judge_result.json}`. Aggregated scores land in
 `results/grading_report.md`. Runs with no published asset, or a fixture with no
 reference image/data, are reported as skipped rather than scored.
+
+Scores are also written into each run's staged JSON in `bench/tableau/`, matched by
+`run_tag`, and the `.hyper` extract is rebuilt at the end (`--no-hyper` skips that).
+So the workflow is: run `run_bench.py`, then `grade_results.py`, then open the extract.
 
 ## Notes
 

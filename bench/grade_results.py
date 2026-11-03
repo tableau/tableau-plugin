@@ -23,6 +23,9 @@ Usage:
   python3 bench/grade_results.py --judge-model gpt-5.6-sol    # codex judge's model
   python3 bench/grade_results.py --claude-judge-model claude-opus-5-5
   python3 bench/grade_results.py --regrade             # re-grade runs that already have a score
+
+Scores are also copied into each run's staged JSON (bench/tableau/, matched by run_tag)
+and the .hyper extract is rebuilt, so the grades show up alongside the timing data.
 """
 import argparse
 import base64
@@ -35,7 +38,7 @@ import tempfile
 from pathlib import Path
 
 from mcp_client import McpStdioClient, load_tableau_server_config, result_text
-from run_bench import write_claude_auth_settings
+from run_bench import DEFAULT_HYPER_OUTPUT, DEFAULT_STAGING_DIR, write_claude_auth_settings
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_PROMPTS_FILE = ROOT / "prompts.json"
@@ -378,6 +381,31 @@ def grade_run(client, test, run_dir, model_label, rep, ledger_by_run, harness, j
     return verdict
 
 
+GRADE_FIELDS = ("visual_match", "data_match", "visual_rationale", "data_rationale",
+                "judge_model", "view_name")
+
+
+def load_staged_by_run_tag(staging_dir):
+    staged = {}
+    for path in sorted(staging_dir.glob("*.json")):
+        try:
+            run_tag = json.loads(path.read_text()).get("run_tag")
+        except (json.JSONDecodeError, OSError):
+            continue
+        if run_tag:
+            staged[run_tag] = path
+    return staged
+
+
+def stage_grading(staged_path, verdict):
+    """Write the verdict's scores into the staged run JSON the .hyper is built from."""
+    data = json.loads(staged_path.read_text())
+    grading = {k: verdict.get(k) for k in GRADE_FIELDS}
+    if data.get("grading") != grading:
+        data["grading"] = grading
+        staged_path.write_text(json.dumps(data, indent=2))
+
+
 def render_grading_report(all_verdicts, out_path):
     lines = ["# Grading report", ""]
     by_test = {}
@@ -423,9 +451,16 @@ def main():
     ap.add_argument("--judge-model", help="Model for the codex judge (`codex exec -m`), used on codex runs")
     ap.add_argument("--claude-judge-model", help="Model for the claude judge (`claude -p --model`), used on claude runs")
     ap.add_argument("--regrade", action="store_true", help="Re-grade runs that already have a judge_result.json")
+    ap.add_argument("--staging-dir", type=Path, default=DEFAULT_STAGING_DIR,
+                    help="Staged run JSON to copy scores into (default: bench/tableau)")
+    ap.add_argument("--hyper-output", type=Path, default=DEFAULT_HYPER_OUTPUT)
+    ap.add_argument("--no-hyper", action="store_true", help="Skip rebuilding the .hyper extract")
     ap.add_argument("--server-cmd", nargs="+", default=None)
     ap.add_argument("--server-cwd", default=None)
     args = ap.parse_args()
+    # The claude judge runs from an empty temp dir, so image paths handed to it
+    # must be absolute or its Read tool can't find them.
+    args.results_dir = args.results_dir.resolve()
 
     spec = json.loads(args.prompts_file.read_text())
     tests_by_id = {t["id"]: t for t in spec["tests"]}
@@ -433,6 +468,7 @@ def main():
         tests_by_id = {k: v for k, v in tests_by_id.items() if k == args.only}
 
     ledger_by_run = load_ledger_by_run(args.ledger)
+    staged_by_run_tag = load_staged_by_run_tag(args.staging_dir)
 
     default_cmd, default_cwd, server_env = load_tableau_server_config()
     client = McpStdioClient(args.server_cmd or default_cmd, args.server_cwd or default_cwd, env=server_env)
@@ -473,6 +509,10 @@ def main():
                                             harness, judge_model, claude_settings)
                         print(f"[{test_id}] model={model_label} run {rep:02d}: {verdict.get('skipped') or verdict.get('error') or 'graded'}", flush=True)
 
+                    staged_path = staged_by_run_tag.get(summary.get("run_tag"))
+                    if staged_path and "visual_match" in verdict:
+                        stage_grading(staged_path, verdict)
+
                     verdict["test_id"] = test_id
                     verdict["harness"] = harness
                     verdict["model"] = model_label
@@ -486,6 +526,14 @@ def main():
     report_path = args.results_dir / "grading_report.md"
     render_grading_report(all_verdicts, report_path)
     print(f"\nGrading report written to {report_path}")
+
+    if not args.no_hyper:
+        try:
+            from build_hyper import write_hyper
+        except ImportError as exc:
+            print(f"\nSkipping .hyper build ({exc}); install tableauhyperapi to enable it.")
+        else:
+            write_hyper(args.staging_dir, args.hyper_output)
 
 
 if __name__ == "__main__":

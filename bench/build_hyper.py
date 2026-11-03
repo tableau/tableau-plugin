@@ -57,6 +57,14 @@ TABLE = TableDefinition(
         TableDefinition.Column("wall_time", SqlType.double(), NULLABLE),
         TableDefinition.Column("assetsCreated", SqlType.bool(), NULLABLE),
         TableDefinition.Column("source_file", SqlType.text(), NULLABLE),
+        # Run-level publish counts (repeated on every row of the run).
+        TableDefinition.Column("publish_attempts", SqlType.int(), NULLABLE),
+        TableDefinition.Column("publish_failures", SqlType.int(), NULLABLE),
+        # Judge scores from grade_results.py (1-5); NULL until the run is graded.
+        TableDefinition.Column("visual_match", SqlType.int(), NULLABLE),
+        TableDefinition.Column("data_match", SqlType.int(), NULLABLE),
+        TableDefinition.Column("visual_rationale", SqlType.text(), NULLABLE),
+        TableDefinition.Column("data_rationale", SqlType.text(), NULLABLE),
         # Step-level context (repeated on every row belonging to the step).
         TableDefinition.Column("prompt", SqlType.text(), NULLABLE),
         TableDefinition.Column("final_message", SqlType.text(), NULLABLE),
@@ -84,6 +92,13 @@ TABLE = TableDefinition(
         # Tool calls only: whether this call overlapped another one. NULL on segments
         # and on summaries from before overlap tracking.
         TableDefinition.Column("concurrent", SqlType.bool(), NULLABLE),
+        # Publish-workbook calls only (NULL on every other row): which attempt this is
+        # within the run, why it was made (see _publish_reason), what kind of error it
+        # hit if it failed, and the model's own text since the previous publish.
+        TableDefinition.Column("publish_attempt", SqlType.int(), NULLABLE),
+        TableDefinition.Column("publish_reason", SqlType.text(), NULLABLE),
+        TableDefinition.Column("publish_error_category", SqlType.text(), NULLABLE),
+        TableDefinition.Column("publish_rationale", SqlType.text(), NULLABLE),
     ],
 )
 
@@ -129,6 +144,84 @@ def _classify_operation(kind, name):
     return kind  # reasoning, pre_tool_call, ...
 
 
+PUBLISH_OPERATION = "publish-workbook"
+# Tool calls that look at what was just published -- a re-publish after one of these
+# (and after a successful publish) means the model judged the output and revised it.
+REVIEW_OPERATIONS = {"get-view-image", "get-view-data"}
+# Kept in sync with run_bench.RATIONALE_LIMIT.
+RATIONALE_LIMIT = 2000
+
+
+def _publish_error_category(error):
+    """Bucket a failed publish's error text. invalid_workbook is Tableau rejecting the
+    file itself (bad XML, a sheet with no valid data source, ...)."""
+    text = (_text(error) or "").lower()
+    if "400011" in text or "unable to load workbook" in text or "file is valid" in text:
+        return "invalid_workbook"
+    if "permission denied" in text or "403" in text or "401" in text:
+        return "permission"
+    if "409" in text or "already exists" in text:
+        return "name_conflict"
+    if any(t in text for t in ("enotfound", "etimedout", "econnreset", "timed out", "socket hang up")):
+        return "network"
+    if "status code 400" in text or "bad request" in text:
+        return "bad_request"
+    return "other"
+
+
+def _publish_failed(entry):
+    return entry.get("status") == "failed" or bool(entry.get("error"))
+
+
+def _annotate_publishes(entries):
+    """Return {id(entry): publish columns} for every publish-workbook call in a run's
+    timeline (all steps, in order), plus (attempts, failures) totals.
+
+    publish_reason is one of:
+      first_attempt            -- the run's first publish
+      retry_after_<category>   -- the previous publish failed (category as above)
+      revision_after_review    -- the previous publish succeeded and the model then
+                                  looked at the result (image/data) before publishing again
+      revision_without_review  -- the previous publish succeeded, no look at the result
+    """
+    annotations = {}
+    attempts = failures = 0
+    last_publish = None
+    reviewed = False
+    notes = []  # fallback rationale for summaries recorded before `rationale` existed
+    for entry in entries:
+        if entry.get("segment_type") != "tool_call":
+            if entry.get("kind") in ("reasoning", "agent_message", "final_message") and entry.get("label"):
+                notes.append(entry["label"])
+            continue
+        operation = entry.get("operation")
+        if operation in REVIEW_OPERATIONS:
+            reviewed = True
+        if operation != PUBLISH_OPERATION:
+            continue
+        attempts += 1
+        failed = _publish_failed(entry)
+        failures += failed
+        if last_publish is None:
+            reason = "first_attempt"
+        elif _publish_failed(last_publish):
+            reason = f"retry_after_{_publish_error_category(last_publish.get('error'))}"
+        elif reviewed:
+            reason = "revision_after_review"
+        else:
+            reason = "revision_without_review"
+        rationale = entry.get("rationale")
+        if rationale is None and notes:
+            rationale = "\n".join(notes)[-RATIONALE_LIMIT:]
+        annotations[id(entry)] = [
+            attempts, reason,
+            _publish_error_category(entry.get("error")) if failed else None,
+            rationale,
+        ]
+        last_publish, reviewed, notes = entry, False, []
+    return annotations, attempts, failures
+
+
 def _legacy_timeline(step):
     """Build timeline-shaped entries from a pre-timeline summary (separate
     tool_calls / non_tool_segments arrays). Ordering was lost when those arrays
@@ -167,8 +260,22 @@ def flatten_file(path: Path):
     model = data.get("model")
     wall_time = data.get("wall_time")
     assets_created = data.get("assetsCreated")
+    grading = data.get("grading") or {}
+    grades = [
+        grading.get("visual_match"), grading.get("data_match"),
+        _text(grading.get("visual_rationale")), _text(grading.get("data_rationale")),
+    ]
 
+    steps = []
     for step in data.get("steps", []) or []:
+        timeline = step.get("timeline")
+        if timeline is None:
+            timeline = list(_legacy_timeline(step))
+        steps.append((step, timeline))
+    publishes, publish_attempts, publish_failures = _annotate_publishes(
+        entry for _, timeline in steps for entry in timeline or [])
+
+    for step, timeline in steps:
         usage = step.get("usage") or {}
         prompt = _text(step.get("prompt"))
         final_message = _text(step.get("final_message"))
@@ -180,12 +287,10 @@ def flatten_file(path: Path):
             usage.get("reasoning_output_tokens"),
             usage.get("cost_usd"),
         ]
-        timeline = step.get("timeline")
-        if timeline is None:
-            timeline = _legacy_timeline(step)
         for entry in timeline or []:
             yield [
                 test_id, harness, model, wall_time, assets_created, path.name,
+                publish_attempts, publish_failures, *grades,
                 prompt, final_message, *tokens,
                 entry.get("seq"),
                 entry.get("step"),
@@ -201,6 +306,7 @@ def flatten_file(path: Path):
                 _text(entry.get("status")),
                 _text(entry.get("error")),
                 entry.get("concurrent"),
+                *publishes.get(id(entry), [None] * 4),
             ]
 
 

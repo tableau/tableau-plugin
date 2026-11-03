@@ -272,8 +272,11 @@ def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
     usage = None
 
     prev_ts = t_launch
-    open_items = {}  # item_id -> (start_ts, item)
+    open_items = {}  # item_id -> (start_ts, item, rationale)
     started_processing = False
+    # Model-written reasoning/messages since the last publish call, attached to the next
+    # one as its `rationale` -- i.e. the model's own account of why it (re)published.
+    notes = []
 
     for ts, obj, raw in events:
         if obj is None:
@@ -308,7 +311,10 @@ def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
                         "end_offset_s": ts - wall_start,
                         "status": None, "error": None,
                     })
-                open_items[item["id"]] = (ts, item)
+                rationale = None
+                if item.get("type") == "mcp_tool_call" and item.get("tool") in PUBLISHING_TOOLS:
+                    rationale, notes = _join_notes(notes), []
+                open_items[item["id"]] = (ts, item, rationale)
                 prev_ts = ts
             continue
 
@@ -317,7 +323,7 @@ def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
             itype = item.get("type")
 
             if itype in ("command_execution", "mcp_tool_call"):
-                start_ts, _ = open_items.pop(item["id"], (prev_ts, item))
+                start_ts, _, rationale = open_items.pop(item["id"], (prev_ts, item, None))
                 timeline.append({
                     "step": step_index, "segment_type": "tool_call",
                     "kind": itype, "operation": classify_operation(itype, item),
@@ -327,6 +333,8 @@ def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
                     "end_offset_s": ts - wall_start,
                     "status": item.get("status"), "error": item.get("error"),
                 })
+                if rationale is not None:
+                    timeline[-1]["rationale"] = rationale
                 if itype == "mcp_tool_call":
                     asset = _extract_published_asset(item)
                     if asset:
@@ -334,6 +342,7 @@ def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
                 prev_ts = ts
 
             elif itype == "reasoning":
+                notes.append(item.get("text", ""))
                 timeline.append({
                     "step": step_index, "segment_type": "non_tool_segment",
                     "kind": "reasoning", "operation": "reasoning",
@@ -346,6 +355,7 @@ def analyze_step_events(t_launch, events, step_index, prompt, wall_start):
                 prev_ts = ts
 
             elif itype == "agent_message":
+                notes.append(item.get("text", ""))
                 timeline.append({
                     "step": step_index, "segment_type": "non_tool_segment",
                     "kind": "agent_message", "operation": "message",
@@ -403,7 +413,8 @@ def analyze_claude_step_events(t_launch, events, step_index, prompt, wall_start)
     usage = None
 
     prev_ts = t_launch
-    open_calls = {}  # tool_use_id -> (start_ts, tool_use block)
+    open_calls = {}  # tool_use_id -> (start_ts, tool_use block, rationale)
+    notes = []  # see analyze_step_events
 
     def segment(kind, operation, label, ts):
         timeline.append({
@@ -446,10 +457,13 @@ def analyze_claude_step_events(t_launch, events, step_index, prompt, wall_start)
             if etype == "assistant" and btype == "tool_use":
                 if ts - prev_ts > 0:
                     segment("pre_tool_call", "pre_tool_call", f"deciding to call {_claude_tool_name(block)}", ts)
-                open_calls[block.get("id")] = (ts, block)
+                rationale = None
+                if _claude_tool_parts(block.get("name") or "")[1] in PUBLISHING_TOOLS:
+                    rationale, notes = _join_notes(notes), []
+                open_calls[block.get("id")] = (ts, block, rationale)
                 prev_ts = ts
             elif etype == "user" and btype == "tool_result":
-                start_ts, call = open_calls.pop(block.get("tool_use_id"), (prev_ts, {}))
+                start_ts, call, rationale = open_calls.pop(block.get("tool_use_id"), (prev_ts, {}, None))
                 server, tool = _claude_tool_parts(call.get("name") or "")
                 text = _claude_result_text(block)
                 failed = bool(block.get("is_error"))
@@ -464,15 +478,19 @@ def analyze_claude_step_events(t_launch, events, step_index, prompt, wall_start)
                     "status": "failed" if failed else "completed",
                     "error": text[:2000] if failed else None,
                 })
+                if rationale is not None:
+                    timeline[-1]["rationale"] = rationale
                 if server and not failed and tool in PUBLISHING_TOOLS:
                     asset = _published_asset(tool, server, text)
                     if asset:
                         created_assets.append(asset)
                 prev_ts = ts
             elif etype == "assistant" and btype == "thinking":
+                notes.append(block.get("thinking") or "")
                 segment("reasoning", "reasoning", (block.get("thinking") or "")[:80], ts)
                 prev_ts = ts
             elif etype == "assistant" and btype == "text":
+                notes.append(block.get("text") or "")
                 segment("agent_message", "message", (block.get("text") or "")[:80], ts)
                 final_message = block.get("text")
                 prev_ts = ts
@@ -493,6 +511,16 @@ def analyze_claude_step_events(t_launch, events, step_index, prompt, wall_start)
         "errors": errors,
         "created_assets": created_assets,
     }
+
+
+RATIONALE_LIMIT = 2000
+
+
+def _join_notes(notes):
+    """The model's text since the previous publish, keeping the tail (its most recent
+    reasoning, closest to the decision) when it runs long."""
+    text = "\n\n".join(n.strip() for n in notes if n and n.strip())
+    return text[-RATIONALE_LIMIT:]
 
 
 def _claude_tool_parts(name):

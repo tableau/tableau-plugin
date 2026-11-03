@@ -237,3 +237,8 @@ bench/tableau/*.json
 # Real Tableau site workbooks used by test_cloud_fixtures.py; never commit them.
 src/fixtures/**/*.twb
 src/fixtures/**/*.twbx
+bench/fixtures/*
+bench/trial
+bench/trial/*
+bench/*.hyper
+bench/*.tds
