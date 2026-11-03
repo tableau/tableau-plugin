@@ -1,0 +1,66 @@
+# Amazon Quick platform variables. Quick has no plugin format: the Tableau MCP
+# server is added as a connector, and each skill is installed on its own
+# (Customize > Skills). So the build writes standalone skill folders, a zip of
+# them, and connector/mcp.json (see overlay/README.md.j2). Consumed by
+# build/build.py.
+#
+# Values tagged VERIFY still need confirming in a real Quick account.
+
+# How the assistant refers to itself in user-facing prose.
+assistant_name: Amazon Quick
+
+# The connector endpoint the setup guide names. --variant test/stage swaps in
+# that variant's URL; dev runs a local tableau-mcp over stdio, which Quick on
+# desktop supports as a local connector.
+mcp_url: https://mcp.tableau.com
+
+# Empty: Quick registers each MCP tool under the connector, and how it names
+# them isn't known yet (VERIFY). Skills name tools by base name and a note
+# tells the model to match on that.
+mcp_prefix: ""
+
+# No host-provided render, REPL or elicitation tools are assumed. Quick's
+# browser automation system tool isn't wired in (VERIFY).
+tools:
+  render_native: []
+  site_access: ""
+  js_repl: ""
+  elicit: ""
+
+# How to show the user an image file (e.g. a downloaded Tableau render).
+# VERIFY how Quick displays a PNG that Code Execution wrote.
+show_image: >-
+  display the downloaded PNG inline in the reply (for example, show it from
+  the code that downloaded it), and if it doesn't appear, give the user its
+  file path
+
+capabilities:
+  # VERIFY whether Quick renders MCP Apps UI. Until then, skip
+  # render-interactive-viz and go straight to the hyperlink + image path.
+  interactive_viz: false
+  native_render: false
+  js_repl: false
+  native_render_guaranteed: false
+  # Quick on desktop has a Code Execution system tool: Python in a sandbox
+  # whose file access follows the user's folder permissions. So skills offer
+  # their bundled scripts, keeping the manual fallbacks for when they can't
+  # run. VERIFY that it can run a skill's script file, install lxml (the
+  # workbook validator), and reach the presigned image host for downloads.
+  local_shell: true
+  shell_guaranteed: false
+  shell_download_only: false
+  browser_verify: false
+
+# Payload paths (globs relative to src/plugin/) not shipped on this platform.
+exclude:
+  - "skills/*/agents/openai.yaml"   # OpenAI-only skill metadata
+
+# Standalone skills. Each skill folder gets copies of the shared files it uses
+# (e.g. references/search.md), with its links repointed inside the folder.
+skills_package:
+  dir: skills
+  zip: tableau-skills.zip
+  # Shared files a copied file needs beside it that no link names.
+  companions:
+    # Reads requirements.txt two levels up, which is the skill folder.
+    scripts/run_python.py: [requirements.txt]
