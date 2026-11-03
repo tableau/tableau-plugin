@@ -237,8 +237,12 @@ bench/tableau/*.json
 # Real Tableau site workbooks used by test_cloud_fixtures.py; never commit them.
 src/fixtures/**/*.twb
 src/fixtures/**/*.twbx
-bench/fixtures/*
-bench/trial
-bench/trial/*
+# Bench fixtures: keep only each prompt's reference files (sheet.svg / dashboard.svg,
+# data.csv) and input data at the top of bench/fixtures/<ACxx>/. Models write their
+# scratch folders and workbooks here during runs; ignore all of that.
+bench/fixtures/*/*
+!bench/fixtures/*/*.csv
+!bench/fixtures/*/*.svg
+bench/trial/
 bench/*.hyper
 bench/*.tds
