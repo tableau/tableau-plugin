@@ -180,6 +180,7 @@ If validation fails, fix the reported lines/elements and retry once; stop after 
 - Keep worksheet, dashboard, datasource, and zone names unique and consistent.
 - Prefer fields already declared in the TWB's `<column>` metadata over inspecting the extract or datasource metadata; `inspect-workbook` (see `references/field-edits.md`) reads exactly that metadata.
 - Don't invent field names, roles, or numbers not backed by inspected metadata.
+- When adding a filter, Top N, or parameter to an existing view, keep its `<rows>` and `<cols>` fields as they are. A "Top N products" filter limits which products feed the view; it doesn't put Product on an axis. Change the shelves only when the user asks for a different breakdown.
 - Don't force-fit a catalog template onto a chart it doesn't match — fall back to hand-editing instead of stretching the closest template.
 - If the `{{ mcp_prefix }}download-workbook` tool returns a temporary URL, download the file locally
 
