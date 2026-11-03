@@ -140,6 +140,17 @@ Reuse the extracted TWB/TWBX, published workbook ID, project ID, name, and view 
 
 If the downloaded package looks incomplete or a dependency is missing, read [`references/package-and-upload-fallbacks.md`](references/package-and-upload-fallbacks.md). For a new XML construct (including adding a parameter to a worksheet), a validation failure, or a publish error such as "The worksheet does not have a valid data source", read [`references/xml-troubleshooting.md`](references/xml-troubleshooting.md).
 
+## Hand-written XML: rules publish enforces that the XSD doesn't
+
+Check these before the first publish of any XML you wrote by hand or with a script. Each one passes local validation and fails only on the server:
+
+- **Dashboard window viewpoints.** Each `<dashboard>` needs a `<window class='dashboard' name='…'>` whose `<viewpoints>` lists a bare `<viewpoint name='…' />` for every worksheet zone on it. An empty or missing `<viewpoints>` fails with "Dashboard references sheet X which has no visual representation" for every sheet, including sheets that were already fine. Fix the window instead of rewriting the sheet.
+- **Worksheet windows.** Each `<worksheet>` needs its own `<window class='worksheet' name='…'>`, with the same name. Add `hidden='true'` for a sheet that only appears on a dashboard.
+- **Parameters order.** A worksheet that uses a parameter lists the data datasource first and `Parameters` second in `<view><datasources>`. Otherwise publish fails with "The worksheet does not have a valid data source".
+- **Filter levels.** `<filter column='[ds].[none:Field:nk]'>` is qualified, but every `groupfilter level='[none:Field:nk]'` inside it is not. A `level` with the datasource prefix fails with "The filter on X is invalid", "Field … which is included for filtering does not exist", or "Error parsing filter".
+- **Published-datasource connection** (new workbooks): see [`references/new-workbook.md`](references/new-workbook.md#reference-the-published-datasource).
+- **Discrete color maps** use `<encoding attr='color' type='palette'>`, not `type='categorical'`.
+
 ## Validate and publish
 
 Skip local validation for unmodified content (plain copy/republish/move) — it's already known-valid. `instantiate`/`inject` check the sheet, field, and datasource references they write, but not the XSD schema. For a hand-edited TWB, after the edit:

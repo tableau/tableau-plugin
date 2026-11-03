@@ -21,6 +21,23 @@ the packaged extract during publish itself, so a failure surfaces as a
 publish error rather than a structured findings list; rely on the local XSD
 validator and the package-completeness checks before publishing.
 
+### Publish errors that pass the XSD
+
+Match the server message, then make the listed fix before trying anything
+else. Each fix comes from the change that got the workbook to publish in
+benchmark runs that hit that error.
+
+| Publish error contains | Cause and fix |
+|---|---|
+| `Dashboard references sheet … which has no visual representation` | The dashboard's `<window class='dashboard'>` has an empty or missing `<viewpoints>`. Add `<viewpoint name='Sheet' />` for each worksheet zone on that dashboard. The sheet itself is usually fine. |
+| `sheet '…' is not associated with any window` | Add a `<window class='worksheet' name='…'>` for the sheet, or `<window class='dashboard' name='…'>` with viewpoints for a dashboard. |
+| `The worksheet does not have a valid data source` | `Parameters` is listed before the data datasource. See [Parameters in a worksheet](#parameters-in-a-worksheet). |
+| `The filter on … is invalid` / `Field '[ds].[…]' which is included for filtering does not exist` / `Error parsing filter for field` | A `groupfilter level` carries the datasource prefix. Use the bare instance name. See [Filter-reference integrity](#filter-reference-integrity). For a parameter-driven Top N, `count='[Parameters].[Parameter 1]'` on the `function='end'` groupfilter works; follow the `topn-context-filter` example. |
+| `Datasource '…' not found for workbook` | The `sqlproxy` connection's `dbname` and `repository-location id` must be the datasource's `contentUrl`, not its LUID or caption. See `new-workbook.md`. |
+| `federated connection is missing required named-connections element` | Use a direct `<connection class='sqlproxy' …>`, as in `new-workbook.md`. |
+| `unrecognized encoding type 'categorical'` | Use `type='palette'` on discrete color `<encoding>` maps. |
+| `Unable to connect to the file` / `The directory is missing` | A bare `.twb` from a file-based TWBX (Excel/CSV/extract) was published without its data. Re-zip the TWB and its `Data/…` folder from the unpacked root (`zip -r -X ../out.twbx Book.twb Data`), check it with `unzip -t`, and publish the TWBX. |
+
 When schema inspection is required, use the schema the validator reported (it
 is chosen from `source-build`, then the `<!-- build -->` comment, then the
 `version` attribute, which Tableau leaves at `18.1`) and search for the failing
