@@ -54,6 +54,9 @@ capabilities:
   native_render: true                 # render_native tools may exist on this host
   js_repl: false
   native_render_guaranteed: false     # the browser tool may be absent (e.g. web)
+  # A shell and file system may exist, so skills can download renders and run
+  # their bundled scripts (each keeps a manual fallback for when they can't).
+  local_shell: true
   shell_guaranteed: false
   # Download presigned render URLs only via shell curl/Python. Cowork's web
   # fetch rejects them (cowork_web_fetch_url_too_long). VERIFY on claude.ai web.

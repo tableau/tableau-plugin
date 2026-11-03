@@ -9,6 +9,13 @@ already resolved during the current task.
 {# Steps are numbered at build time so a platform can drop the interactive or
    browser step via capabilities.interactive_viz / capabilities.native_render. #}
 {% set step = namespace(n=0, viz=0, browser=0) %}
+{# Without a local shell (capabilities.local_shell) the PNG can't be downloaded,
+   so the image section only shows an inline image or links the presigned URL. #}
+{% if capabilities.local_shell %}
+{% set png_section = "[Download the PNG immediately](#download-the-png-immediately)" %}
+{% else %}
+{% set png_section = "[Show the image result](#show-the-image-result)" %}
+{% endif %}
 {% if capabilities.interactive_viz %}{% set step.n = step.n + 1 %}{% set step.viz = step.n %}{% endif %}
 {% if capabilities.native_render %}{% set step.n = step.n + 1 %}{% set step.browser = step.n %}{% endif %}
 {% set step.n = step.n + 1 %}
@@ -49,13 +56,14 @@ resolved during the current task.
    hyperlink, e.g. `[<view name>](https://HOST/t/SITE/views/WORKBOOK/VIEW?...)`,
    then call `{{ mcp_prefix }}get-view-image` once with `viewId` (the resolved
    view LUID) and `format: "PNG"` and handle the result as described in
-   [Download the PNG immediately](#download-the-png-immediately).
+   {{ png_section }}.
 {% if step.n > 1 %}
 
 Never use `{{ mcp_prefix }}get-view-image` for a “show/open/render” request unless the
 user asks for an image or {% if step.n > 2 %}both steps above have{% else %}the step above has{% endif %} failed.
 {% endif %}
 
+{% if capabilities.local_shell %}
 ## Download the PNG immediately
 
 `{{ mcp_prefix }}get-view-image` returns either an inline image or a
@@ -88,6 +96,19 @@ so any delay between receiving it and fetching it can lose the render.
   `{{ mcp_prefix }}get-view-image` once more and download the new URL
   straight away. This is the only exception to calling it once. If that also
   fails, treat the PNG path as failed.
+{% else %}
+## Show the image result
+
+`{{ mcp_prefix }}get-view-image` returns either an inline image or a
+`resource_link` holding a short-lived presigned URL. There's no shell or file
+system here, so never try to download, fetch, or open that URL yourself.
+
+- **Inline image:** it's already in the chat; don't call the tool again.
+- **`resource_link`:** give it to the user as a Markdown link next to the
+  view hyperlink, and say it expires in a few minutes, e.g.
+  `[PNG of <view name>](<url>) (link expires in a few minutes)`. Don't call
+  `{{ mcp_prefix }}get-view-image` again for a fresh URL unless the user asks.
+{% endif %}
 
 ## Resolve the target view
 
@@ -266,8 +287,13 @@ Rendering is complete when one of the following is true:
 {% if capabilities.native_render %}
 - the direct view URL is open in the in-app browser;
 {% endif %}
+{% if capabilities.local_shell %}
 - the user has the direct URL as a hyperlink and a PNG of the view shown in
   the chat; or
+{% else %}
+- the user has the direct URL as a hyperlink and a PNG of the view, shown in
+  the chat or linked; or
+{% endif %}
 - every render path failed and the user has the direct URL hyperlink with a
   concise explanation.
 
