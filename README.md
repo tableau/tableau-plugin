@@ -9,6 +9,7 @@ only what is genuinely platform-specific.
 |---|---|---|
 | `openai` | ChatGPT and Codex (web, desktop, CLI) | root `plugin.json` + `extensions.com.openai`, with `.codex-plugin/plugin.json` as a fallback for current CLIs |
 | `claude` | Claude apps (web, Desktop Chat, Cowork) and Claude Code | `.claude-plugin/plugin.json` |
+| `quick` | Amazon Quick (desktop) | none: standalone skill folders plus `tableau-skills.zip`, and `connector/mcp.json` for the MCP connector |
 
 ## Layout
 
@@ -31,6 +32,11 @@ platforms/
       plugins/tableau/.mcp.json
       plugins/tableau/README.md                 # end-user docs; required by the Claude plugin directory
     vars.yaml
+  quick/
+    overlay/
+      README.md.j2                              # setup: connector + skills
+      connector/mcp.json                        # MCP server config to import as a connector
+    vars.yaml                                   # skills_package: standalone skills + zip
 build/
   build.py                  # assembles a platform distribution
   requirements.txt          # Jinja2 + PyYAML
@@ -46,6 +52,7 @@ python3 build/build.py --zip claude    # also write dist/claude-tableau.zip
 python3 build/build.py --check         # CI: fail if dist/ is stale
 python3 build/build.py --variant dev openai   # local-development build
 python3 build/build.py --slim --zip claude   # size-reduced build for the Claude plugin directory
+python3 build/build.py quick           # Amazon Quick skills + connector -> dist/quick/
 ```
 
 ### Variants
@@ -85,6 +92,34 @@ everything else is copied verbatim. A platform's `vars.yaml` can list
 `--zip` packages the plugin folder itself (manifest at the zip root) for
 uploading in the Claude apps or submitting to OpenAI.
 
+### Standalone-skill builds (Amazon Quick)
+
+Amazon Quick has no plugin format. The Tableau MCP server is added as a
+connector, and each skill is installed on its own (**Customize > Skills**,
+from a folder or a zip). So `platforms/quick/vars.yaml` has a
+`skills_package:` block, and the build writes:
+
+```
+dist/quick/
+  connector/mcp.json      # from the overlay; variants repoint it
+  skills/<skill>/         # one self-contained folder per skill
+  tableau-skills.zip      # the contents of skills/
+  README.md               # setup guide
+```
+
+A skill in the shared payload can link outside its folder, e.g. to
+`../../references/search.md` or `<skill-dir>/../../scripts/run_python.py`.
+The build copies each such file into the skill at the same relative path
+(`references/search.md`) and rewrites the path to match.
+`skills_package.companions` lists files a copied file needs that no link
+names: `run_python.py` reads `requirements.txt` from two levels up, which is
+now the skill folder. The build fails if a copy would overwrite a skill's own
+file, or if a skill points into another skill.
+
+`--variant test`/`stage` point the connector at that server. `dev` writes a
+stdio config, which Quick on desktop runs as a local connector. `--zip` is
+skipped, since the build always writes the skills zip.
+
 ## How platform differences are handled
 
 - **Portable content** — skills, references, scripts, assets — lives in `src/plugin/`.
@@ -100,6 +135,11 @@ uploading in the Claude apps or submitting to OpenAI.
     Leave empty when a host has none; the prose falls back (PNG render,
     numbered list).
   - `plugin_root`: how hooks find the plugin's install directory.
+  - `capabilities.local_shell`: false on a host with no shell or file system.
+    Prose then skips downloading renders and running scripts and uses the
+    manual fallbacks instead. (Every current platform sets it true.)
+  - `shipped_skills` (set by the build, not `vars.yaml`): the skills that ship
+    on the platform, so a template mentions a sibling skill only where it exists.
 - **Scripts** are Python (stdlib only, cross-platform). Third-party packages
   for any skill go in one list, `src/plugin/requirements.txt`, installed into a
   single shared venv (`~/.cache/tableau-plugin/venv-<pyver>`, keyed by a hash

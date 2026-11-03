@@ -1,0 +1,90 @@
+# Tableau{{ variant_label }} for Amazon Quick
+
+Amazon Quick has no plugin format, so Tableau is set up in two parts:
+
+1. a **connector** to the Tableau MCP server, which gives Quick the Tableau
+   tools; and
+2. the **Tableau skills**, which teach Quick how to use them.
+
+| Path | What it is |
+|---|---|
+| `connector/mcp.json` | MCP server config for the connector |
+| `tableau-skills.zip` | every skill below, one folder each |
+| `skills/<skill>/` | the same skills, unzipped |
+
+Each skill folder is self-contained: its `SKILL.md` plus the references and
+scripts it uses.
+
+{% for skill in shipped_skills %}
+- `{{ skill }}`
+{% endfor %}
+
+## Before you begin
+
+- **Amazon Quick on desktop.** Skills and local connectors are managed under
+  **Customize**, and the skills' scripts run with Quick's **Code Execution**
+  system tool. Turn that tool on under **Customize > Connectors**.
+{% if mcp_url %}
+- A Tableau Cloud site with the Tableau MCP server enabled.
+- Quick support for OAuth **Client ID Metadata Documents (CIMD)**. Tableau's
+  sign-in registers clients only through CIMD, not Dynamic Client
+  Registration. (VERIFY: AWS has said this is coming; until it ships, the
+  connector fails at sign-in.)
+{% else %}
+- A local [tableau-mcp](https://github.com/tableau/tableau-mcp) checkout,
+  built with `npm run build`, whose `.env` sets `SERVER`, `SITE_NAME` and auth.
+{% endif %}
+
+## 1. Add the Tableau connector
+
+{% if mcp_url %}
+**Option A: import the config.** In Quick, open **Customize > Connectors**,
+choose **Create**, then **Create local connector**, then **Import**, and enter
+the path to `connector/mcp.json`. It points at `{{ mcp_url }}`. (VERIFY that an
+imported remote server signs in with OAuth; the import's **Remote** form
+otherwise takes only a bearer token.)
+
+**Option B: create a cloud connector.** Choose **Create**, then **Cloud
+Connector**, then **Model Context Protocol (MCP)**, and enter:
+
+- **Name:** `{{ server_key }}`
+- **MCP server endpoint:** `{{ mcp_url }}`
+- **Authentication:** user authentication. Quick finds Tableau's
+  authorization server from the endpoint, so no client ID or secret is needed.
+
+Sign in to Tableau when asked. Each user signs in with their own account, so
+they see only what their Tableau permissions allow. Quick registers at most
+100 tools per connector; after the Tableau MCP server adds tools, choose
+**Sync** on the connector to pick them up.
+{% else %}
+In Quick, open **Customize > Connectors**, choose **Create**, then **Create
+local connector**, then **Import**, and enter the path to
+`connector/mcp.json`. It runs your tableau-mcp checkout over stdio: set
+`TABLEAU_MCP_DIR` in this repo's `.env` before building, or in the connector's
+environment variables. The connector works only while this machine is on.
+{% endif %}
+
+## 2. Add the skills
+
+Open **Customize > Skills**, choose **Create**, then **From file**, and select
+`tableau-skills.zip`. (VERIFY that one zip installs every skill in it. If
+Quick takes one skill per upload, choose **From folder** instead and add each
+folder under `skills/`.) Review each skill, then **Publish** it.
+
+To share the skills with your team, choose **Share** on each one. People you
+share with also need the connector.
+
+## Try it
+
+- `What can you do with Tableau?`
+- `Show me the regional sales dashboard.`
+- `Explain the largest trends in this view.`
+- `Advise me on how to design an executive dashboard for regional sales performance.`
+- `Review this dashboard and prioritize its three highest-impact improvements.`
+- `Run a metadata quality scan on the Sales datasource.`
+
+## Updating
+
+Rebuild with `python3 build/build.py quick`, then open each skill, choose
+**Edit**, replace its files with the new folder, and **Publish**. Everyone you
+shared it with moves to the new version.

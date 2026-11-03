@@ -33,6 +33,17 @@ published names, adds the `slim.exclude` globs, keeps only the newest
 `slim.keep_latest_schemas` schema versions, and drops catalog.json entries
 whose files no longer ship.
 
+A platform whose host has no plugin format, only standalone skills installed
+apart from the MCP connector (e.g. Amazon Quick), sets a `skills_package:`
+block instead. Each skill lands in dist/<platform>/<skills_package.dir>/<skill>/
+with every shared file it uses (references, scripts) copied inside it and its
+links repointed there, so a skill folder stands alone. The folders are also
+zipped into dist/<platform>/<skills_package.zip>. The overlay (setup guide,
+connector config) still lands at dist/<platform>/.
+
+Templates get `shipped_skills`, the names of the skills that ship on the
+platform, so prose can mention a sibling skill only where it exists.
+
 Usage:
     python3 build/build.py                 # build every platform under platforms/
     python3 build/build.py openai          # build only the named platform(s)
@@ -40,6 +51,7 @@ Usage:
     python3 build/build.py --check openai  # fail if dist/ is stale vs a fresh build
     python3 build/build.py --variant dev openai
     python3 build/build.py --slim claude   # -> dist/claude-slim/
+    python3 build/build.py quick           # standalone skills -> dist/quick/
 """
 
 from __future__ import annotations
@@ -47,6 +59,7 @@ from __future__ import annotations
 import argparse
 import filecmp
 import json
+import posixpath
 import re
 import shutil
 import sys
@@ -78,7 +91,10 @@ VARIANTS = {
     "stage": {"label": "Stage", "url": "https://stage.mcp.tableau.com"},
     "dev": {"label": "Dev", "stdio": True},
 }
-MCP_CONFIG_NAMES = (".mcp.json", "mcp.json")
+# MCP server configs a variant repoints, relative to the dist root: the plugin's,
+# or a standalone connector config on hosts without plugins.
+MCP_CONFIG_PATHS = (PAYLOAD_DEST_SUBPATH / ".mcp.json", PAYLOAD_DEST_SUBPATH / "mcp.json",
+                    Path("connector/mcp.json"))
 # Per-developer settings (git-ignored). TABLEAU_MCP_DIR there becomes the dev
 # variant's default checkout.
 DOTENV = ROOT / ".env"
@@ -255,9 +271,9 @@ def apply_variant(dist: Path, name: str, variant: dict, server_key: str,
                  plugin_dir / ".claude-plugin/plugin.json"):
         if path.exists():
             rewrite_json(path, edit_manifest)
-    for config_name in MCP_CONFIG_NAMES:
-        if (plugin_dir / config_name).exists():
-            rewrite_json(plugin_dir / config_name, edit_mcp)
+    for config in MCP_CONFIG_PATHS:
+        if (dist / config).exists():
+            rewrite_json(dist / config, edit_mcp)
 
 
 SCHEMA_VERSION_RE = re.compile(r"^(\d{4})_(\d+)$")  # resources/schemas/<YYYY_R>/
@@ -298,6 +314,84 @@ def prune_catalog(plugin_dir: Path) -> None:
         log(f"  {catalog.relative_to(plugin_dir)}: kept {kept} of {total} entries")
 
 
+def skill_names(shipped) -> list[str]:
+    """Names of the skills whose SKILL.md (or SKILL.md.j2) passes `shipped(rel)`."""
+    names = []
+    for skill in sorted(p for p in (SRC_PAYLOAD / "skills").iterdir() if p.is_dir()):
+        for entry in ("SKILL.md", "SKILL.md" + TEMPLATE_SUFFIX):
+            if (skill / entry).exists() and shipped(PurePosixPath("skills", skill.name, entry)):
+                names.append(skill.name)
+                break
+    return names
+
+
+# A relative path that climbs out of its file's directory, e.g. the
+# ../../references/search.md in a SKILL.md link or the
+# <skill-dir>/../../scripts/run_python.py in a command. A sentence's closing
+# period isn't part of the path.
+UP_PATH_RE = re.compile(r"(?<![\w.])(?:\.\./)+[\w.-][\w./-]*(?<!\.)")
+
+
+def localize_skill(staged: Path, skill: str, dest: Path, companions: dict) -> list[str]:
+    """Copy one rendered skill to `dest` with the shared files it uses inside it.
+
+    `staged` is the rendered payload. A path out of the skill to a payload file
+    (references/search.md, scripts/run_python.py) is rewritten to a copy of that
+    file at the same relative path inside the skill. `companions` maps a shared
+    file to others it needs beside it that no link names (run_python.py reads
+    requirements.txt from two levels up). Returns the shared files pulled in.
+    """
+    skill_rel = f"skills/{skill}"
+    shutil.copytree(staged / skill_rel, dest)
+    shared = set()
+    for path in sorted(p for p in dest.rglob("*") if p.is_file()):
+        try:
+            text = path.read_text()
+        except UnicodeDecodeError:
+            continue  # binary
+        file_dir = posixpath.join(skill_rel, path.parent.relative_to(dest).as_posix())
+
+        def localize(m: re.Match) -> str:
+            target = posixpath.normpath(posixpath.join(file_dir, m[0]))
+            if target.startswith("../") or target.startswith(skill_rel + "/"):
+                return m[0]  # outside the payload, or still inside this skill
+            if target.startswith("skills/"):
+                sys.exit(f"error: {skill_rel}: '{m[0]}' points into another skill, "
+                         f"which a standalone skill can't reach")
+            if not (staged / target).is_file():
+                return m[0]
+            shared.add(target)
+            return posixpath.relpath(posixpath.join(skill_rel, target), file_dir)
+
+        localized = UP_PATH_RE.sub(localize, text)
+        if localized != text:
+            path.write_text(localized)
+
+    for rel in list(shared):
+        shared.update(companions.get(rel, ()))
+    for rel in sorted(shared):
+        out = dest / rel
+        if out.exists():
+            # The skill's own file would be silently replaced, or shadow the shared one.
+            sys.exit(f"error: {skill_rel}/{rel} exists; it collides with shared {rel}")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(staged / rel, out)
+    return sorted(shared)
+
+
+def build_skills_package(dist: Path, variables: dict, exclude: tuple[str, ...]) -> Path:
+    """Write each shipped skill as a standalone folder under dist/<dir>/. Returns that dir."""
+    spec = variables["skills_package"]
+    skills_dir = dist / spec["dir"]
+    with tempfile.TemporaryDirectory() as tmp:
+        staged = Path(tmp)
+        copy_tree(SRC_PAYLOAD, staged, variables, exclude)
+        for skill in variables["shipped_skills"]:
+            shared = localize_skill(staged, skill, skills_dir / skill, spec.get("companions") or {})
+            log(f"  {spec['dir']}/{skill}" + (f": + {', '.join(shared)}" if shared else ""))
+    return skills_dir
+
+
 def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "prod",
                    slim: bool = False) -> Path:
     platform_dir = PLATFORMS_DIR / platform
@@ -321,10 +415,34 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
     if dist.exists():
         shutil.rmtree(dist)
 
-    # 1. shared payload -> dist/<platform>/plugins/tableau/
     exclude = tuple(variables.get("exclude", ()))
     if slim_spec:
         exclude += tuple(slim_spec.get("exclude", ()))
+    variables["shipped_skills"] = skill_names(
+        lambda rel: not any(rel.match(g) for g in exclude))
+
+    if "skills_package" in variables:
+        # The setup guide names the connector and, for a remote variant, its URL.
+        variables["variant_label"] = f" ({spec['label']})" if spec else ""
+        variables["server_key"] = server_key
+        if spec:
+            variables["mcp_url"] = spec.get("url")  # None: dev runs over stdio
+
+        # 1. standalone skills -> dist/<platform>/<skills_package.dir>/<skill>/
+        skills_dir = build_skills_package(dist, variables, exclude)
+        # 2. platform overlay (setup guide, connector config) -> dist/<platform>/
+        c2, r2 = copy_tree(platform_dir / "overlay", dist, variables)
+        if spec:
+            apply_variant(dist, variant, spec, server_key,
+                          bool(variables.get("mcp_env_passthrough")))
+        # 3. the skill folders, zipped -> dist/<platform>/<skills_package.zip>
+        write_zip(skills_dir, dist / variables["skills_package"]["zip"], dist.name)
+        shown = dist.relative_to(ROOT) if dist.is_relative_to(ROOT) else dist
+        log(f"[{dist.name}] skills: {len(variables['shipped_skills'])} | "
+            f"overlay: {c2} copied, {r2} rendered -> {shown}")
+        return dist
+
+    # 1. shared payload -> dist/<platform>/plugins/tableau/
     c1, r1 = copy_tree(SRC_PAYLOAD, dist / PAYLOAD_DEST_SUBPATH, variables, exclude)
     if slim_spec:
         if "keep_latest_schemas" in slim_spec:
@@ -347,23 +465,27 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
     return dist
 
 
-def zip_plugin(dist: Path) -> Path:
-    """Zip the built plugin dir (manifest at the zip root) for upload/submission.
+def write_zip(src_dir: Path, out: Path, label: str) -> Path:
+    """Zip the contents of src_dir (not the dir itself) to `out`.
 
     Entries are sorted with a fixed timestamp so the zip is reproducible.
     """
-    plugin_dir = dist / PAYLOAD_DEST_SUBPATH
-    out = dist.parent / f"{dist.name}-{PAYLOAD_DEST_SUBPATH.name}.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in sorted(p for p in plugin_dir.rglob("*") if p.is_file()):
-            info = zipfile.ZipInfo(path.relative_to(plugin_dir).as_posix(),
+        for path in sorted(p for p in src_dir.rglob("*") if p.is_file()):
+            info = zipfile.ZipInfo(path.relative_to(src_dir).as_posix(),
                                    date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = (path.stat().st_mode & 0o777) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             zf.writestr(info, path.read_bytes())
     shown = out.relative_to(ROOT) if out.is_relative_to(ROOT) else out
-    log(f"[{dist.name}] zip -> {shown}")
+    log(f"[{label}] zip -> {shown}")
     return out
+
+
+def zip_plugin(dist: Path) -> Path:
+    """Zip the built plugin dir (manifest at the zip root) for upload/submission."""
+    return write_zip(dist / PAYLOAD_DEST_SUBPATH,
+                     dist.parent / f"{dist.name}-{PAYLOAD_DEST_SUBPATH.name}.zip", dist.name)
 
 
 def discover_platforms() -> list[str]:
@@ -414,7 +536,10 @@ def main() -> None:
     for platform in targets:
         dist = build_platform(platform, variant=args.variant, slim=args.slim)
         if args.zip:
-            zip_plugin(dist)
+            if (dist / PAYLOAD_DEST_SUBPATH).is_dir():
+                zip_plugin(dist)
+            else:
+                log(f"[{dist.name}] --zip skipped: not a plugin build")
 
 
 if __name__ == "__main__":
