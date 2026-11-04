@@ -282,3 +282,7 @@ host is blocked there.
 **ChatGPT web:** test through developer mode. Sharing with a workspace needs a
 workspace admin; listing in the public directory needs OpenAI review (OAuth,
 domain verification).
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE.txt).
