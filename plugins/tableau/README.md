@@ -45,4 +45,4 @@ appear, and the skills that need them say so.
 
 ## Support
 
-Source, issues, and license (MIT): https://github.com/tableau/tableau-plugin
+Source, issues, and license (Apache 2.0): https://github.com/tableau/tableau-plugin
