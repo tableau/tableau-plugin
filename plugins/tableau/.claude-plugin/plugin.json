@@ -7,7 +7,7 @@
   },
   "repository": "https://github.com/tableau/tableau-plugin",
   "privacyPolicyUrl": "https://www.salesforce.com/company/legal/privacy/",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": [
     "tableau",
     "analytics",
