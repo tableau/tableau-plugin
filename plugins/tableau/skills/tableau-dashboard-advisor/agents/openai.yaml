@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tableau Dashboard Advisor"
+  short_description: "Get advice for designing effective Tableau dashboards"
+  default_prompt: "Use $tableau-dashboard-advisor to advise me on how to design a Tableau dashboard for my audience, questions, and data. Do not create or edit a workbook."

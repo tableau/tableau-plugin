@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "Tableau": {
+      "type": "streamable-http",
+      "url": "https://mcp.tableau.com"
+    }
+  }
+}
