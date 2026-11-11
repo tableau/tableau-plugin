@@ -30,8 +30,9 @@ next to the published plugin without colliding with it (see VARIANTS):
 `--slim` builds a size-reduced copy for hosts with package limits, from the
 platform's `slim:` block in vars.yaml (-> dist/<platform>-slim/). It keeps the
 published names, adds the `slim.exclude` globs, keeps only the newest
-`slim.keep_latest_schemas` schema versions, and drops catalog.json entries
-whose files no longer ship.
+`slim.keep_latest_schemas` schema versions, drops catalog.json entries whose
+files no longer ship, strips XSD indentation if `slim.strip_xsd_indent`, and
+fails if a non-image file exceeds `slim.max_file_kib`.
 
 A platform whose host has no plugin format, only standalone skills installed
 apart from the MCP connector (e.g. Amazon Quick), sets a `skills_package:`
@@ -64,6 +65,7 @@ import re
 import shutil
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -314,6 +316,39 @@ def prune_catalog(plugin_dir: Path) -> None:
         log(f"  {catalog.relative_to(plugin_dir)}: kept {kept} of {total} entries")
 
 
+def strip_xsd_indent(plugin_dir: Path) -> None:
+    """Drop leading whitespace from every line of each shipped schema.
+
+    Line numbers stay the same, so validator errors still point at the right
+    schema line. Only comment and documentation text changes; the build fails
+    if any element or attribute would.
+    """
+    for xsd in sorted(plugin_dir.glob("skills/*/resources/schemas/*/*.xsd")):
+        before = xsd.read_bytes()
+        after = b"\n".join(line.lstrip() for line in before.split(b"\n"))
+        structure = [[(e.tag, e.attrib) for e in ET.fromstring(text).iter()]
+                     for text in (before, after)]
+        if structure[0] != structure[1]:
+            sys.exit(f"error: stripping indentation would change {xsd}")
+        xsd.write_bytes(after)
+        log(f"  {xsd.relative_to(plugin_dir)}: {len(before):,} -> {len(after):,} bytes")
+
+
+# The Claude directory's per-file cap doesn't apply to images and fonts.
+SIZE_CAP_EXEMPT_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp",
+                            ".ttf", ".otf", ".woff", ".woff2")
+
+
+def check_file_sizes(dist: Path, max_kib: int) -> None:
+    """Fail if a non-image file in the dist is bigger than `max_kib`."""
+    over = [p for p in sorted(dist.rglob("*"))
+            if p.is_file() and not p.name.lower().endswith(SIZE_CAP_EXEMPT_SUFFIXES)
+            and p.stat().st_size > max_kib * 1024]
+    if over:
+        sizes = "\n".join(f"  {p.relative_to(dist)} ({p.stat().st_size:,} bytes)" for p in over)
+        sys.exit(f"error: files over the {max_kib} KiB slim cap:\n{sizes}")
+
+
 def skill_names(shipped) -> list[str]:
     """Names of the skills whose SKILL.md (or SKILL.md.j2) passes `shipped(rel)`."""
     names = []
@@ -448,6 +483,8 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
         if "keep_latest_schemas" in slim_spec:
             prune_schemas(dist / PAYLOAD_DEST_SUBPATH, int(slim_spec["keep_latest_schemas"]))
         prune_catalog(dist / PAYLOAD_DEST_SUBPATH)
+        if slim_spec.get("strip_xsd_indent"):
+            strip_xsd_indent(dist / PAYLOAD_DEST_SUBPATH)
 
     # 2. platform overlay -> dist/<platform>/ (root); overrides payload on collision
     overlay = platform_dir / "overlay"
@@ -458,6 +495,9 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
     if spec:
         apply_variant(dist, variant, spec, server_key,
                       bool(variables.get("mcp_env_passthrough")))
+
+    if slim_spec and "max_file_kib" in slim_spec:
+        check_file_sizes(dist, int(slim_spec["max_file_kib"]))
 
     shown = dist.relative_to(ROOT) if dist.is_relative_to(ROOT) else dist
     log(f"[{dist.name}] payload: {c1} copied, {r1} rendered | "
