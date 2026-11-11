@@ -75,5 +75,14 @@ slim:
   # Globs match from the right, so "*.tbm" drops every chart template.
   exclude:
     - "*.tbm"
+    # Over the directory's 256 KiB per-file cap (held as uninspectable). Only
+    # catalog.json points at them.
+    - "tableau-desktop-commands-reference.json"
+    - "twb-example-index.json"
   # Keep only the newest N resources/schemas/<YYYY_R>/ versions.
   keep_latest_schemas: 2
+  # Drop XSD indentation (~18%) so the kept schemas fit under the cap.
+  strip_xsd_indent: true
+  # Fail the build if a non-image file is bigger than this, rather than have
+  # the directory hold it.
+  max_file_kib: 256
