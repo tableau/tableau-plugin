@@ -314,25 +314,6 @@
       "sha256": "037d3fbeffebb4e3403dc617a07b7e0ce4047470445af3beec9a198f83c4130f"
     },
     {
-      "id": "tableau-desktop-commands-reference",
-      "type": "reference",
-      "family": null,
-      "intent": "tableau desktop commands reference",
-      "path": "./references/tableau-desktop-commands-reference.json",
-      "tier": "reference",
-      "classificationReasons": [],
-      "datasources": [],
-      "fields": [],
-      "parameters": [],
-      "keywords": [
-        "commands",
-        "desktop",
-        "reference",
-        "tableau"
-      ],
-      "sha256": "9c625b4787cc394ffb340320ab20349a3936d777fff9ff52108ccc55b6060029"
-    },
-    {
       "id": "topn-context-filter",
       "type": "example",
       "family": null,
@@ -370,25 +351,6 @@
         "topn"
       ],
       "sha256": "d5aca4a6f24336cbe622ace5183bb5427f6e30637b47ba030f7afc0fb101343d"
-    },
-    {
-      "id": "twb-example-index",
-      "type": "reference",
-      "family": null,
-      "intent": "twb example index",
-      "path": "./references/twb-example-index.json",
-      "tier": "reference",
-      "classificationReasons": [],
-      "datasources": [],
-      "fields": [],
-      "parameters": [],
-      "keywords": [
-        "example",
-        "index",
-        "reference",
-        "twb"
-      ],
-      "sha256": "1d17348d9d8ad3bc1b42ba0a0d964e168e6495528cf60b9abcc55c902a8e6cfe"
     },
     {
       "id": "url-action",

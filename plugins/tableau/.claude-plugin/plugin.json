@@ -1,6 +1,6 @@
 {
   "name": "tableau",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Explore Tableau content and generate/modify Tableau workbooks through the hosted Tableau MCP server.",
   "author": {
     "name": "Salesforce, Inc."
