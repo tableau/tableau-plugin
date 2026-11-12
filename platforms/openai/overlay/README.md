@@ -1,104 +1,126 @@
-# Tableau for Codex
+# Tableau for ChatGPT and Codex
 
-A Codex plugin that connects Codex to Tableau's [hosted MCP server](https://tableau.github.io/tableau-mcp/docs/hosted-tableau-mcp)
-(`https://mcp.tableau.com`), with skills for exploring existing Tableau
-content, rendering a specific view/workbook so you can see it, and
-**generating or modifying workbooks on the fly**.
+Connects ChatGPT and Codex to Tableau's hosted MCP server
+(`https://mcp.tableau.com`) so you can find and show views, create and publish
+workbooks and data apps, and review dashboard design and datasource quality.
+Each skill's `SKILL.md` describes what it covers.
 
-There's no official Tableau plugin for Codex yet (Tableau's docs say one is
-"coming soon"), so this fills that gap in the meantime.
+This folder is a Codex marketplace: a built plugin under `dist/`, or a
+checkout of the `dist/codex` branch. The Codex CLI and the ChatGPT/Codex
+desktop apps share `~/.codex`, so one install covers all of them.
+
+## What you can ask
+
+- "Show me the Superstore sales dashboard."
+- "Add a monthly profit trend to the Regional Sales workbook and republish it."
+- "Build a data app that shows our top 10 accounts by pipeline."
+- "Critique the Executive Overview dashboard."
+
+## How it connects to Tableau
+
+The hosted server authenticates each user with their own Tableau Cloud or
+Server OAuth login. There is no API key to configure. Both MCP configs point
+at the same server. The legacy manifest
+(`plugins/tableau/.codex-plugin/plugin.json`) reads `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "Tableau": {
+      "type": "http",
+      "url": "https://mcp.tableau.com"
+    }
+  }
+}
+```
+
+`plugins/tableau/mcp.json` is the portable config and uses
+`"type": "streamable-http"` at the same URL. The server key is `Tableau`.
+
+`codex mcp login` does not work for an MCP server bundled in a plugin. Sign
+in from the Plugins UI (below). Once signed in, every tool call runs with
+that user's Tableau permissions.
+
+A test, stage, or dev build renames the plugin and the server
+(`Tableau-test` / `TableauTest`, and the same pattern for stage and dev) and
+repoints the URL. Dev runs a local tableau-mcp checkout over stdio instead of
+`https://mcp.tableau.com`.
+
+## Install
+
+From a local prod build:
+
+```bash
+codex plugin marketplace add ./dist/openai
+codex plugin add Tableau@tableau-plugin
+```
+
+A test build is `./dist/openai-test` and `Tableau-test@tableau-plugin-test`.
+Stage and dev follow the same pattern.
+
+From the published branch, without building:
+
+```bash
+codex plugin marketplace add tableau/tableau-plugin --ref dist/codex
+codex plugin add Tableau@tableau-plugin
+```
+
+Then:
+
+1. **Restart** the ChatGPT/Codex desktop app so it loads the new build.
+2. **Connect Tableau.** Open **Plugins**, find **Tableau**, and click
+   **Authenticate** / **Connect**. Sign in to Tableau Cloud or Server in the
+   browser window that opens.
+3. **Start a new task.** Plugins and MCP connections load when a task starts.
+
+If you are in the source repository, `./reload-plugin.sh openai` builds the
+test variant and runs the marketplace add and plugin add for you. See that
+repo's README for variants.
+
+Codex copies the plugin into its own cache
+(`~/.codex/plugins/cache/<marketplace>/<plugin>/`). Editing files here has no
+effect until you remove the plugin and add it again.
+
+Creating or publishing workbooks and data apps needs a Creator or Explorer
+(can publish) site role. If a site admin has turned off some Tableau MCP tool
+groups, those tools do not appear.
 
 ## Layout
 
 ```
-.agents/plugins/marketplace.json   # local marketplace catalog (for testing/dev)
+.agents/plugins/marketplace.json
 plugins/tableau/
-  .codex-plugin/plugin.json                    # plugin manifest
-  .mcp.json                                    # bundles the hosted Tableau MCP server
-  skills/tableau-analytics/                    # read-oriented: querying/exploring content
-  skills/tableau-content-viewer/               # find a view/workbook and render it, no data querying or editing
-  skills/tableau-workbook-authoring/           # generate/modify workbooks by editing TWB XML
-  skills/shared/rendering.md                   # shared render-in-side-panel steps, used by both of the above
-  schemas/<YYYY_R>/twb_<YYYY.R.0>.xsd           # per-Tableau-version TWB XSD schemas (2018.1-2026.2)
-  skills/tableau-workbook-authoring/scripts/validate_workbook.py   # validates a .twb/.twbx against the matching XSD
-  requirements.txt                             # pinned lxml, needed by validate_workbook.py
-  scripts/render_embed.py                      # builds an embeddable URL + local iframe fallback
+  plugin.json                  # portable manifest (extensions.com.openai)
+  mcp.json                     # portable MCP config (streamable-http)
+  .codex-plugin/plugin.json    # legacy manifest
+  .mcp.json                    # legacy MCP config
+  skills/                      # one folder per skill, each with SKILL.md
+  references/                  # shared search and rendering notes
+  scripts/run_python.py        # launches skill scripts with their dependencies
+  requirements.txt             # lxml, installed by run_python.py
+  assets/
 ```
 
-The workbook validator needs `lxml`. The first time a skill runs it, `plugins/tableau/scripts/run_python.py` installs the pinned version from `plugins/tableau/requirements.txt` into a shared per-user venv (`~/.cache/tableau-plugin/`, or `%LOCALAPPDATA%\tableau-plugin\` on Windows); this needs network access once.
+Skills:
 
-## How it connects to Tableau
+- `tableau-about` — what the plugin does, and which skill to use
+- `tableau-content-viewer` — find a view, dashboard, or workbook and show it
+- `tableau-workbook-authoring` — create, edit, copy, or republish a workbook
+- `tableau-data-app-authoring` — scaffold, wire, package, and publish a data app
+- `tableau-dashboard-advisor` — turn a question and a schema into a dashboard plan
+- `tableau-viz-critique` — score an existing dashboard
+- `tableau-data-quality-sentinel` — scan published datasource metadata
 
-The hosted MCP server authenticates each user with their own Tableau Cloud/Server
-OAuth login — there's no API key or token to configure here. `plugins/tableau/.mcp.json`
-just points Codex at the server:
+Workbook authoring keeps its chart catalog, examples, and Tableau workbook
+schemas under `skills/tableau-workbook-authoring/resources/`. OpenAI-only
+skill metadata is `skills/<skill>/agents/openai.yaml`.
 
-```json
-{
-  "mcpServers": {
-    "Tableau": {
-      "type": "http",
-      "url": "https://mcp.tableau.com/tableau-mcp"
-    }
-  }
-}
-```
+The workbook validator needs `lxml`. The first time a skill launches it
+through `scripts/run_python.py`, that script installs `requirements.txt` into
+a shared per-user venv (`~/.cache/tableau-plugin/venv-<pyver>`, or
+`%LOCALAPPDATA%\tableau-plugin\` on Windows). That needs network access once.
+If the running Python already has `lxml`, no venv is created.
 
-or if running Tableau-MCP locally:
+## Support
 
-```json
-{
-  "mcpServers": {
-    "Tableau": {
-      "type": "http",
-      "url": "https://127.0.0.1/tableau-mcp"
-    }
-  }
-}
-```
-
-The first time you use it, Codex will prompt you to authenticate in the
-Plugins UI (see below) — `codex mcp login <name>` does **not** work for
-MCP servers bundled inside a plugin, only for servers added directly via
-`codex mcp add`. Once signed in, every tool call runs with that user's own
-Tableau permissions — the server doesn't store Tableau data itself.
-
-## Install and authenticate in Codex Desktop
-
-1. **Register this repo as a marketplace.** From inside this repo:
-  ```bash
-   codex plugin marketplace add .
-  ```
-   This adds a marketplace source named after the repo directory (e.g.
-   `tableau-plugin`) pointing at your local checkout. Run
-   `codex plugin marketplace list` if you want to confirm the name it picked.
-2. **Install the plugin from the Plugins tab.** Open Codex Desktop → **Plugins**,
-  find the "Tableau MCP Skills" marketplace, and install the **tableau**
-   plugin.
-3. **Authenticate the MCP connector.** Still in the Plugins tab, find the
-  Tableau plugin's entry and click **Authenticate**/**Connect**. This opens
-   your browser to Tableau's OAuth login (Tableau Cloud or Server, whichever
-   your site uses). Approve the request; Codex stores the resulting token and
-   the plugin's entry should flip to a connected state.
-4. **Start a new task.** MCP connections and plugin config are only
-  (re)loaded when a task starts, so an already-open task won't pick up a
-   fresh install or a new OAuth connection — start a new one before trying a
-   Tableau request.
-
-If a site admin has restricted tool groups via Tableau's `EXCLUDE_TOOLS` site
-setting (e.g. disabling `admin-insights` or `pulse`), those tools simply won't
-show up — that's expected, not a bug in this plugin.
-
-### If you edit plugin files locally
-
-Codex copies plugin files into its own cache at install time
-(`~/.codex/plugins/cache/<marketplace>/<plugin>/`) rather than reading from
-this repo live, so editing `.mcp.json` or a skill here has no effect until you
-reinstall. `reload-plugin.sh` in the repo root automates the
-remove/re-add cycle:
-
-```bash
-./reload-plugin.sh
-```
-
-Then start a new task (chat) in Codex Desktop as in step 4 above.
+Source, issues, and license (Apache 2.0): https://github.com/tableau/tableau-plugin
