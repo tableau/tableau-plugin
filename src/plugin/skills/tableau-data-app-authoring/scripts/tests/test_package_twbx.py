@@ -66,6 +66,7 @@ def test_packages_twb_first_and_packages_at_root(tmp_path):
     assert f'{PACKAGE}/extensions/data-app.trex' in entries
     assert f'{PACKAGE}/content/index.html' in entries
     assert f'{PACKAGE}/content/src/app.js' in entries
+    assert not any(entry.endswith('/') for entry in entries)
     assert '✓ Packaged Sales Demo.twb + Packages/' in result.stderr
 
 

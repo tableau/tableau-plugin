@@ -71,20 +71,18 @@ def die(message):
 
 
 def collect_entries(workspace, top, allowed=None):
-    entries = []  # (path, archive name, is_dir)
+    # Files only: Tableau Cloud rejects a .twbx that has directory entries and a
+    # long package id with a bare HTTP 400 on publish.
+    entries = []  # (path, archive name)
     for root, dirs, files in os.walk(os.path.join(workspace, top)):
         dirs[:] = sorted(name for name in dirs if not name.startswith(('.', '__MACOSX')))
         rel_root = os.path.relpath(root, workspace).replace(os.sep, '/')
-        entries.append((root, rel_root, True))
         for name in sorted(files):
             rel = f'{rel_root}/{name}'
             if name.startswith('.') or (allowed is not None and rel not in allowed):
                 continue
-            entries.append((os.path.join(root, name), rel, False))
-
-    ancestor_dirs = {rel.rsplit('/', i)[0] for _, rel, is_dir in entries if not is_dir
-                     for i in range(1, rel.count('/') + 1)}
-    return [(path, rel) for path, rel, is_dir in entries if not is_dir or rel in ancestor_dirs]
+            entries.append((os.path.join(root, name), rel))
+    return entries
 
 
 def referenced_data_files(workspace, twb):
