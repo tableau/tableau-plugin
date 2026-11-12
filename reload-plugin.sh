@@ -9,8 +9,10 @@ case "${1:-}" in
     TARGET=openai ;;
   claude|claude-desktop)
     TARGET=claude ;;
+  cursor|grok|grokbot)
+    TARGET=cursor ;;
   *)
-    echo "usage: $0 {openai|claude} [test|stage|dev|prod]" >&2
+    echo "usage: $0 {openai|claude|cursor} [test|stage|dev|prod]" >&2
     exit 1 ;;
 esac
 
@@ -22,7 +24,7 @@ case "$VARIANT" in
   test|stage|dev) SUFFIX="-$VARIANT" ;;
   prod) SUFFIX="" ;;
   *)
-    echo "usage: $0 {openai|claude} [test|stage|dev|prod]" >&2
+    echo "usage: $0 {openai|claude|cursor} [test|stage|dev|prod]" >&2
     exit 1 ;;
 esac
 
@@ -48,6 +50,21 @@ if [ "$TARGET" = "openai" ]; then
   codex plugin marketplace add "$DIST"
   codex plugin add "$PLUGIN"
   echo "Built and installed. Restart the ChatGPT/Codex desktop app to load the changes."
+  exit 0
+fi
+
+# Grok Bot loads this from the Cursor marketplace, not from a local folder.
+# Hand over the built tree and the plugin zip; submission is a git repo whose
+# root is the marketplace (see platforms/cursor/overlay/README.md).
+if [ "$TARGET" = "cursor" ]; then
+  ZIP="$DIR/dist/$TARGET$SUFFIX-tableau.zip"
+  if [ "$(uname)" = "Darwin" ]; then
+    open -R "$ZIP"
+  fi
+  echo "Built $DIST"
+  echo "Built $ZIP (plugin only: .cursor-plugin/plugin.json at the zip root)."
+  echo "Marketplace: $DIST/.cursor-plugin/marketplace.json"
+  echo "Submit the marketplace tree, not this source repo, at https://cursor.com/marketplace/publish"
   exit 0
 fi
 

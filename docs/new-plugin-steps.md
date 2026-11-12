@@ -16,6 +16,7 @@ Existing platforms to copy from:
 |---|---|---|
 | `claude` | One plugin directory the host installs | `platforms/claude/` |
 | `openai` | One plugin directory, two manifest generations | `platforms/openai/` |
+| `cursor` | One plugin directory, Cursor marketplace, for Grok Bot | `platforms/cursor/` |
 | `quick` | No plugin format: a connector config plus one folder per skill | `platforms/quick/` |
 
 ## 0. Confirm the host needs its own platform
@@ -179,9 +180,11 @@ copied unchanged, so a test build would keep the prod name and the prod URL.
 |---|---|
 | `.agents/plugins/marketplace.json` | suffixes `name`, each plugin `name`, and every `displayName` |
 | `.claude-plugin/marketplace.json` | same |
+| `.cursor-plugin/marketplace.json` | same |
 | `plugins/tableau/plugin.json` | suffixes `name` and every `displayName` |
 | `plugins/tableau/.codex-plugin/plugin.json` | same |
 | `plugins/tableau/.claude-plugin/plugin.json` | same |
+| `plugins/tableau/.cursor-plugin/plugin.json` | same |
 | `plugins/tableau/.mcp.json` | repoints the single `mcpServers` entry |
 | `plugins/tableau/mcp.json` | same |
 | `connector/mcp.json` | same (standalone-skill layout) |
