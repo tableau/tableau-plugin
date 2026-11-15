@@ -182,7 +182,9 @@ swap datasources the user asked for; if you think a different or extra
 datasource would help, ask first.
 
 The app queries a datasource that already exists on the server (a `sqlproxy`
-connection, resolved live by VDS). Its identity can come straight from the
+connection, resolved live by VDS). An ad-hoc `upload-data-file` upload cannot be
+wired. Publish it as a datasource first (see the `tableau-adhoc-analysis` skill's
+Transition to a data app). Its identity can come straight from the
 user, or be reused from a datasource already wired into some other existing
 workbook — see Reuse an existing workbook's datasource below.
 
