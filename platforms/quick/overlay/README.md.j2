@@ -30,9 +30,6 @@ scripts it uses.
   sign-in registers clients only through CIMD, not Dynamic Client
   Registration. (VERIFY: AWS has said this is coming; until it ships, the
   connector fails at sign-in.)
-{% else %}
-- A local [tableau-mcp](https://github.com/tableau/tableau-mcp) checkout,
-  built with `npm run build`, whose `.env` sets `SERVER`, `SITE_NAME` and auth.
 {% endif %}
 
 ## 1. Add the Tableau connector
@@ -57,11 +54,34 @@ they see only what their Tableau permissions allow. Quick registers at most
 100 tools per connector; after the Tableau MCP server adds tools, choose
 **Sync** on the connector to pick them up.
 {% else %}
-In Quick, open **Customize > Connectors**, choose **Create**, then **Create
-local connector**, then **Import**, and enter the path to
-`connector/mcp.json`. It runs your tableau-mcp checkout over stdio: set
-`TABLEAU_MCP_DIR` in this repo's `.env` before building, or in the connector's
-environment variables. The connector works only while this machine is on.
+In Quick desktop application, open **Customize > Connectors**, choose **Create**, then **Create
+local connector**, expand **Paste JSON**. Input the JSON config content displayed after this
+paragraph, set the environment variable values to authenticate to your Tableau Cloud Site,
+and select **Apply**. Scroll down, change **Timeout (seconds)** to 300,
+select **Add MCP**. In the popup window, select **Add server**.
+
+JSON config
+```
+{
+  "mcpServers": {
+    "Tableau": {
+      "command": "npx",
+      "args": ["-y", "@tableau/mcp-server@latest"],
+      "env": {
+        "SERVER": "https://example.online.tableau.com",
+        "SITE_NAME": "",
+        "PAT_NAME": "",
+        "PAT_VALUE": ""
+      }
+    }
+  }
+}
+```
+
+Wait few minutes for node to start the local mcp server. Select **Tableau** in the list of connectors
+to open a details page, expand **Read tools** to see a list of available mcp api functions.
+
+The connector works only while this machine is on.
 {% endif %}
 
 ## 2. Add the skills
@@ -71,8 +91,9 @@ Open **Customize > Skills**, choose **Create**, then **From file**, and select
 Quick takes one skill per upload, choose **From folder** instead and add each
 folder under `skills/`.) Review each skill, then **Publish** it.
 
-To share the skills with your team, choose **Share** on each one. People you
-share with also need the connector.
+To share the skills with your team, choose **Publish** and **Share** on each one. People you
+share with also need the connector. Note: it fails to publish tableau-workbook-authoring
+because the file is too large.
 
 ## Try it
 
