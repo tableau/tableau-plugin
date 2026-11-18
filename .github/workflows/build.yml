@@ -1,0 +1,30 @@
+name: Build
+
+# Builds what publish-dist.yml ships, plus the test variant, on every PR, so a
+# broken build can't merge. As a required check it also turns on "branch must
+# be up to date", which makes auto-version-bump re-bump a PR after another
+# one merges.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build every platform
+        run: |
+          pip install -r build/requirements.txt
+          python3 build/build.py --variant prod
+          python3 build/build.py --variant prod --slim claude
+          python3 build/build.py --variant test
