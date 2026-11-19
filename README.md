@@ -58,6 +58,12 @@ python3 build/build.py quick           # Amazon Quick skills + connector -> dist
 `--check` is a local stale-tree check. `dist/` is git-ignored, and CI does
 not run it. CI publishes from a fresh prod build; see [Published builds](#published-builds).
 
+### Versions
+
+The plugin version is the `version` field in every `plugin.json` under
+`platforms/`. Don't edit it: CI sets it from the box you tick under
+**Version Bump** in the PR description.
+
 ### Variants
 
 The published plugin and a local build can't share names. Codex keeps one MCP

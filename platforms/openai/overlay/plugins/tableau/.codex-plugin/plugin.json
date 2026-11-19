@@ -7,10 +7,18 @@
   },
   "repository": "https://github.com/tableau/tableau-plugin",
   "license": "Apache-2.0",
-  "keywords": ["tableau", "analytics", "bi", "mcp", "data", "workbook", "dashboard", "authoring"],
+  "keywords": [
+    "tableau",
+    "analytics",
+    "bi",
+    "mcp",
+    "data",
+    "workbook",
+    "dashboard",
+    "authoring"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
-  
   "interface": {
     "displayName": "Tableau",
     "composerIcon": "./assets/icon.png",
@@ -24,7 +32,10 @@
     "termsOfServiceURL": "https://www.tableau.com/legal/eula",
     "developerName": "Salesforce, Inc.",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Tell me about the Tableau Plugin and what it can do.",
       "Show me the Commission Model dashboard. Also, tell me who is above 100% attainment",

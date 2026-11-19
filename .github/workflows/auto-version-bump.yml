@@ -1,0 +1,146 @@
+name: Auto Version Bump
+
+# Bumps the version in every plugin.json under platforms/ from the box ticked
+# under "Version Bump" in the PR description, then tags vX.Y.Z when the PR
+# merges.
+
+on:
+  pull_request:
+    # edited: ticking a box after opening the PR re-runs the bump.
+    types: [opened, edited, synchronize, reopened, closed]
+    branches: [main]
+    # Docs- and workflow-only PRs ship no plugin change, so they get no version.
+    paths-ignore:
+      - 'docs/**'
+      - '.github/**'
+
+permissions:
+  contents: write
+
+env:
+  # CI reads main's current version from this file. Every plugin.json must
+  # have the same version.
+  BASE_MANIFEST: platforms/claude/overlay/plugins/tableau/.claude-plugin/plugin.json
+  # `*` in a git pathspec crosses directories, so this finds every platform's
+  # manifests, including .claude-plugin/ and .codex-plugin/.
+  MANIFESTS: platforms/*/plugin.json
+
+jobs:
+  bump-version:
+    # The bot can't push to a fork's branch.
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: version-bump-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Determine bump type
+        id: bump
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Strict semver: only the author knows whether a change is a fix, a
+          # feature, a break, or invisible to users, so there is no default.
+          # If several boxes are ticked, the biggest bump wins.
+          checked() { printf '%s\n' "$PR_BODY" | grep -qiE "^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*$1"; }
+          if checked Major; then BUMP=major
+          elif checked Minor; then BUMP=minor
+          elif checked Patch; then BUMP=patch
+          elif checked None; then BUMP=none
+          else
+            echo "::error::Tick Patch, Minor, Major, or None under \"Version Bump\" in the PR description."
+            exit 1
+          fi
+          echo "Resolved bump type: $BUMP"
+          echo "type=$BUMP" >> "$GITHUB_OUTPUT"
+
+      - name: Compute version relative to latest main
+        id: apply
+        env:
+          BUMP: ${{ steps.bump.outputs.type }}
+        run: |
+          git fetch origin main
+          BASE=$(git show "origin/main:$BASE_MANIFEST" | jq -r .version)
+          if ! [[ "$BASE" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::$BASE_MANIFEST on main has version '$BASE', not MAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          MAJOR=${BASH_REMATCH[1]} MINOR=${BASH_REMATCH[2]} PATCH=${BASH_REMATCH[3]}
+          case "$BUMP" in
+            # Also undoes an earlier bump if the author switched to None.
+            none) VERSION="$BASE" ;;
+            major) VERSION="$((MAJOR + 1)).0.0" ;;
+            minor) VERSION="$MAJOR.$((MINOR + 1)).0" ;;
+            patch) VERSION="$MAJOR.$MINOR.$((PATCH + 1))" ;;
+          esac
+          # Rewriting every manifest also undoes a hand edit to any one of them.
+          git ls-files -z "$MANIFESTS" | while IFS= read -r -d '' f; do
+            jq --arg v "$VERSION" '.version = $v' "$f" > "$f.tmp"
+            mv "$f.tmp" "$f"
+            echo "$f: $BASE -> $VERSION ($BUMP)"
+          done
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push if version changed
+        env:
+          VERSION: ${{ steps.apply.outputs.version }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if git diff --quiet; then
+            echo "Every plugin.json is already $VERSION; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: set version to $VERSION"
+          git push origin "HEAD:$HEAD_REF"
+
+  tag-release:
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Tag the merged version
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # A fork PR skips the bump job, so its manifests can disagree.
+          VERSIONS=$(git ls-files -z "$MANIFESTS" | xargs -0 jq -r .version | sort -u)
+          if [ "$(wc -l <<< "$VERSIONS")" -ne 1 ]; then
+            echo "::error::plugin.json versions differ (${VERSIONS//$'\n'/, }). Open a PR that bumps the version so they match."
+            exit 1
+          fi
+          checked() { printf '%s\n' "$PR_BODY" | grep -qiE "^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*$1"; }
+          if checked Major || checked Minor || checked Patch; then
+            :
+          elif checked None; then
+            echo "None ticked: no new version to tag."
+            exit 0
+          else
+            echo "::error::Merged without ticking a Version Bump box, so its version is unknown."
+            exit 1
+          fi
+          TAG="v$VERSIONS"
+          HEAD_SHA=$(git rev-parse HEAD)
+          if TAGGED=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}"); then
+            if [ "$TAGGED" = "$HEAD_SHA" ]; then
+              echo "$TAG already tags this commit."
+              exit 0
+            fi
+            # Two PRs bumped from the same main, or this one merged without a bump.
+            echo "::error::$TAG already tags $TAGGED, so this merge shipped under a used version. Open a PR that bumps the version."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"

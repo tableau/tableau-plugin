@@ -153,8 +153,9 @@ OpenAI adds a marketplace at `.agents/plugins/marketplace.json`, a portable
 
 Match the license and author fields already in those manifests: `Apache-2.0`,
 author `Salesforce, Inc.`, repository `https://github.com/tableau/tableau-plugin`,
-and the same privacy-policy URL. Use the same `version` as the other
-platforms' `plugin.json` files unless you are cutting a release.
+and the same privacy-policy URL. Copy `version` from another platform's
+`plugin.json`. CI sets it in every `plugin.json` under `platforms/` from then
+on.
 
 Two strings the variant rewrite depends on:
 
