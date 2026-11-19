@@ -16,6 +16,7 @@ Existing platforms to copy from:
 |---|---|---|
 | `claude` | One plugin directory the host installs | `platforms/claude/` |
 | `openai` | One plugin directory, two manifest generations | `platforms/openai/` |
+| `grok` | One plugin directory, `.grok-plugin` manifests | `platforms/grok/` |
 | `quick` | No plugin format: a connector config plus one folder per skill | `platforms/quick/` |
 
 ## 0. Confirm the host needs its own platform
@@ -179,9 +180,11 @@ copied unchanged, so a test build would keep the prod name and the prod URL.
 |---|---|
 | `.agents/plugins/marketplace.json` | suffixes `name`, each plugin `name`, and every `displayName` |
 | `.claude-plugin/marketplace.json` | same |
+| `.grok-plugin/marketplace.json` | same |
 | `plugins/tableau/plugin.json` | suffixes `name` and every `displayName` |
 | `plugins/tableau/.codex-plugin/plugin.json` | same |
 | `plugins/tableau/.claude-plugin/plugin.json` | same |
+| `plugins/tableau/.grok-plugin/plugin.json` | same |
 | `plugins/tableau/.mcp.json` | repoints the single `mcpServers` entry |
 | `plugins/tableau/mcp.json` | same |
 | `connector/mcp.json` | same (standalone-skill layout) |
@@ -261,8 +264,9 @@ Write the install steps that worked into the overlay README, and a short
 Optional, and only after step 5 works.
 
 `reload-plugin.sh` builds with `--zip` and defaults to the test variant. It
-only knows `openai` and `claude`: the OpenAI branch reinstalls into Codex,
-and the Claude branch writes the upload zip. A new plugin-layout host needs
+knows `openai`, `claude`, and `grok`: the OpenAI branch reinstalls into Codex,
+the Grok branch reinstalls with `grok plugin install`, and the Claude branch
+writes the upload zip. A new plugin-layout host needs
 a case in that script if you want the same one-command loop. Standalone-skill
 hosts stay a manual install; the script does not build Quick.
 
@@ -271,7 +275,9 @@ pushes the tree to a dist branch. Add a matrix row (`name`, `platform`,
 `flags`, `branch`) to publish this platform. The workflow copies `LICENSE.txt`
 into `plugins/tableau/`, which assumes the plugin layout. Quick is not
 published. The branch name does not have to match the platform directory
-(`openai` publishes to `dist/codex`).
+(`openai` publishes to `dist/codex`). A pre-release platform can publish to
+`alpha/<name>` instead (Grok uses `alpha/grok`); the `dist` ruleset does not
+cover that branch, so it needs no bypass actor.
 
 Name the branch `dist/<name>` or `dist-<name>`. The active `dist` ruleset
 ([rules/26991979](https://github.com/tableau/tableau-plugin/rules/26991979))

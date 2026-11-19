@@ -9,8 +9,10 @@ case "${1:-}" in
     TARGET=openai ;;
   claude|claude-desktop)
     TARGET=claude ;;
+  grok|grokbot)
+    TARGET=grok ;;
   *)
-    echo "usage: $0 {openai|claude} [test|stage|dev|prod]" >&2
+    echo "usage: $0 {openai|claude|grok} [test|stage|dev|prod]" >&2
     exit 1 ;;
 esac
 
@@ -22,7 +24,7 @@ case "$VARIANT" in
   test|stage|dev) SUFFIX="-$VARIANT" ;;
   prod) SUFFIX="" ;;
   *)
-    echo "usage: $0 {openai|claude} [test|stage|dev|prod]" >&2
+    echo "usage: $0 {openai|claude|grok} [test|stage|dev|prod]" >&2
     exit 1 ;;
 esac
 
@@ -48,6 +50,16 @@ if [ "$TARGET" = "openai" ]; then
   codex plugin marketplace add "$DIST"
   codex plugin add "$PLUGIN"
   echo "Built and installed. Restart the ChatGPT/Codex desktop app to load the changes."
+  exit 0
+fi
+
+if [ "$TARGET" = "grok" ]; then
+  # Grok CLI and Grok Bot desktop share ~/.grok. A local install points at
+  # $DIST; reinstall so Grok re-reads the rebuilt manifest and skills.
+  PLUGIN="tableau$SUFFIX"
+  grok plugin uninstall "$PLUGIN" --confirm || true
+  grok plugin install "$DIST/plugins/tableau" --trust
+  echo "Built and installed $PLUGIN. Start a new Grok session (or restart Grok Bot) to load it."
   exit 0
 fi
 

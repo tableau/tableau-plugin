@@ -9,6 +9,7 @@ only what is genuinely platform-specific.
 |---|---|---|
 | `openai` | ChatGPT and Codex (web, desktop, CLI) | root `plugin.json` + `extensions.com.openai`, with `.codex-plugin/plugin.json` as a fallback for current CLIs |
 | `claude` | Claude apps (web, Desktop Chat, Cowork) and Claude Code | `.claude-plugin/plugin.json` |
+| `grok` | Grok CLI and Grok Bot desktop | `.grok-plugin/plugin.json` and `.grok-plugin/marketplace.json` |
 | `quick` | Amazon Quick (desktop) | none: standalone skill folders plus `tableau-skills.zip`, and `connector/mcp.json` for the MCP connector |
 
 ## Layout
@@ -31,6 +32,14 @@ platforms/
       plugins/tableau/.claude-plugin/plugin.json
       plugins/tableau/.mcp.json
       plugins/tableau/README.md                 # end-user docs; required by the Claude plugin directory
+    vars.yaml
+  grok/
+    overlay/
+      .grok-plugin/marketplace.json             # Grok marketplace
+      plugins/tableau/.grok-plugin/plugin.json
+      plugins/tableau/.mcp.json                 # hosted MCP server (http)
+      plugins/tableau/README.md                 # end-user install, auth, and network endpoints
+      README.md                                 # layout, install, xAI marketplace submission
     vars.yaml
   quick/
     overlay/
@@ -72,9 +81,9 @@ that installs beside the marketplace plugin:
 | `stage` | `https://stage.mcp.tableau.com` | `dist/<platform>-stage/` | `Tableau-stage` / `TableauStage` |
 | `dev` | local [tableau-mcp](https://github.com/tableau/tableau-mcp) over stdio | `dist/<platform>-dev/` | `Tableau-dev` / `TableauDev` |
 
-(Claude plugin names are lowercase: `tableau-test`, `tableau-stage`,
+(Claude and Grok plugin names are lowercase: `tableau-test`, `tableau-stage`,
 `tableau-dev`.) On OpenAI, the skills' tool names follow the server key, e.g.
-`mcp__TableauDev__search-content`. Claude and Quick leave the prefix empty.
+`mcp__TableauDev__search-content`. Claude, Grok, and Quick leave the prefix empty.
 
 `dev` writes a stdio MCP server. The command is `sh -c` running
 `exec node --env-file="$dir/.env" "$dir/build/index.js"`, with `TRANSPORT=stdio`
@@ -94,8 +103,8 @@ The build copies `src/plugin/` into `dist/<platform>/plugins/tableau/`, then
 merges `platforms/<platform>/overlay/` over the top (overlay wins on collision).
 Files ending in `.j2` are rendered with Jinja2 using the platform's `vars.yaml`;
 everything else is copied verbatim. A platform's `vars.yaml` can list
-`exclude:` globs for payload files it doesn't ship (Claude and Quick drop
-`skills/*/agents/openai.yaml`).
+`exclude:` globs for payload files it doesn't ship (Claude, Grok, and Quick
+drop `skills/*/agents/openai.yaml`).
 
 `--zip` packages the plugin folder itself (manifest at the zip root) for
 uploading in the Claude apps or submitting to OpenAI. The zip is named from
@@ -153,8 +162,8 @@ skipped, since the build always writes the skills zip.
   install docs — are authored per platform under `platforms/<platform>/overlay/`.
 - **Host-specific wording** comes from `vars.yaml`. Templates read:
   - `assistant_name`, `show_image`, and `elicit_max_options`.
-  - `mcp_prefix`: `mcp__Tableau__` on OpenAI. Empty on Claude and Quick, where
-    the connector's tool prefix is host-assigned or unknown; skills there name
+  - `mcp_prefix`: `mcp__Tableau__` on OpenAI. Empty on Claude, Grok, and Quick,
+    where the connector's tool prefix is host-assigned or unknown; skills there name
     tools by base name (`search-content`) and tell the model to match on the
     suffix. A non-prod OpenAI variant rewrites this to the variant's server
     key (`mcp__TableauDev__`).
@@ -197,15 +206,18 @@ does not), and commits the tree to a branch:
 | Claude prod | `dist/claude/` | `dist/claude` |
 | Claude `--slim` | `dist/claude-slim/` | `dist-claude-slim` |
 | OpenAI prod | `dist/openai/` | `dist/codex` |
+| Grok prod | `dist/grok/` | `alpha/grok` |
 
 Quick is not published. Install commands are in the sections below.
+`alpha/grok` is outside the `dist` ruleset, so it is pre-release and can be
+rewritten.
 
 ## Install locally: Codex and ChatGPT desktop
 
 The Codex CLI and the ChatGPT/Codex desktop apps share `~/.codex`, so one
 install covers all of them. `reload-plugin.sh` builds the plugin and
-(re)installs it. The first argument is `openai` or `claude` (`codex`,
-`chatgpt`, and `claude-desktop` are aliases). The second is `test` (the
+(re)installs it. The first argument is `openai`, `claude`, or `grok`
+(`codex`, `chatgpt`, `claude-desktop`, and `grokbot` are aliases). The second is `test` (the
 default), `stage`, `dev`, or `prod`. The script does not build Quick.
 
 ```bash
@@ -384,6 +396,37 @@ fallback.
 found documentation of its network settings. Test with a view-image request:
 a downloaded image means it works; a curl connection error means the image
 host is blocked there.
+
+## Install locally: Grok CLI and Grok Bot desktop
+
+The Grok CLI and Grok Bot desktop share `~/.grok`, so one install covers
+both. `reload-plugin.sh` builds the plugin, removes any previous
+`tableau-<variant>` install (`tableau` for `prod`), and installs
+`dist/grok-<variant>/plugins/tableau` with `grok plugin install --trust`:
+
+```bash
+./reload-plugin.sh grok prod       # published names, dist/grok/
+./reload-plugin.sh grok            # test variant, https://test.mcp.tableau.com
+```
+
+Use `prod` to test in Grok Bot desktop. Its built-in **Tableau** app connects
+to `https://mcp.tableau.com`, and when it lists the plugin's connectors,
+**App** reuses that connection. Connect the app first; the plugin's connector
+options stay greyed out until it is connected.
+
+Check what loaded with `grok plugin details tableau` and `grok inspect`
+(`grok mcp list` shows only servers in `~/.grok/config.toml`, not plugin
+servers). Sign in from the CLI with `/mcps`, select `Tableau`, and press `i`.
+VERIFY: Tableau's authorization server supports Client ID Metadata Documents
+and not Dynamic Client Registration, and Grok CLI 1.0.89 fails sign-in before
+opening a browser. `grok mcp doctor Tableau --debug-file <file>` shows the
+handshake.
+
+**Install the published build.** After publish has run:
+
+```bash
+grok plugin install tableau/tableau-plugin@alpha/grok#plugins/tableau --trust   # VERIFY: a ref with a slash
+```
 
 ## Other surfaces
 

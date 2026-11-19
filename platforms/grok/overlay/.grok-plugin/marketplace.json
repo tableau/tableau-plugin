@@ -1,0 +1,18 @@
+{
+  "name": "tableau-plugin",
+  "owner": {
+    "name": "Salesforce, Inc."
+  },
+  "description": "Tableau plugin: explore Tableau content and create or edit workbooks through the hosted Tableau MCP server.",
+  "plugins": [
+    {
+      "name": "tableau",
+      "source": "./plugins/tableau",
+      "description": "Explore Tableau content and generate/modify Tableau workbooks through the hosted Tableau MCP server.",
+      "category": "data",
+      "homepage": "https://github.com/tableau/tableau-plugin",
+      "keywords": ["tableau", "tableau cloud", "tableau server", "tableau workbook", "tableau dashboard"],
+      "domains": ["tableau.com", "online.tableau.com"]
+    }
+  ]
+}
