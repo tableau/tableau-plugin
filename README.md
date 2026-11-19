@@ -9,6 +9,7 @@ only what is genuinely platform-specific.
 |---|---|---|
 | `openai` | ChatGPT and Codex (web, desktop, CLI) | root `plugin.json` + `extensions.com.openai`, with `.codex-plugin/plugin.json` as a fallback for current CLIs |
 | `claude` | Claude apps (web, Desktop Chat, Cowork) and Claude Code | `.claude-plugin/plugin.json` |
+| `cursor` | Grok Bot, via the Cursor marketplace | `.cursor-plugin/plugin.json` and `.cursor-plugin/marketplace.json`. Hidden from Cursor (`minClientVersions.cursor` is `never`) |
 | `quick` | Amazon Quick (desktop) | none: standalone skill folders plus `tableau-skills.zip`, and `connector/mcp.json` for the MCP connector |
 
 ## Layout
@@ -31,6 +32,14 @@ platforms/
       plugins/tableau/.claude-plugin/plugin.json
       plugins/tableau/.mcp.json
       plugins/tableau/README.md                 # end-user docs; required by the Claude plugin directory
+    vars.yaml
+  cursor/
+    overlay/
+      .cursor-plugin/marketplace.json           # Cursor marketplace; Grok Bot reads this
+      plugins/tableau/.cursor-plugin/plugin.json
+      plugins/tableau/mcp.json                  # hosted MCP server (http)
+      plugins/tableau/README.md                 # end-user install and auth
+      README.md                                 # what to submit
     vars.yaml
   quick/
     overlay/
@@ -72,9 +81,9 @@ that installs beside the marketplace plugin:
 | `stage` | `https://stage.mcp.tableau.com` | `dist/<platform>-stage/` | `Tableau-stage` / `TableauStage` |
 | `dev` | local [tableau-mcp](https://github.com/tableau/tableau-mcp) over stdio | `dist/<platform>-dev/` | `Tableau-dev` / `TableauDev` |
 
-(Claude plugin names are lowercase: `tableau-test`, `tableau-stage`,
+(Claude and Cursor plugin names are lowercase: `tableau-test`, `tableau-stage`,
 `tableau-dev`.) On OpenAI, the skills' tool names follow the server key, e.g.
-`mcp__TableauDev__search-content`. Claude and Quick leave the prefix empty.
+`mcp__TableauDev__search-content`. Claude, Cursor, and Quick leave the prefix empty.
 
 `dev` writes a stdio MCP server. The command is `sh -c` running
 `exec node --env-file="$dir/.env" "$dir/build/index.js"`, with `TRANSPORT=stdio`
@@ -94,13 +103,14 @@ The build copies `src/plugin/` into `dist/<platform>/plugins/tableau/`, then
 merges `platforms/<platform>/overlay/` over the top (overlay wins on collision).
 Files ending in `.j2` are rendered with Jinja2 using the platform's `vars.yaml`;
 everything else is copied verbatim. A platform's `vars.yaml` can list
-`exclude:` globs for payload files it doesn't ship (Claude and Quick drop
-`skills/*/agents/openai.yaml`).
+`exclude:` globs for payload files it doesn't ship (Claude, Cursor, and Quick
+drop `skills/*/agents/openai.yaml`).
 
 `--zip` packages the plugin folder itself (manifest at the zip root) for
-uploading in the Claude apps or submitting to OpenAI. The zip is named from
-the output directory: `dist/claude-tableau.zip`, `dist/claude-test-tableau.zip`,
-`dist/claude-slim-tableau.zip`, or `dist/claude-test-slim-tableau.zip`.
+uploading in the Claude apps, submitting to OpenAI, or handing over the Cursor
+plugin. The zip is named from the output directory: `dist/claude-tableau.zip`,
+`dist/claude-test-tableau.zip`, `dist/claude-slim-tableau.zip`,
+`dist/claude-test-slim-tableau.zip`, or `dist/cursor-tableau.zip`.
 
 ### Slim builds (Claude plugin directory)
 
@@ -153,10 +163,10 @@ skipped, since the build always writes the skills zip.
   install docs — are authored per platform under `platforms/<platform>/overlay/`.
 - **Host-specific wording** comes from `vars.yaml`. Templates read:
   - `assistant_name`, `show_image`, and `elicit_max_options`.
-  - `mcp_prefix`: `mcp__Tableau__` on OpenAI. Empty on Claude and Quick, where
-    the connector's tool prefix is host-assigned or unknown; skills there name
-    tools by base name (`search-content`) and tell the model to match on the
-    suffix. A non-prod OpenAI variant rewrites this to the variant's server
+  - `mcp_prefix`: `mcp__Tableau__` on OpenAI. Empty on Claude, Cursor, and Quick,
+    where the connector's tool prefix is host-assigned or unknown; skills there
+    name tools by base name (`search-content`) and tell the model to match on
+    the suffix. A non-prod OpenAI variant rewrites this to the variant's server
     key (`mcp__TableauDev__`).
   - `tools.render_native`, `tools.site_access`, `tools.js_repl`, `tools.elicit`:
     host built-ins. Leave empty when a host has none; the prose falls back
@@ -166,7 +176,8 @@ skipped, since the build always writes the skills zip.
     download paths the prose includes. `shell_download_only` (Claude) tells
     the model to download presigned image URLs with `curl` or Python in a
     shell, never with the host's web fetch tool.
-  - `exclude`: payload globs this platform does not ship.
+  - `exclude`: payload globs this platform does not ship. Claude, Cursor, and
+    Quick drop `skills/*/agents/openai.yaml`.
   - `mcp_env_passthrough`: OpenAI only. The dev variant then lists
     `TABLEAU_MCP_DIR` in the stdio server's `env_vars`.
   - `slim`: Claude only. See [Slim builds](#slim-builds-claude-plugin-directory).
@@ -197,16 +208,21 @@ does not), and commits the tree to a branch:
 | Claude prod | `dist/claude/` | `dist/claude` |
 | Claude `--slim` | `dist/claude-slim/` | `dist-claude-slim` |
 | OpenAI prod | `dist/openai/` | `dist/codex` |
+| Cursor prod (Grok Bot) | `dist/cursor/` | `dist/cursor` |
 
-Quick is not published. Install commands are in the sections below.
+Quick is not published. Install commands are in the sections below. The first
+push to `dist/cursor` needs the GitHub Actions app as a bypass actor on the
+`dist` ruleset, the same as the other dist branches. Until that is set, the
+workflow's push is rejected.
 
 ## Install locally: Codex and ChatGPT desktop
 
 The Codex CLI and the ChatGPT/Codex desktop apps share `~/.codex`, so one
 install covers all of them. `reload-plugin.sh` builds the plugin and
-(re)installs it. The first argument is `openai` or `claude` (`codex`,
-`chatgpt`, and `claude-desktop` are aliases). The second is `test` (the
-default), `stage`, `dev`, or `prod`. The script does not build Quick.
+(re)installs it for Codex. The first argument is `openai`, `claude`, or
+`cursor` (`codex`, `chatgpt`, `claude-desktop`, `grok`, and `grokbot` are
+aliases). The second is `test` (the default), `stage`, `dev`, or `prod`.
+The script does not build Quick, and it does not install into Grok Bot.
 
 ```bash
 ./reload-plugin.sh openai          # test variant (default)
@@ -384,6 +400,35 @@ fallback.
 found documentation of its network settings. Test with a view-image request:
 a downloaded image means it works; a curl connection error means the image
 host is blocked there.
+
+## Install locally: Grok Bot
+
+Grok Bot installs this plugin from the Cursor marketplace. The manifest sets
+`minClientVersions.cursor` to `never`, so Cursor does not list it, and
+`grokbot` / `sand` to `0.49.0`. There is no local install command in Grok Bot
+for a folder of Cursor manifests. `./reload-plugin.sh cursor` only builds.
+
+```bash
+./reload-plugin.sh cursor          # test variant (default)
+./reload-plugin.sh cursor dev      # local tableau-mcp over stdio
+./reload-plugin.sh cursor prod     # published names, dist/cursor/
+```
+
+That writes `dist/cursor-test/` (`dist/cursor/` for prod) and
+`dist/cursor-test-tableau.zip`. The zip is the plugin folder, with
+`.cursor-plugin/plugin.json` at the zip root. The marketplace file
+`.cursor-plugin/marketplace.json` stays at the dist root and is not in the zip.
+
+**Submit.** Put the prod tree (`dist/cursor/`, or the `dist/cursor` branch
+after publish) at the root of a public git repository and submit that
+repository at <https://cursor.com/marketplace/publish>. Do not submit this
+source repo's default branch. The review looks for the marketplace manifest
+at the repository root.
+
+**After it is listed — VERIFY.** Install **Tableau** in Grok Bot (other Grok
+Bot plugins use **Connect apps**), authenticate, and sign in to Tableau Cloud.
+There is no API key. Start a new chat and ask to show a dashboard you know.
+Details and the open VERIFY items are in `platforms/cursor/overlay/plugins/tableau/README.md`.
 
 ## Other surfaces
 

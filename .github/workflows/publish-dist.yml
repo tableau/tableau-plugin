@@ -6,6 +6,7 @@ name: Publish plugin distributions
 # - dist-claude-slim: the size-reduced `--slim` Claude build for the Claude
 #   plugin directory, which times out validating the full package.
 # - dist/codex: the OpenAI build (ChatGPT and Codex).
+# - dist/cursor: the Cursor marketplace build for Grok Bot.
 
 on:
   push:
@@ -26,6 +27,7 @@ jobs:
           - { name: claude, platform: claude, flags: "", branch: dist/claude }
           - { name: claude-slim, platform: claude, flags: "--slim", branch: dist-claude-slim }
           - { name: openai, platform: openai, flags: "", branch: dist/codex }
+          - { name: cursor, platform: cursor, flags: "", branch: dist/cursor }
     # Never run two publishes to one branch at once: each one appends to it.
     concurrency:
       group: publish-${{ matrix.name }}

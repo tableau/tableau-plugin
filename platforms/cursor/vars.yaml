@@ -1,0 +1,53 @@
+# Cursor marketplace platform for Grok Bot. Grok Bot installs plugins from
+# Cursor's catalog (.cursor-plugin/), which Claude and Codex manifests are not.
+# Consumed by build/build.py when rendering *.j2 files from src/plugin/.
+#
+# Values tagged VERIFY still need confirming in a Grok Bot install.
+
+# How the assistant refers to itself in user-facing prose. Official Grok Bot
+# plugins say "Grok" (the product surface is Grok Bot).
+assistant_name: Grok
+
+# Empty on purpose. Grok's own MCP catalog key is <server>__<tool>
+# (Tableau__search-content) and the model calls it through use_tool. A Cursor
+# plugin may rename that server (VERIFY: plugin-tableau-Tableau, or the key
+# Tableau from mcp.json). Skills use the bare name and tell the model to match
+# on the suffix. Do not set mcp_prefix until that name is confirmed: a
+# non-empty prefix is rewritten to mcp__<variant server>__ on test/stage/dev.
+mcp_prefix: ""
+
+# No host-provided viz browser, REPL, or option-picker is assumed. Grok Bot's
+# question UI is not a stable tool name in these skills (VERIFY).
+tools:
+  render_native: []
+  site_access: ""
+  js_repl: ""
+  elicit: ""
+
+elicit_max_options: 4
+
+# How to show the user a local image file (e.g. a downloaded Tableau render).
+# VERIFY how Grok Bot displays a PNG the shell wrote.
+show_image: >-
+  embed it in the reply as a Markdown image that uses its absolute path, e.g.
+  `![<view name>](/absolute/path/to/render.png)`, so the user sees the picture
+
+capabilities:
+  # VERIFY whether Grok Bot renders MCP Apps UI. Until then, skip
+  # render-interactive-viz in rendering.md and go straight to the hyperlink
+  # plus static-image path. The content-viewer skill still names the tool and
+  # falls back when it is absent.
+  interactive_viz: false
+  native_render: false
+  js_repl: false
+  native_render_guaranteed: false
+  shell_guaranteed: false
+  # Presigned view-image URLs are about 2,000 characters. Download them with
+  # curl or Python in the shell. VERIFY that Grok Bot's web fetch rejects them
+  # and that a shell is available to the plugin.
+  shell_download_only: true
+  browser_verify: false
+
+# Payload paths (globs relative to src/plugin/) not shipped on this platform.
+exclude:
+  - "skills/*/agents/openai.yaml"   # OpenAI-only skill metadata

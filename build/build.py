@@ -265,12 +265,14 @@ def apply_variant(dist: Path, name: str, variant: dict, server_key: str,
 
     plugin_dir = dist / PAYLOAD_DEST_SUBPATH
     for path in (dist / ".agents/plugins/marketplace.json",
-                 dist / ".claude-plugin/marketplace.json"):
+                 dist / ".claude-plugin/marketplace.json",
+                 dist / ".cursor-plugin/marketplace.json"):
         if path.exists():
             rewrite_json(path, edit_marketplace)
     for path in (plugin_dir / "plugin.json",
                  plugin_dir / ".codex-plugin/plugin.json",
-                 plugin_dir / ".claude-plugin/plugin.json"):
+                 plugin_dir / ".claude-plugin/plugin.json",
+                 plugin_dir / ".cursor-plugin/plugin.json"):
         if path.exists():
             rewrite_json(path, edit_manifest)
     for config in MCP_CONFIG_PATHS:
