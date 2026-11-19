@@ -1,0 +1,21 @@
+{
+  "name": "tableau",
+  "version": "1.2.1",
+  "description": "Explore Tableau content and generate/modify Tableau workbooks through the hosted Tableau MCP server.",
+  "author": {
+    "name": "Salesforce, Inc.",
+    "url": "https://www.tableau.com"
+  },
+  "homepage": "https://github.com/tableau/tableau-plugin",
+  "repository": "https://github.com/tableau/tableau-plugin",
+  "privacyPolicyUrl": "https://www.salesforce.com/company/legal/privacy/",
+  "license": "Apache-2.0",
+  "keywords": [
+    "tableau",
+    "tableau cloud",
+    "tableau server",
+    "tableau workbook",
+    "tableau dashboard"
+  ],
+  "displayName": "Tableau"
+}
