@@ -12,7 +12,7 @@ assistant_name: Amazon Quick
 # The connector endpoint the setup guide names. --variant test/stage swaps in
 # that variant's URL; dev runs a local tableau-mcp over stdio, which Quick on
 # desktop supports as a local connector.
-mcp_url: https://mcp.tableau.com
+mcp_url: ""
 
 # Empty: Quick registers each MCP tool under the connector, and how it names
 # them isn't known yet (VERIFY). Skills name tools by base name and a note
