@@ -28,3 +28,4 @@ jobs:
           python3 build/build.py --variant prod
           python3 build/build.py --variant prod --slim claude
           python3 build/build.py --variant test
+          python3 -m unittest discover -s build/tests

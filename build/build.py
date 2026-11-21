@@ -74,6 +74,7 @@ SRC_PAYLOAD = ROOT / "src" / "plugin"
 PAYLOAD_DEST_SUBPATH = Path("plugins/tableau")  # where the shared payload lands in a dist
 PLATFORMS_DIR = ROOT / "platforms"
 DIST_DIR = ROOT / "dist"
+OPENAI_MANIFEST_PATHS = ("plugin.json", ".codex-plugin/plugin.json")
 
 # Never copied into a distribution.
 EXCLUDE_NAMES = {".DS_Store"}
@@ -268,9 +269,8 @@ def apply_variant(dist: Path, name: str, variant: dict, server_key: str,
                  dist / ".claude-plugin/marketplace.json"):
         if path.exists():
             rewrite_json(path, edit_marketplace)
-    for path in (plugin_dir / "plugin.json",
-                 plugin_dir / ".codex-plugin/plugin.json",
-                 plugin_dir / ".claude-plugin/plugin.json"):
+    for relative in (*OPENAI_MANIFEST_PATHS, ".claude-plugin/plugin.json"):
+        path = plugin_dir / relative
         if path.exists():
             rewrite_json(path, edit_manifest)
     for config in MCP_CONFIG_PATHS:
@@ -505,27 +505,39 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
     return dist
 
 
-def write_zip(src_dir: Path, out: Path, label: str) -> Path:
+def write_zip(src_dir: Path, out: Path, label: str, *,
+              overrides: dict[str, bytes] | None = None) -> Path:
     """Zip the contents of src_dir (not the dir itself) to `out`.
 
     Entries are sorted with a fixed timestamp so the zip is reproducible.
     """
+    overrides = overrides or {}
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(p for p in src_dir.rglob("*") if p.is_file()):
-            info = zipfile.ZipInfo(path.relative_to(src_dir).as_posix(),
+            relative = path.relative_to(src_dir).as_posix()
+            info = zipfile.ZipInfo(relative,
                                    date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = (path.stat().st_mode & 0o777) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
-            zf.writestr(info, path.read_bytes())
+            data = overrides[relative] if relative in overrides else path.read_bytes()
+            zf.writestr(info, data)
     shown = out.relative_to(ROOT) if out.is_relative_to(ROOT) else out
     log(f"[{label}] zip -> {shown}")
     return out
 
 
-def zip_plugin(dist: Path) -> Path:
+def zip_plugin(dist: Path, platform: str, variant: str) -> Path:
     """Zip the built plugin dir (manifest at the zip root) for upload/submission."""
-    return write_zip(dist / PAYLOAD_DEST_SUBPATH,
-                     dist.parent / f"{dist.name}-{PAYLOAD_DEST_SUBPATH.name}.zip", dist.name)
+    plugin_dir = dist / PAYLOAD_DEST_SUBPATH
+    overrides = {}
+    if platform == "openai" and variant == "prod":
+        submission_name = load_vars(PLATFORMS_DIR / platform)["submission_plugin_name"]
+        for relative in OPENAI_MANIFEST_PATHS:
+            manifest = json.loads((plugin_dir / relative).read_bytes())
+            manifest["name"] = submission_name
+            overrides[relative] = (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    return write_zip(plugin_dir, dist.parent / f"{dist.name}-{plugin_dir.name}.zip",
+                     dist.name, overrides=overrides)
 
 
 def discover_platforms() -> list[str]:
@@ -577,7 +589,7 @@ def main() -> None:
         dist = build_platform(platform, variant=args.variant, slim=args.slim)
         if args.zip:
             if (dist / PAYLOAD_DEST_SUBPATH).is_dir():
-                zip_plugin(dist)
+                zip_plugin(dist, platform, args.variant)
             else:
                 log(f"[{dist.name}] --zip skipped: not a plugin build")
 
