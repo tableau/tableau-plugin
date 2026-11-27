@@ -16,7 +16,14 @@ never passed through the template engine. If no ".j2" files exist for a target,
 the build runs with the Python standard library alone.
 
 A platform's vars.yaml may list `exclude:` globs (relative to src/plugin/) for
-payload files that platform doesn't ship.
+payload files that platform doesn't ship. A glob that matches a directory drops
+everything under it.
+
+`extra_plugins:` in vars.yaml names plugins built beside plugins/tableau/. Each
+gets only its listed `skills` and shared `files` under plugins/<name>/, and the
+tableau plugin ships every other skill. A template names an extra plugin's tool
+as `{{ "<server key>__<tool>" | tool }}`, which renders the full name the host
+gives that tool, so the literal name stays greppable in the source.
 
 `--variant` builds a renamed copy for local development that can be installed
 next to the published plugin without colliding with it (see VARIANTS):
@@ -158,6 +165,14 @@ def load_vars(platform_dir: Path) -> dict:
     return data
 
 
+def full_tool_name(variables: dict, name: str) -> str:
+    """`TableauDesktop__list-instances` -> the name the host gives that tool."""
+    server, sep, tool = name.partition("__")
+    if not sep or server not in variables["tool_prefixes"]:
+        raise ValueError(f"'{name}' is not <server key>__<tool> for an extra plugin's server")
+    return variables["tool_prefixes"][server] + tool
+
+
 def render_template(text: str, variables: dict, src: Path) -> str:
     """Render a Jinja2 template string (lazy import; StrictUndefined catches typos)."""
     try:
@@ -174,6 +189,7 @@ def render_template(text: str, variables: dict, src: Path) -> str:
         trim_blocks=True,           # a standalone {% %} line leaves no blank line
         lstrip_blocks=True,         # ...and no leading indentation either
     )
+    env.filters["tool"] = lambda name: full_tool_name(variables, name)
     return env.from_string(text).render(**variables)
 
 
@@ -190,11 +206,18 @@ def emit_file(src: Path, dest: Path, variables: dict) -> str:
     return "copy"
 
 
+def matches(rel: PurePosixPath, globs) -> bool:
+    """Whether a glob matches `rel` or one of the directories it sits in."""
+    return any(path.match(g) for g in globs for path in (rel, *list(rel.parents)[:-1]))
+
+
 def copy_tree(src_root: Path, dest_root: Path, variables: dict,
-              exclude: tuple[str, ...] = ()) -> tuple[int, int]:
+              exclude: tuple[str, ...] = (), include: tuple[str, ...] | None = None
+              ) -> tuple[int, int]:
     """Emit every file under src_root into dest_root (recursively).
 
-    `exclude` holds globs matched against each file's path relative to src_root.
+    `exclude` and `include` hold globs matched against each file's path
+    relative to src_root. With `include`, only matching files are emitted.
     """
     copied = rendered = 0
     for src in sorted(p for p in src_root.rglob("*") if p.is_file()):
@@ -203,7 +226,8 @@ def copy_tree(src_root: Path, dest_root: Path, variables: dict,
         if EXCLUDE_DIRS.intersection(src.relative_to(src_root).parts):
             continue
         rel = src.relative_to(src_root)
-        if any(PurePosixPath(rel.as_posix()).match(g) for g in exclude):
+        posix = PurePosixPath(rel.as_posix())
+        if matches(posix, exclude) or (include is not None and not matches(posix, include)):
             continue
         result = emit_file(src, dest_root / rel, variables)
         if result == "render":
@@ -213,8 +237,24 @@ def copy_tree(src_root: Path, dest_root: Path, variables: dict,
     return copied, rendered
 
 
+def dev_checkout() -> str:
+    """The tableau-mcp checkout the Desktop dev variant runs, from .env."""
+    checkout = load_dotenv(DOTENV).get("TABLEAU_MCP_DIR")
+    if not checkout:
+        sys.exit(f"error: set TABLEAU_MCP_DIR in {DOTENV}")
+    return str(Path(checkout).expanduser())
+
+
 def mcp_server_config(variant: dict, original: dict, env_passthrough: bool) -> dict:
     """The MCP server definition a variant uses in place of the published one."""
+    if "command" in original:
+        # node, not sh -c, so the dev build also runs on Windows.
+        if not variant.get("stdio"):
+            return original
+        entry = Path(dev_checkout()) / "build" / "index.desktop.js"
+        if not entry.exists():
+            log(f"warning: {entry} not found; run `npm run build:desktop` there")
+        return {**original, "command": "node", "args": [entry.as_posix()]}
     if not variant.get("stdio"):
         return {**original, "url": variant["url"]}
     config = {
@@ -233,9 +273,13 @@ def rewrite_json(path: Path, edit) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
-def apply_variant(dist: Path, name: str, variant: dict, server_key: str,
+def apply_variant(dist: Path, name: str, variant: dict, server_keys: dict,
                   env_passthrough: bool) -> None:
-    """Rename the built plugin, its marketplace and MCP server, and repoint the server."""
+    """Rename the built plugins, their marketplace and MCP servers, and repoint the servers.
+
+    `server_keys` maps each built plugin dir (relative to `dist`) to its
+    variant's MCP server key.
+    """
     suffix, label = f"-{name}", f" ({variant['label']})"
 
     def relabel(node) -> None:
@@ -259,23 +303,27 @@ def apply_variant(dist: Path, name: str, variant: dict, server_key: str,
         data["name"] += suffix
         relabel(data)
 
-    def edit_mcp(data: dict) -> None:
-        (original,) = data["mcpServers"].values()
-        data["mcpServers"] = {server_key: mcp_server_config(variant, original, env_passthrough)}
+    def edit_mcp(server_key: str):
+        def edit(data: dict) -> None:
+            (original,) = data["mcpServers"].values()
+            data["mcpServers"] = {server_key: mcp_server_config(variant, original, env_passthrough)}
+        return edit
 
-    plugin_dir = dist / PAYLOAD_DEST_SUBPATH
     for path in (dist / ".agents/plugins/marketplace.json",
                  dist / ".claude-plugin/marketplace.json"):
         if path.exists():
             rewrite_json(path, edit_marketplace)
-    for path in (plugin_dir / "plugin.json",
-                 plugin_dir / ".codex-plugin/plugin.json",
-                 plugin_dir / ".claude-plugin/plugin.json"):
-        if path.exists():
-            rewrite_json(path, edit_manifest)
-    for config in MCP_CONFIG_PATHS:
-        if (dist / config).exists():
-            rewrite_json(dist / config, edit_mcp)
+    for plugin, server_key in server_keys.items():
+        for path in (dist / plugin / "plugin.json",
+                     dist / plugin / ".codex-plugin/plugin.json",
+                     dist / plugin / ".claude-plugin/plugin.json"):
+            if path.exists():
+                rewrite_json(path, edit_manifest)
+        configs = MCP_CONFIG_PATHS if plugin == PAYLOAD_DEST_SUBPATH else (
+            plugin / ".mcp.json", plugin / "mcp.json")
+        for config in configs:
+            if (dist / config).exists():
+                rewrite_json(dist / config, edit_mcp(server_key))
 
 
 SCHEMA_VERSION_RE = re.compile(r"^(\d{4})_(\d+)$")  # resources/schemas/<YYYY_R>/
@@ -427,6 +475,29 @@ def build_skills_package(dist: Path, variables: dict, exclude: tuple[str, ...]) 
     return skills_dir
 
 
+def plugin_version(platform_dir: Path) -> str | None:
+    """The version in the platform's tableau plugin manifest, if it has one."""
+    plugin = platform_dir / "overlay" / PAYLOAD_DEST_SUBPATH
+    for manifest in (plugin / ".claude-plugin/plugin.json", plugin / "plugin.json"):
+        if manifest.exists():
+            return json.loads(manifest.read_text())["version"]
+    return None
+
+
+def drop_marketplace_entries(dist: Path, plugin_dirs: tuple[str, ...]) -> None:
+    """Remove the plugins sourced from `plugin_dirs` from the build's marketplace manifests."""
+    def source(entry: dict) -> str:
+        src = entry["source"]
+        return posixpath.normpath(src if isinstance(src, str) else src["path"])
+
+    def edit(data: dict) -> None:
+        data["plugins"] = [p for p in data["plugins"] if source(p) not in plugin_dirs]
+    for path in (dist / ".agents/plugins/marketplace.json",
+                 dist / ".claude-plugin/marketplace.json"):
+        if path.exists():
+            rewrite_json(path, edit)
+
+
 def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "prod",
                    slim: bool = False) -> Path:
     platform_dir = PLATFORMS_DIR / platform
@@ -440,10 +511,19 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
         sys.exit(f"error: platform '{platform}' has no slim: block in vars.yaml")
 
     spec = VARIANTS[variant]
-    server_key = "Tableau" + (spec["label"] if spec else "")
+    variant_suffix = spec["label"] if spec else ""
+    server_key = "Tableau" + variant_suffix
     if spec and variables.get("mcp_prefix"):
         # Skills address tools by server key on hosts with a fixed prefix.
         variables["mcp_prefix"] = f"mcp__{server_key}__"
+
+    extras = {} if slim else variables.get("extra_plugins") or {}
+    variables["tool_prefixes"] = {
+        extra["server_key"]: variables["extra_tool_prefix"].format(
+            plugin=plugin + (f"-{variant}" if spec else ""),
+            server=extra["server_key"] + variant_suffix)
+        for plugin, extra in extras.items()}
+    variables["plugin_version"] = plugin_version(platform_dir)
 
     name = platform if not spec else f"{platform}-{variant}"
     dist = out_root / (f"{name}-slim" if slim else name)
@@ -453,8 +533,11 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
     exclude = tuple(variables.get("exclude", ()))
     if slim_spec:
         exclude += tuple(slim_spec.get("exclude", ()))
+    extra_skills = tuple(f"skills/{skill}" for extra in (variables.get("extra_plugins") or {}).values()
+                         for skill in extra["skills"])
+    exclude += extra_skills
     variables["shipped_skills"] = skill_names(
-        lambda rel: not any(rel.match(g) for g in exclude))
+        lambda rel: not matches(rel, exclude))
 
     if "skills_package" in variables:
         # The setup guide names the connector and, for a remote variant, its URL.
@@ -468,7 +551,7 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
         # 2. platform overlay (setup guide, connector config) -> dist/<platform>/
         c2, r2 = copy_tree(platform_dir / "overlay", dist, variables)
         if spec:
-            apply_variant(dist, variant, spec, server_key,
+            apply_variant(dist, variant, spec, {PAYLOAD_DEST_SUBPATH: server_key},
                           bool(variables.get("mcp_env_passthrough")))
         # 3. the skill folders, zipped -> dist/<platform>/<skills_package.zip>
         write_zip(skills_dir, dist / variables["skills_package"]["zip"], dist.name)
@@ -486,14 +569,28 @@ def build_platform(platform: str, out_root: Path = DIST_DIR, variant: str = "pro
         if slim_spec.get("strip_xsd_indent"):
             strip_xsd_indent(dist / PAYLOAD_DEST_SUBPATH)
 
-    # 2. platform overlay -> dist/<platform>/ (root); overrides payload on collision
+    # 2. each extra plugin's skills and shared files -> dist/<platform>/plugins/<name>/
+    base_exclude = tuple(g for g in exclude if g not in extra_skills)
+    for plugin, extra in extras.items():
+        include = tuple(f"skills/{skill}" for skill in extra["skills"]) + tuple(extra.get("files", ()))
+        c, r = copy_tree(SRC_PAYLOAD, dist / "plugins" / plugin, variables, base_exclude, include)
+        c1, r1 = c1 + c, r1 + r
+
+    # 3. platform overlay -> dist/<platform>/ (root); overrides payload on collision
     overlay = platform_dir / "overlay"
     c2 = r2 = 0
     if overlay.is_dir():
-        c2, r2 = copy_tree(overlay, dist, variables)
+        skipped = tuple(f"plugins/{plugin}" for plugin in variables.get("extra_plugins") or {}
+                        if plugin not in extras)
+        c2, r2 = copy_tree(overlay, dist, variables, skipped)
+        if skipped:
+            drop_marketplace_entries(dist, skipped)
 
     if spec:
-        apply_variant(dist, variant, spec, server_key,
+        server_keys = {PAYLOAD_DEST_SUBPATH: server_key}
+        server_keys.update({Path("plugins", plugin): extra["server_key"] + variant_suffix
+                            for plugin, extra in extras.items()})
+        apply_variant(dist, variant, spec, server_keys,
                       bool(variables.get("mcp_env_passthrough")))
 
     if slim_spec and "max_file_kib" in slim_spec:

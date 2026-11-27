@@ -3,12 +3,17 @@
   "owner": {
     "name": "Salesforce, Inc."
   },
-  "description": "Tableau plugin: explore Tableau content and create or edit workbooks through the hosted Tableau MCP server.",
+  "description": "Tableau plugins: work with Tableau Cloud and Server through the hosted Tableau MCP server, or with the workbook open in Tableau Desktop through the local Tableau Desktop MCP server.",
   "plugins": [
     {
       "name": "tableau",
       "source": "./plugins/tableau",
       "description": "Explore Tableau content and generate/modify Tableau workbooks through the hosted Tableau MCP server."
+    },
+    {
+      "name": "tableau-desktop",
+      "source": "./plugins/tableau-desktop",
+      "description": "Build and edit the workbook open in Tableau Desktop on this computer. Works in Claude Code, including the Claude Desktop app's Code tab. Needs Node.js 22.7.5 or later."
     }
   ]
 }

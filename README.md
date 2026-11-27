@@ -23,6 +23,7 @@ platforms/
       plugins/tableau/mcp.json                  # portable MCP config (streamable-http)
       plugins/tableau/.codex-plugin/plugin.json # legacy manifest; codex-cli <= 0.154 needs it
       plugins/tableau/.mcp.json                 # legacy MCP config, referenced by the legacy manifest
+      plugins/tableau-desktop/                  # Tableau Desktop plugin (both manifests and MCP configs)
       README.md                                 # end-user install/auth docs
     vars.yaml
   claude/
@@ -31,6 +32,7 @@ platforms/
       plugins/tableau/.claude-plugin/plugin.json
       plugins/tableau/.mcp.json
       plugins/tableau/README.md                 # end-user docs; required by the Claude plugin directory
+      plugins/tableau-desktop/                  # Tableau Desktop plugin (manifest, .mcp.json.j2, README.md)
     vars.yaml
   quick/
     overlay/
@@ -39,6 +41,7 @@ platforms/
     vars.yaml                                   # skills_package: standalone skills + zip
 build/
   build.py                  # assembles a platform distribution
+  check_desktop_tools.py    # checks skill tool names against the Desktop MCP server
   requirements.txt          # Jinja2 + PyYAML
 dist/                       # build output (git-ignored)
 ```
@@ -107,6 +110,27 @@ everything else is copied verbatim. A platform's `vars.yaml` can list
 uploading in the Claude apps or submitting to OpenAI. The zip is named from
 the output directory: `dist/claude-tableau.zip`, `dist/claude-test-tableau.zip`,
 `dist/claude-slim-tableau.zip`, or `dist/claude-test-slim-tableau.zip`.
+
+### Tableau Desktop plugin (Claude and OpenAI)
+
+Claude and OpenAI also build a second plugin, `tableau-desktop` (Codex name
+`TableauDesktop`), into `plugins/tableau-desktop/`. It runs the local Desktop
+MCP server, `npx -y @tableau/mcp-server-desktop@latest`, over stdio, and
+ships only the `tableau-desktop-authoring` skill and `assets/`. The
+`extra_plugins:` block in each platform's `vars.yaml` lists its skills and
+files; those skills are left out of `plugins/tableau/`. Quick and the slim
+build do not ship it.
+
+Variants rename it the same way (`tableau-desktop-test` / `TableauDesktopTest`,
+and so on). Test and stage keep the npm server. Dev runs
+`node $TABLEAU_MCP_DIR/build/index.desktop.js`; run `npm run build:desktop` in
+the checkout first.
+
+A skill names a Desktop tool as `{{ "TableauDesktop__<tool>" | tool }}`. The
+filter renders the host's full tool name for the built plugin and variant.
+`python3 build/check_desktop_tools.py` starts the server and fails if a skill
+names a tool it does not list. Pass `node <checkout>/build/index.desktop.js`
+to check against a local checkout. CI runs it against the npm package.
 
 ### Slim builds (Claude plugin directory)
 

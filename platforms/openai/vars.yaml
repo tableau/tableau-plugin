@@ -48,3 +48,12 @@ capabilities:
   # VERIFY whether open_in_codex can be clicked through by the model; Codex's
   # Computer Use is screen-level only (no page reading or JavaScript).
   browser_verify: false
+
+extra_plugins:
+  tableau-desktop:
+    server_key: TableauDesktop
+    skills: [tableau-desktop-authoring]
+    files: [assets]
+
+# Full name Codex gives a plugin's MCP tool: the bare server key.
+extra_tool_prefix: "mcp__{server}__"

@@ -50,7 +50,9 @@ jobs:
           pip install -r build/requirements.txt
           # Pin prod: test/stage/dev variants rename the plugin and repoint its MCP server.
           python3 build/build.py --variant prod $BUILD_FLAGS "$PLATFORM"
-          cp LICENSE.txt "$DIST_DIR/plugins/tableau/LICENSE.txt"
+          for plugin in "$DIST_DIR"/plugins/*/; do
+            cp LICENSE.txt "$plugin/LICENSE.txt"
+          done
 
       - name: Commit to ${{ matrix.branch }}
         run: |

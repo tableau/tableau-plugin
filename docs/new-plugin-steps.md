@@ -118,6 +118,11 @@ Optional blocks, copied from the platform that already uses them:
   the stdio server's `env_vars`. Set this when the host gives a plugin MCP
   server a minimal environment (OpenAI). Leave it off when the host already
   passes the process environment through (Claude, Quick).
+- `extra_plugins:` and `extra_tool_prefix:` — build another plugin beside
+  `plugins/tableau/` with only the listed skills and files, from
+  `overlay/plugins/<plugin>/`. See `platforms/claude/vars.yaml`. Skills name
+  its tools with the `tool` filter, so `extra_tool_prefix` must give the
+  host's full tool name.
 - `slim:` — size-reduced build via `build.py --slim`. See the `slim:` block
   in `platforms/claude/vars.yaml`. Only add it when the host rejects the full
   package.

@@ -99,6 +99,10 @@ plugins/tableau/
   scripts/run_python.py        # launches skill scripts with their dependencies
   requirements.txt             # lxml, installed by run_python.py
   assets/
+plugins/tableau-desktop/       # TableauDesktop: the local Tableau Desktop server
+  plugin.json, mcp.json, .codex-plugin/plugin.json, .mcp.json
+  skills/tableau-desktop-authoring/
+  assets/
 ```
 
 Skills:
@@ -110,6 +114,13 @@ Skills:
 - `tableau-dashboard-advisor` — turn a question and a schema into a dashboard plan
 - `tableau-viz-critique` — score an existing dashboard
 - `tableau-data-quality-sentinel` — scan published datasource metadata
+
+The separate `TableauDesktop` plugin (`codex plugin add
+TableauDesktop@tableau-plugin`) has one skill, `tableau-desktop-authoring`, for
+the workbook open in Tableau Desktop on the same computer. It runs
+`npx -y @tableau/mcp-server-desktop@latest` and needs Node.js 22.7.5 or later.
+Set `TABLEAU_DATA_APP_WORKSPACE_DIR` in the environment Codex starts with to
+choose where Desktop data apps are written.
 
 Workbook authoring keeps its chart catalog, examples, and Tableau workbook
 schemas under `skills/tableau-workbook-authoring/resources/`. OpenAI-only
