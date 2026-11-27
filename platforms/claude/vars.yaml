@@ -86,3 +86,12 @@ slim:
   # Fail the build if a non-image file is bigger than this, rather than have
   # the directory hold it.
   max_file_kib: 256
+
+extra_plugins:
+  tableau-desktop:
+    server_key: TableauDesktop
+    skills: [tableau-desktop-authoring]
+    files: [assets]
+
+# Full name Claude Code gives a plugin's MCP tool.
+extra_tool_prefix: "mcp__plugin_{plugin}_{server}__"

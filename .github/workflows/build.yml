@@ -28,3 +28,15 @@ jobs:
           python3 build/build.py --variant prod
           python3 build/build.py --variant prod --slim claude
           python3 build/build.py --variant test
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Check Desktop tool names in skills
+        run: |
+          if ! npm view @tableau/mcp-server-desktop version >/dev/null 2>&1; then
+            echo "::notice::@tableau/mcp-server-desktop is not on npm yet; skipping the Desktop tool-name check."
+            exit 0
+          fi
+          python3 build/check_desktop_tools.py

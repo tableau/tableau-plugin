@@ -1,0 +1,70 @@
+---
+name: tableau-desktop-authoring
+description: Work with the workbook open in Tableau Desktop on this computer through the TableauDesktop MCP server - build or edit worksheets and dashboards, read workbook data, or scaffold a Desktop data app. Use when the user mentions Tableau Desktop, "the workbook I have open", or a local .twb/.twbx open in Desktop, and when the Desktop server can't reach Tableau Desktop. Not for Tableau Cloud or Tableau Server content (tableau-workbook-authoring, tableau-data-app-authoring).
+---
+
+# Tableau Desktop authoring
+
+The TableauDesktop server drives the copy of Tableau Desktop running on this
+computer. Its own instructions cover how to build and edit content. This skill
+covers which server to use, setup, and data apps.
+
+## Desktop or Cloud
+
+- **Desktop:** the user means a workbook open in Tableau Desktop, or a local
+  file they want to open there. Use the TableauDesktop tools, such as
+  `{{ "TableauDesktop__get-desktop-state" | tool }}`.
+- **Cloud or Server:** the user means content published to a Tableau Cloud or
+  Tableau Server site. Use the hosted Tableau server and its skills, not this one.
+- If the request could mean either, ask the user which one.
+
+If no TableauDesktop tools are available at all, tell the user that Tableau
+Desktop authoring needs Claude Code or Codex running on the computer where
+Tableau Desktop runs. Don't name or call Desktop tools in that case.
+
+## Several Desktops open
+
+If more than one Tableau Desktop is open, call
+`{{ "TableauDesktop__list-instances" | tool }}`, ask the user which one to use
+if it isn't clear, and pass that instance's session to the other tools.
+
+## Editing cached workbook XML
+
+Some tools write workbook XML to a cache file and return its path. Change that
+file with `{{ "TableauDesktop__read-cached-xml" | tool }}` and
+`{{ "TableauDesktop__write-cached-xml" | tool }}`, not with your own file
+tools. The cache is outside the user's project, so file edits there ask for
+permission every time.
+
+## When the server can't reach Tableau Desktop
+
+Walk the user through these steps in order, stopping once it works:
+
+1. In Tableau Desktop, select Help > Settings and Performance > Enable External
+   API Access (Requires Restart). If this setting is unavailable, they need
+   their Tableau admin.
+2. Restart Tableau Desktop.
+3. Check that Tableau Desktop is the most recent public release or later.
+{% if platform == "claude" %}
+4. Run `/mcp` and choose **Reconnect** for the TableauDesktop server. After the
+   server fails, Claude Code doesn't try it again for 15 minutes on its own.
+{% else %}
+4. Start a new task, so Codex starts the TableauDesktop server again.
+{% endif %}
+5. If the server never starts, install Node.js 22.7.5 or later, make sure
+   `npx` is on the `PATH`{% if platform == "claude" %} that Claude Code sees{% endif %},
+   and try step 4 again.
+
+If the user set up a Tableau Desktop MCP server by hand before installing this
+plugin, tell them to remove it, so only one server drives Desktop.
+
+## Data apps
+
+Both servers have a `scaffold-data-app` tool. Pick by where the app goes:
+
+- **Into the workbook open in Desktop:** use
+  `{{ "TableauDesktop__scaffold-data-app" | tool }}`. It needs a data app
+  folder. If it says the folder isn't set, ask the user to set
+  {% if platform == "claude" %}the plugin's **Data app folder** option{% else %}the `TABLEAU_DATA_APP_WORKSPACE_DIR` environment variable to an absolute path{% endif %}, then try again.
+- **Published to Tableau Cloud or Server:** use the hosted Tableau server's
+  `scaffold-data-app` and the tableau-data-app-authoring skill.

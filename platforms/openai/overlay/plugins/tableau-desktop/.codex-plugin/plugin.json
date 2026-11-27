@@ -1,0 +1,43 @@
+{
+  "name": "TableauDesktop",
+  "version": "1.3.0",
+  "description": "Build and edit the workbook open in Tableau Desktop on this computer, through the local Tableau Desktop MCP server. Works in Codex on the computer where Tableau Desktop runs. Needs Node.js 22.7.5 or later.",
+  "author": {
+    "name": "Salesforce, Inc."
+  },
+  "repository": "https://github.com/tableau/tableau-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "tableau",
+    "tableau-desktop",
+    "analytics",
+    "mcp",
+    "workbook",
+    "dashboard",
+    "authoring"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Tableau Desktop",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "logoDark": "./assets/logoDark.png",
+    "shortDescription": "Build and edit the workbook open in Tableau Desktop",
+    "longDescription": "Connects Codex to Tableau Desktop on this computer through the local Tableau Desktop MCP server, which runs with npx. Build worksheets and dashboards, edit fields and formatting, read workbook data, and scaffold data apps in the workbook you have open. Needs Node.js 22.7.5 or later and External API Access turned on in Tableau Desktop.",
+    "developerName": "Salesforce, Inc.",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Add a bar chart of sales by region to the workbook I have open in Tableau Desktop.",
+      "Which Tableau Desktop instances are open?"
+    ],
+    "websiteURL": "https://www.tableau.com/",
+    "supportURL": "https://www.tableau.com/about/contact/customer-service",
+    "privacyPolicyURL": "https://www.salesforce.com/company/legal/privacy/",
+    "termsOfServiceURL": "https://www.tableau.com/legal/eula"
+  }
+}

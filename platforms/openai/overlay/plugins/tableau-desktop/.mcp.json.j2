@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "TableauDesktop": {
+      "command": "npx",
+      "args": ["-y", "@tableau/mcp-server-desktop@latest"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "ALLOW_SKIP_VALIDATION": "false",
+        "TABLEAU_USER_AGENT_PREFIX": "tableau-desktop-plugin/{{ plugin_version }}",
+        "DEFAULT_NOTIFICATION_LEVEL": "warning",
+        "PRODUCT_TELEMETRY_ENABLED": "true"
+      },
+      "env_vars": ["TABLEAU_DATA_APP_WORKSPACE_DIR", "TABLEAU_MCP_CACHE_DIR"]
+    }
+  }
+}

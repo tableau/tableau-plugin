@@ -54,6 +54,7 @@ capabilities:
 # Payload paths (globs relative to src/plugin/) not shipped on this platform.
 exclude:
   - "skills/*/agents/openai.yaml"   # OpenAI-only skill metadata
+  - "skills/tableau-desktop-authoring"
 
 # Standalone skills. Each skill folder gets copies of the shared files it uses
 # (e.g. references/search.md), with its links repointed inside the folder.
